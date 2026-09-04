@@ -1,7 +1,7 @@
 # Habit Accountability App — Architecture
 
 **Status:** approved and in build. §2 platform findings were verified on the device in M0;
-§§4–5 record what M1 actually built.
+§§4–5 record what M1 and M2 actually built.
 **Intended repo path:** `docs/architecture.md`
 **Companion document:** `docs/product-spec.md`, which is the authority on behaviour. Where this
 document and the spec disagree, the spec wins and this document is wrong.
@@ -303,6 +303,13 @@ a hope.
 **Con:** an extra Gradle module and mapping code between database entities and domain types.
 **Alternative:** scoring inside ViewModels. Less code today, and then every rule needs an
 instrumented Android test to verify.
+
+**As built (M2).** The rulebook lives in `domain/.../domain/scoring/`, composed of small pure units:
+`TargetResolver` and `ContainerSizeResolver` (effective-from, resolved *by date* so a later change
+cannot reach backwards), `DirectionEvaluator`, `GoalScorer`, `RunCalculator`, `RollUpCalculator`,
+`DerivedMetrics`, `ItemLifecycle`, `Panel`, `GoalCompletion`. Every rule in spec §3.4 is a green JVM
+test rather than a hope: **133 tests, no emulator, complete case coverage.** The prediction here held
+exactly — the whole rulebook was provable without a device, which is what justified the extra module.
 
 ### Manual constructor injection — dependency wiring
 **Why:** at five screens, a DI framework is not needed.

@@ -1,6 +1,6 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0 and M1 are complete**; M2 (the scoring engine) is next.
+**Status:** agreed and in progress. **M0, M1 and M2 are complete**; M3 (persistence) is next.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -157,63 +157,55 @@ time will break it.
 
 ---
 
-## M2 — The scoring engine (`:domain`) — the core TDD phase
+## M2 — The scoring engine (`:domain`) — **BUILT 2026-09-04**
 
-**Decided-by-docs.** This is where the plan spends its TDD budget. `docs/scoring-cases.md` is
-explicitly "the test suite specification for `:domain`", every case "should be a JVM unit test with
-no Android dependency". So the milestone is, almost literally: **turn each case ID into a failing
-test, then make it pass.**
+**Decided-by-docs.** This is where the plan spent its TDD budget. `docs/scoring-cases.md` is
+explicitly "the test suite specification for `:domain`", so the milestone was close to literal: turn
+each documented case ID into a failing test, then make it pass.
 
-**Deliverables — worked in this sub-order, because later cases depend on earlier machinery:**
+**Delivered: 133 JVM tests, no emulator, and complete case coverage.** All **77** in-scope cases are
+proven by a test whose display name leads with the case ID. The only absences are the six rendering
+and first-run-suppression cases that belong to M10 (9.5, 9.6, 9.8, 11.5, 11.6, 11.8).
 
-1. **Target resolution and directions** — scoring-cases §1 (1.1–1.13) and §5 (effective-from,
-   container sizes). Build target lookup by `(item, period, date)` first; several later cases can't
-   be expressed without it.
-   - **1.13 is the highest-priority test in the whole document** (spec constraint 11: silence is
-     not success). Write it early and keep it green: a missing answer to a `MUST_NOT_INCLUDE` goal
-     is **excluded**, never satisfied. A naive "forbidden option absent → true" implementation
-     passes everything else and fails only this, silently inflating goal completion.
-2. **Binary scoring with separate attainment** — scoring-cases §2. Assert *both* numbers on every
-   numeric case: hit/miss binary, and attainment as an independent value that caps at 100% (2.4) and
-   is *absent — not zero* for at-most directions (2.5). Constraint 16: never merge, never drop.
-3. **Capture states in scoring** — scoring-cases §3. In-window vs backfilled vs late vs pending, and
-   the separation of `capture` from `edited_at` (3.4). The in-window-only figure must be derivable
-   from `capture` alone.
-4. **Runs** — scoring-cases §4. The run counts days *answered*, not performed (4.4 is the whole
-   point). Longest run only ever increases (4.2). Per-item runs independent (4.5).
-5. **Item lifecycle** — scoring-cases §6. Active-in-period only; versioned answers each score under
-   their own version; options hang off the item, not the version.
-6. **Dual-granularity targets** — scoring-cases §7. Daily and weekly scored independently, never
-   collapsed (7.2 is the justifying case).
-7. **Derived metrics** — scoring-cases §8. Sleep duration and lingering, the hardcoded pair only
-   (spec constraint 13). The wrap-past-midnight rule (8.3) and unavailable-not-zero (8.4).
-8. **The three resolved rulebook additions** — scoring-cases A1 (`LATE` records data without
-   repairing the metric), A2 (unresolved pending → missed goal, check-in stays answered), A3
-   (roll-ups count observed, label incomplete).
-   - **A2.1 vs 1.13 must be asserted together in one test** as scoring-cases instructs: A2.1 is the
-     *only* case where an absent value scores as missed, and 1.13 is the opposite. Testing them side
-     by side records the asymmetry as deliberate so nobody later "fixes" it into consistency.
-9. **No-opportunity exclusion** — scoring-cases §10. A designated select option excludes the period
-   as neutral, leaving response rate and run intact, and is evaluated **before** direction. **Assert
-   10.3 against 1.13 and A2.1 in one test** — silence excluded-and-costly, pending missed,
-   no-opportunity excluded-and-free — so the three-way distinction is locked. Also 7.3–7.4: worked
-   out / stretched / coffee are weekly-only targets, still binary per week, not softened daily ones.
+Built in seven reviewed phases: the domain model; target resolution and directions; binary scoring
+with attainment; response rate, runs and capture; pending and no-opportunity; item lifecycle,
+roll-ups and dual granularity; derived metrics; panel bands and the two rings.
 
-**TDD mechanics.** Every case above already has Given/Then columns — those are assertions waiting to
-be typed. Work one section at a time: paste the section's cases as `@Test` stubs that fail, then
-implement the smallest `:domain` change that greens them, then refactor. Domain types are plain
-Kotlin data classes fed by the caller; the engine never reaches into a database or asks the real
-time (architecture §6, "the scoring path is one-directional").
+**The design decisions that carry the rulebook.**
 
-**Goal completion in M2.** With O1 resolved (spec §5.1: a **daily** ring and a **weekly** ring, each
-instance-based within its granularity), both goal-completion aggregates are pure `:domain`
-computations and are built and tested here — scoring-cases §11 — alongside response rate, hit rate,
-per-item completion and attainment. Only the *rendering* of the rings waits for M10.
+- **`GoalOutcome` is tri-state — `MET` / `MISSED` / `EXCLUDED`, never a Boolean.** Three flavours of
+  "no positive answer" must stay apart: silence is excluded *and* costs the check-in (1.13), an
+  unresolved deferral is **missed** (A2.1), and a no-opportunity answer is excluded and costs nothing
+  (10.3). `ThreeWayDistinctionTest` asserts all three side by side, including that the two exclusions
+  share an outcome but differ by reason.
+- **`ExclusionReason` distinguishes *why*.** `EXCLUDED` alone could not satisfy constraint 17's
+  requirement that no-opportunity usage stay visible, nor separate an inactive item from a skipped
+  one, nor an open week from a gap.
+- **Response rate is computed from check-ins alone, never from answers.** That is what makes a `LATE`
+  answer unable to repair a missed check-in (A1.2) and a week filled in on Sunday still report 0%
+  (A1.5). The round-1 decision is enforced by the data flow, not by a guard.
+- **Goal outcomes are not an input to the global run at all**, which is why 4.4 passes structurally
+  rather than by special handling.
+- **Order is load-bearing in `GoalScorer`**: silence, then unresolved deferral, then no-opportunity,
+  then direction. 10.7 is proven by choosing a target the answer would otherwise satisfy.
 
-**Exit criteria.** Every scoring-rule case in `docs/scoring-cases.md` is a green JVM test — including
-the goal-completion ring *aggregates* in §11 (the daily and weekly ratios, kept distinct); only their
-rendering and first-run suppression (11.5, 11.6, 11.8) belong to M10. The suite runs with no emulator.
-This suite is the project's regression backbone from here on.
+**Three product errors the build exposed**, each fixed in the spec rather than worked around:
+
+- **`MUST_INCLUDE` semantics were undocumented and the case table incomplete** — only three of the
+  four selection combinations were specified. Added as 1.10b/1.10c, and §3.4 now records that an
+  acceptable-set intent is expressed as an absence rule instead.
+- **Meals was "exactly 3"**, which would have scored a fourth meal as a miss. The direction, not the
+  arithmetic, was wrong; it is now "at least 3".
+- **Spec §3.4 gave sleep duration as "got up − bedtime"**, contradicting every worked number and
+  double-counting the lingering minutes into sleep. Corrected to "woke − bedtime".
+
+The wider lesson, worth carrying into M3: **a direction must describe what would genuinely count as
+failing.** Two of the three errors were targets that were satisfiable but misdescribed failure, and
+only building the engine made them concrete enough to notice.
+
+**Exit criteria — met.** Every scoring-rule case is a green JVM test, including the ring aggregates;
+the suite runs with no emulator; it is the project's regression backbone from here on. It has already
+caught its own author once, when an over-broad assertion from an earlier phase was falsified by A2.1.
 
 ---
 
