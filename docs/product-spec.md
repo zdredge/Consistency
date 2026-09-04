@@ -273,9 +273,15 @@ than two.
   direction, it says the week is incomplete. Consistent with how missed check-ins are treated
   elsewhere.
 - **Cross-item derivation is a fixed hardcoded pair**, not a general engine: **sleep duration**
-  (got up − bedtime) and **minutes lingering in bed** (got up − woke). Both are wired to the three
+  (woke − bedtime) and **minutes lingering in bed** (got up − woke). Both are wired to the three
   built-in sleep/wake time items and do not generalise to user-created questions. This special-casing
   is deliberate; see constraint 13.
+  **The two are disjoint and together account for the whole time in bed.** This line previously read
+  "(got up − bedtime)" for sleep duration, which was a typo: it would have folded the lingering
+  minutes into sleep and double-counted them, inflating every sleep duration. Corrected during M2 to
+  match the worked numbers, which were right all along — scoring-cases 8.1 and 8.2 and the
+  architecture §5 worked example all give 9h 00m for a 23:30 / 08:30 / 08:52 night, and 8.2 supplies
+  no got-up time at all, so sleep duration cannot depend on one.
 
 ### 3.5 Runs
 
