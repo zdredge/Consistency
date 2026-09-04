@@ -215,6 +215,15 @@ than two.
 - **Targets carry a direction**, not just a value: at least · at most · exactly · must be yes ·
   must be no · must include *option* · must not include *option*. Coffee wants an upper bound;
   "scrolled on phone" wants an absence.
+- **"Must include" names exactly one option**, so an answer omitting it is a miss even when other
+  options were selected — watching YouTube does not satisfy "must read a book". Where several
+  activities are *all* acceptable, express that as an **absence rule on the unacceptable one**, which
+  is exactly what the pre-sleep item does: the goal is "did not scroll", not "read specifically", so
+  YouTube and TV both pass (§2 records why — YouTube in bed is fine, scrolling is not). A
+  "must include any of *these*" direction was considered and **rejected**: absence covers the real
+  intent, and the one case it does not cover — answering that nothing at all was done — is not
+  something worth scoring as a failure here. Note also that targets key on (item, period), so one
+  item cannot hold both an include and an exclude rule for the same period.
 - **Absence-based goals score only on answered days.** An empty answer trivially satisfies "did not
   include scrolling", so silence must never read as success. This is the single most likely place
   for the scoring to be implemented wrong.
