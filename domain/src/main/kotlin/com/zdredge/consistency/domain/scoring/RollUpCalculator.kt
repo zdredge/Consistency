@@ -1,6 +1,7 @@
 package com.zdredge.consistency.domain.scoring
 
 import com.zdredge.consistency.domain.model.Answer
+import com.zdredge.consistency.domain.model.ExclusionReason
 import com.zdredge.consistency.domain.model.GoalResult
 import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Target
@@ -64,4 +65,15 @@ object RollUpCalculator {
      */
     fun score(rollUp: RollUp, target: Target): GoalResult =
         GoalScorer.scoreValue(target, rollUp.value)
+
+    /**
+     * Scores a period only once it has closed. An open period is EXCLUDED carrying PERIOD_OPEN --
+     * never MISSED.
+     *
+     * Spec 5.3: a week is only marked met or missed once it closes, because scoring a Tuesday
+     * against a seven-day target makes every week look like a failure until Sunday. The surface
+     * shows PeriodProgress in its place.
+     */
+    fun scoreClosedPeriod(rollUp: RollUp, target: Target, periodClosed: Boolean): GoalResult =
+        if (!periodClosed) GoalResult.excluded(ExclusionReason.PERIOD_OPEN) else score(rollUp, target)
 }

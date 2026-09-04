@@ -86,4 +86,13 @@ enum class ExclusionReason {
 
     /** An answer exists but carries no value this direction can compare. */
     NOT_SCORABLE,
+
+    /**
+     * The period has not closed yet, so there is nothing to judge. Spec 5.3: a week is only marked
+     * met or missed once it closes, because scoring a Tuesday against a seven-day target makes every
+     * week look like a failure until Sunday -- a demoralising bug wearing the costume of honesty.
+     * Distinct from the other reasons because it is temporary and expected, and the surface shows
+     * progress in its place rather than a gap.
+     */
+    PERIOD_OPEN,
 }
