@@ -16,6 +16,7 @@ captures/
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+*.stackdump
 *.log
 
 # M0 throwaway platform-verification spike — never committed (see docs/build-order.md M0).
