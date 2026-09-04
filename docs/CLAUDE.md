@@ -14,7 +14,7 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 and M1 are complete; M2 (the scoring engine) is next.** Do not begin a later milestone than the
+**M0, M1 and M2 are complete; M3 (persistence) is next.** Do not begin a later milestone than the
 one in progress. Two ordering facts behind it: `:domain` can be proven correct
 without a device, and the dashboard cannot be evaluated without substantial seeded history, so scoring
 belongs early and the dashboard late. The dashboard is also gated on the seed-data fixture (spec O7;
@@ -90,6 +90,11 @@ module. This is what makes the whole rulebook testable without an emulator, whic
   `api(project(":domain"))` so `:app` sees domain types through it.
 - Source dirs by module type: `src/main/kotlin` in `:domain`, `src/main/java` in the Android modules.
 - All date arithmetic goes through `DayResolver` (in `:domain`) and the injected `java.time.Clock`.
+- The scoring rulebook lives in `:domain`'s `scoring` package and is **pure**: it receives plain data
+  and returns numbers, never touching storage or the real clock. `GoalOutcome` is **tri-state**
+  (`MET`/`MISSED`/`EXCLUDED`) and `GoalResult` carries an `ExclusionReason`. Do not reduce either to
+  a Boolean: three different flavours of "no positive answer" have to stay apart, and the reasons are
+  not interchangeable (silence costs a check-in, no-opportunity costs nothing).
 - Manual constructor injection via `AppContainer` in `:app`. No DI framework unless the wiring
   becomes genuinely painful, and then ask first.
 - One answer row per item per day, keyed `(item_id, day_date)`.
@@ -103,6 +108,9 @@ module. This is what makes the whole rulebook testable without an emulator, whic
 
 - `:domain` gets fast JVM unit tests covering every case in `docs/scoring-cases.md`. This is not
   optional; scoring failures are silent and produce plausible wrong numbers rather than crashes.
+  **As of M2 this is complete**: all 77 in-scope cases are proven, and every test display name leads
+  with its case ID so coverage can be checked mechanically against the document. The six absences are
+  the rendering and first-run-suppression cases belonging to M10.
   **JUnit 5 (Jupiter)**; `@ParameterizedTest` maps onto the scoring-cases tables, one test per table
   rather than one per row.
 - **Test naming: conventional camelCase identifiers plus `@DisplayName`.** Put the doc-faithful text

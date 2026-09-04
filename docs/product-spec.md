@@ -215,6 +215,15 @@ than two.
 - **Targets carry a direction**, not just a value: at least · at most · exactly · must be yes ·
   must be no · must include *option* · must not include *option*. Coffee wants an upper bound;
   "scrolled on phone" wants an absence.
+- **"Must include" names exactly one option**, so an answer omitting it is a miss even when other
+  options were selected — watching YouTube does not satisfy "must read a book". Where several
+  activities are *all* acceptable, express that as an **absence rule on the unacceptable one**, which
+  is exactly what the pre-sleep item does: the goal is "did not scroll", not "read specifically", so
+  YouTube and TV both pass (§2 records why — YouTube in bed is fine, scrolling is not). A
+  "must include any of *these*" direction was considered and **rejected**: absence covers the real
+  intent, and the one case it does not cover — answering that nothing at all was done — is not
+  something worth scoring as a failure here. Note also that targets key on (item, period), so one
+  item cannot hold both an include and an exclude rule for the same period.
 - **Absence-based goals score only on answered days.** An empty answer trivially satisfies "did not
   include scrolling", so silence must never read as success. This is the single most likely place
   for the scoring to be implemented wrong.
@@ -264,9 +273,15 @@ than two.
   direction, it says the week is incomplete. Consistent with how missed check-ins are treated
   elsewhere.
 - **Cross-item derivation is a fixed hardcoded pair**, not a general engine: **sleep duration**
-  (got up − bedtime) and **minutes lingering in bed** (got up − woke). Both are wired to the three
+  (woke − bedtime) and **minutes lingering in bed** (got up − woke). Both are wired to the three
   built-in sleep/wake time items and do not generalise to user-created questions. This special-casing
   is deliberate; see constraint 13.
+  **The two are disjoint and together account for the whole time in bed.** This line previously read
+  "(got up − bedtime)" for sleep duration, which was a typo: it would have folded the lingering
+  minutes into sleep and double-counted them, inflating every sleep duration. Corrected during M2 to
+  match the worked numbers, which were right all along — scoring-cases 8.1 and 8.2 and the
+  architecture §5 worked example all give 9h 00m for a 23:30 / 08:30 / 08:52 night, and 8.2 supplies
+  no got-up time at all, so sleep duration cannot depend on one.
 
 ### 3.5 Runs
 
@@ -299,7 +314,12 @@ yes · no · no opportunity) · mindset (1–5)
 
 **Goal granularity in the night set:**
 
-- meals, vitamins and water are **daily** goals.
+- meals, vitamins and water are **daily** goals. **Meals is "at least 3", not "exactly 3."** An extra
+  meal is not a failure and must not score as one — the user has no history of overeating, so an
+  upper bound would manufacture false misses and punish a non-problem. This may deserve revisiting if
+  the app ever has users for whom overeating *is* the thing being tracked; for this user it is not.
+  The wider rule it follows: **a direction must describe what would actually count as failing**, or
+  the score stops meaning anything (see also the pre-sleep absence rule in §3.4).
 - **worked out, stretched and coffee are recorded daily but their targets are weekly**, assessed
   against the weekly roll-up — count-of-yes for the two yes/no items, sum for coffee: e.g. worked
   out ≥ 3/week, stretched ≥ 4/week, coffee ≤ 14/week (all illustrative and editable). This is the
@@ -355,6 +375,10 @@ Added after modelling a full day's check-ins with the user.
 - **Mindset** confirmed an **observation with no target.** A mindset goal would score the user on how
   they felt and drag goal completion down on low days — the shame path §1 avoids. Average mindset is
   surfaced as a derived signal instead.
+- **Meals set to "at least 3" rather than "exactly 3"**, decided during M2 when the scoring engine
+  exposed the consequence: under an exact target a fourth meal scores as a miss, and the attainment
+  figure beside it would cap at 100%, so the dashboard would read "missed, 100%". The direction was
+  wrong, not the arithmetic. No seed goal now uses `exactly`; the direction remains available.
 
 ---
 

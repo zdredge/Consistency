@@ -8,6 +8,7 @@ build/
 captures/
 .externalNativeBuild/
 .cxx/
+bin/
 
 # Signing keys — never commit
 *.jks

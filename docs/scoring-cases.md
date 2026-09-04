@@ -29,9 +29,19 @@ covers the no-opportunity answer introduced at the walkthrough review.
 | 1.8 | vitamins, IS_TRUE, answer false | missed |
 | 1.9 | lingered, IS_FALSE, answer false | met |
 | 1.10 | pre-sleep, MUST_INCLUDE `read_a_book`, selections {read_a_book, watched_youtube} | met |
+| 1.10b | pre-sleep, MUST_INCLUDE `read_a_book`, selections {watched_youtube} | **missed.** The direction names *one* option (spec 3.4, "must include *option*"); other selections present are irrelevant to it. |
+| 1.10c | pre-sleep, MUST_INCLUDE `read_a_book`, selections {} — answered, nothing chosen | **missed.** An answered "none of these" is a real answer, so it is a miss. Only a wholly absent answer is excluded (1.13). |
 | 1.11 | pre-sleep, MUST_NOT_INCLUDE `scrolled_on_phone`, selections {read_a_book, watched_youtube} | met |
 | 1.12 | pre-sleep, MUST_NOT_INCLUDE `scrolled_on_phone`, selections {scrolled_on_phone} | missed |
 | **1.13** | **pre-sleep, MUST_NOT_INCLUDE `scrolled_on_phone`, no answer exists for the day** | **not scored — excluded from both numerator and denominator. Not met. Not missed.** |
+
+**1.5 and 1.6 exercise the EXACTLY comparator, not a real target.** The seed library scores meals as
+*at least* 3 (spec §4): an extra meal is not a failure. No seed goal currently uses `exactly`, though
+the direction stays available.
+
+**1.10b and 1.10c were added after M2 Phase 1**, which exposed that this section originally
+specified only three of the four selection combinations — `MUST_INCLUDE` with the option *absent*
+was never stated. It is a miss.
 
 **1.13 is the highest-priority test in this document.** Spec constraint 11: silence is not success. A
 naive implementation of "the forbidden option is not present" returns true for a missing answer and
