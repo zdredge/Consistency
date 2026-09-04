@@ -1,13 +1,14 @@
 # Habit Accountability App — Product Spec
 
-**Status:** complete, awaiting approval. Five interview rounds.
+**Status:** approved and in build. Five interview rounds.
 **Intended repo path:** `docs/product-spec.md`
 **Sole known user:** Zach. **Platform:** Google Pixel (Android).
 
 **For a later session picking this up:** read §1 and the appendix before anything else. §1 explains
 why nearly every other choice was made, and the appendix lists decisions that look like
-inefficiencies and are not. §6 lists what is genuinely still open. Nothing here has been
-implemented; no stack has been chosen, deliberately.
+inefficiencies and are not. §6 lists what is genuinely still open. The stack is chosen and
+recorded in `docs/architecture.md`; implementation is under way — see `docs/build-order.md` for
+which milestone is current.
 
 ---
 

@@ -1,6 +1,7 @@
 # Habit Accountability App — Architecture
 
-**Status:** draft for scrutiny. Nothing here is approved and no code has been written.
+**Status:** approved and in build. §2 platform findings were verified on the device in M0;
+§§4–5 record what M1 actually built.
 **Intended repo path:** `docs/architecture.md`
 **Companion document:** `docs/product-spec.md`, which is the authority on behaviour. Where this
 document and the spec disagree, the spec wins and this document is wrong.
@@ -158,6 +159,13 @@ and a battery-optimisation exemption that is a toggle in device settings.
 ---
 
 ## 4. The stack, item by item
+
+**Toolchain as built (M1, 2026-09-04).** AGP 9.4.0 · Kotlin 2.2.10 · Gradle 9.6.0 · Compose BOM
+2026.02.01 · compileSdk/targetSdk 37 · minSdk 34 · Java 11. Package `com.zdredge.consistency`,
+versions pinned in `gradle/libs.versions.toml`. Two AGP 9 behaviours to know before editing the
+build: it **compiles Kotlin natively** (there is no `org.jetbrains.kotlin.android` plugin to apply),
+and Gradle's **configuration cache is on by default**, so any custom task that resolves
+configurations at execution time will break it.
 
 ### Kotlin — language
 **Why:** every modern Android API is designed for it, and the Health Connect client is Kotlin-first
@@ -318,6 +326,13 @@ same dependencies. **Assumed:** start manual, switch if the wiring hurts.
 The rule that matters: **`:domain` has no Android imports.** If it ever needs one, something has
 been put in the wrong place.
 
+**As built (M1).** `:domain` is a plain **Kotlin JVM** module (`org.jetbrains.kotlin.jvm`), not an
+Android library — and that *is* the enforcement, not a convention: `android.jar` is not on its
+classpath, so an Android import cannot compile. Proven by deliberately adding one and watching it
+fail. `:data` declares `api(project(":domain"))` rather than `implementation`, so `:app` sees domain
+types through it, matching the dependency table above. Source dirs follow each module type:
+`src/main/kotlin` in `:domain`, `src/main/java` in the Android modules.
+
 ### The step source interface
 
 **Decided.** All Health Connect calls sit behind a single interface in `:data`. This exists for
@@ -338,6 +353,14 @@ exists.
 that gets reimplemented slightly differently in four places. All date arithmetic goes through a
 single injected `Clock` and `DayResolver`. Nothing else in the codebase computes which day a
 timestamp belongs to. Tests control the clock.
+
+**As built (M1).** The injected clock is **`java.time.Clock`** — JDK-pure so it is fine in
+`:domain`, it carries the zone (so `DayResolver` never reads the system zone itself), and
+`Clock.fixed(instant, zone)` is exactly the "tests control the clock" this asks for. Production
+passes `Clock.systemDefaultZone()`. `DayResolver` lives at
+`domain/src/main/kotlin/com/zdredge/consistency/domain/time/DayResolver.kt` and exposes `dayFor`,
+`today`, `startOfDay`, `endOfDayExclusive`, `weekStart` and `weekEnd`. `minSdk 34` means `java.time`
+is available natively, with no core-library desugaring. Wiring is via `AppContainer` in `:app`.
 
 ### Data model
 
@@ -452,8 +475,12 @@ few thousand rows, computing on read is cheap, and cached derived values are a c
 
 ### Testing posture
 
-`:domain` gets fast JVM unit tests covering the whole §3.4 rulebook. Room migrations and DAO queries
-get instrumented tests. Alarm scheduling and the boot receiver are the hardest things to test
+`:domain` gets fast JVM unit tests covering the whole §3.4 rulebook — **JUnit 5 (Jupiter)**, chosen
+because `@ParameterizedTest` maps directly onto the `docs/scoring-cases.md` tables. Tests use
+conventional camelCase identifiers plus `@DisplayName` carrying the doc-faithful text: a backticked
+Kotlin test name cannot contain `.` or `:`, so it can neither write `04:00` nor carry a scoring-case
+ID like `8.5`, while a display name can. Room migrations and DAO queries get instrumented tests,
+which stay on **JUnit 4** as Android requires; the two coexist. Alarm scheduling and the boot receiver are the hardest things to test
 automatically and will mostly be verified by hand on the device — **Assumed**, and if there is a
 better approach it is worth finding, since a silently broken scheduler is the worst failure this app
 has.
