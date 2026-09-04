@@ -77,15 +77,25 @@ class CaptureSemanticsTest {
     }
 
     @Test
-    @DisplayName("capture never changes the goal outcome, whatever it is")
-    fun captureIsIrrelevantToGoalScoring() {
-        Capture.entries.forEach { capture ->
+    @DisplayName("capture does not change the goal outcome -- with PENDING as the one exception")
+    fun captureIsIrrelevantToGoalScoringExceptWhenPending() {
+        // How an answer was recorded says nothing about whether the target was met. IN_WINDOW,
+        // BACKFILLED and LATE all score identically; only response rate and the run care.
+        (Capture.entries - Capture.PENDING).forEach { capture ->
             assertEquals(
                 GoalOutcome.MET,
                 GoalScorer.score(vitamins, answer("vitamins", bool = true, capture = capture)).outcome,
                 "capture $capture must not alter whether the target was met",
             )
         }
+
+        // PENDING is the deliberate exception (A2.1): a deferral that was never followed up is a
+        // MISS, not a met goal, whatever stale value the row carries. An earlier version of this
+        // test asserted capture was irrelevant across the board, which was too strong.
+        assertEquals(
+            GoalOutcome.MISSED,
+            GoalScorer.score(vitamins, answer("vitamins", bool = true, capture = Capture.PENDING)).outcome,
+        )
     }
 
     @Test

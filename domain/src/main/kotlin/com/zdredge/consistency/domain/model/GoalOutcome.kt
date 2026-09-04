@@ -47,14 +47,43 @@ data class GoalResult(
     val outcome: GoalOutcome,
     /** 0.0-1.0, capped at 1.0 (scoring-cases 2.4). Null where attainment has no meaning. */
     val attainment: Double? = null,
+    /** Why it was excluded. Present exactly when [outcome] is [GoalOutcome.EXCLUDED]. */
+    val exclusionReason: ExclusionReason? = null,
 ) {
     init {
         require(attainment == null || attainment in 0.0..1.0) {
             "attainment must be a 0.0-1.0 fraction or null, was $attainment"
         }
+        require((outcome == GoalOutcome.EXCLUDED) == (exclusionReason != null)) {
+            "an exclusion must carry a reason, and only an exclusion may: $outcome / $exclusionReason"
+        }
     }
 
     companion object {
-        val EXCLUDED = GoalResult(GoalOutcome.EXCLUDED)
+        fun excluded(reason: ExclusionReason) =
+            GoalResult(GoalOutcome.EXCLUDED, exclusionReason = reason)
     }
+}
+
+/**
+ * Why a goal was excluded from scoring. [GoalOutcome.EXCLUDED] alone is not enough, because the
+ * reasons are not interchangeable to the user: **silence also costs the check-in and the run, while
+ * a no-opportunity answer costs nothing at all.**
+ *
+ * Spec constraint 17 additionally requires that no-opportunity *usage* stays visible on the item
+ * detail view, so that leaning on it is legible rather than hidden. That is impossible if every
+ * exclusion looks alike, which is why this enum exists rather than a bare flag.
+ */
+enum class ExclusionReason {
+    /** No answer at all -- silence (scoring-cases 1.13). Separately costs the check-in. */
+    NO_ANSWER,
+
+    /** The user chose the designated no-opportunity option (10.3). Costs nothing. */
+    NO_OPPORTUNITY,
+
+    /** The item was not active in the period being scored (6.1, 6.2). */
+    NOT_ACTIVE,
+
+    /** An answer exists but carries no value this direction can compare. */
+    NOT_SCORABLE,
 }

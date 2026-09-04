@@ -1,6 +1,9 @@
 package com.zdredge.consistency.domain.scoring
 
 import com.zdredge.consistency.domain.model.Answer
+import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.ExclusionReason
+import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.GoalOutcome
 import com.zdredge.consistency.domain.model.GoalResult
@@ -16,13 +19,36 @@ import com.zdredge.consistency.domain.model.Target
  */
 object GoalScorer {
 
-    fun score(target: Target, answer: Answer?): GoalResult {
-        val outcome = DirectionEvaluator.evaluate(target, answer)
-        return GoalResult(
-            outcome = outcome,
-            // An excluded goal was not scored, so there is nothing to be close to.
-            attainment = if (outcome == GoalOutcome.EXCLUDED) null else attainment(target, answer),
-        )
+    /**
+     * The order of these checks is part of the rulebook, not an implementation detail.
+     *
+     * 1. **Silence** -- no answer at all -- is excluded (1.13, constraint 11).
+     * 2. **An unresolved deferral** is MISSED (A2.1). This is the rulebook's only absent-value miss,
+     *    and it sits above the no-opportunity check because a "not yet" carries no selection to test.
+     * 3. **A no-opportunity answer** is excluded **before direction is considered** (10.7), so the
+     *    comparator never sees it and the target it happens to hold is irrelevant.
+     * 4. Only then does the direction apply.
+     */
+    fun score(
+        target: Target,
+        answer: Answer?,
+        noOpportunityOptions: Set<OptionId> = emptySet(),
+    ): GoalResult {
+        if (answer == null) return GoalResult.excluded(ExclusionReason.NO_ANSWER)
+
+        // A deferral that was never followed up. Whatever value the row happens to carry is stale:
+        // the user actively chose not to answer yet, and then did not come back.
+        if (answer.capture == Capture.PENDING) return GoalResult(GoalOutcome.MISSED)
+
+        if (answer.selections.any { it in noOpportunityOptions }) {
+            return GoalResult.excluded(ExclusionReason.NO_OPPORTUNITY)
+        }
+
+        return when (val outcome = DirectionEvaluator.evaluate(target, answer)) {
+            // The direction could not compare anything -- an answer with no usable value.
+            GoalOutcome.EXCLUDED -> GoalResult.excluded(ExclusionReason.NOT_SCORABLE)
+            else -> GoalResult(outcome = outcome, attainment = attainment(target, answer))
+        }
     }
 
     /**
@@ -64,6 +90,12 @@ data class ItemSummary(
     val hitRate: Double?,
     /** Mean of the attainments that exist. Null when none do. */
     val averageAttainment: Double?,
+    /**
+     * How many exclusions were the user actively saying the period did not allow it. Constraint 17
+     * requires this stays visible, so that leaning on the neutral option is legible rather than
+     * hidden -- the same principle as a LATE answer keeping the data without repairing the metric.
+     */
+    val noOpportunityCount: Int,
 ) {
     companion object {
         fun of(results: List<GoalResult>): ItemSummary {
@@ -80,6 +112,9 @@ data class ItemSummary(
                 excluded = excluded,
                 hitRate = if (scored == 0) null else met.toDouble() / scored,
                 averageAttainment = if (attainments.isEmpty()) null else attainments.average(),
+                noOpportunityCount = results.count {
+                    it.exclusionReason == ExclusionReason.NO_OPPORTUNITY
+                },
             )
         }
     }
