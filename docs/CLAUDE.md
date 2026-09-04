@@ -11,11 +11,11 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 2. `docs/architecture.md` — how it is built. §5 has the data model with a worked example.
 3. `docs/scoring-cases.md` — the scoring rulebook as concrete expected values. Treat as the test
    suite specification for `:domain`.
-4. `docs/build-order.md` — the proposed phased build plan. **Still awaiting approval**, so treat it
-   as a draft; which milestone is in progress governs what you may build.
+4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
+   what you may build.
 
-That plan is **still awaiting approval** — get it agreed before starting, and do not begin a later
-milestone than the one in progress. Two ordering facts behind it: `:domain` can be proven correct
+**M0 and M1 are complete; M2 (the scoring engine) is next.** Do not begin a later milestone than the
+one in progress. Two ordering facts behind it: `:domain` can be proven correct
 without a device, and the dashboard cannot be evaluated without substantial seeded history, so scoring
 belongs early and the dashboard late. The dashboard is also gated on the seed-data fixture (spec O7;
 designed as build-order M9) and the goal-completion formula (spec O1).
@@ -81,8 +81,17 @@ module. This is what makes the whole rulebook testable without an emulator, whic
 ## Conventions
 
 - Kotlin, coroutines and Flow. Suspend functions for anything touching storage or Health Connect.
-- Manual constructor injection. No DI framework unless the wiring becomes genuinely painful, and then
-  ask first.
+- Package root `com.zdredge.consistency`. Toolchain and versions live in `gradle/libs.versions.toml`;
+  the current set is recorded in architecture §4. **AGP 9 compiles Kotlin natively** — do not add
+  `org.jetbrains.kotlin.android` — and Gradle's configuration cache is on, so a custom task that
+  resolves configurations at execution time will break the build.
+- **`:domain` is a plain Kotlin JVM module, not an Android library.** That is what makes the
+  Android-free rule real rather than aspirational. Do not convert it. `:data` uses
+  `api(project(":domain"))` so `:app` sees domain types through it.
+- Source dirs by module type: `src/main/kotlin` in `:domain`, `src/main/java` in the Android modules.
+- All date arithmetic goes through `DayResolver` (in `:domain`) and the injected `java.time.Clock`.
+- Manual constructor injection via `AppContainer` in `:app`. No DI framework unless the wiring
+  becomes genuinely painful, and then ask first.
 - One answer row per item per day, keyed `(item_id, day_date)`.
 - Enums for `answer_type`, `direction`, `capture`, `slot`, `state`. No magic strings.
 - All Health Connect calls behind a single interface in `:data`, with **one** implementation. The
@@ -94,7 +103,17 @@ module. This is what makes the whole rulebook testable without an emulator, whic
 
 - `:domain` gets fast JVM unit tests covering every case in `docs/scoring-cases.md`. This is not
   optional; scoring failures are silent and produce plausible wrong numbers rather than crashes.
-- Room migrations and non-trivial DAO queries get instrumented tests.
+  **JUnit 5 (Jupiter)**; `@ParameterizedTest` maps onto the scoring-cases tables, one test per table
+  rather than one per row.
+- **Test naming: conventional camelCase identifiers plus `@DisplayName`.** Put the doc-faithful text
+  in the display name and **lead it with the scoring-case ID** it covers, e.g.
+  `@DisplayName("8.5 - a 01:30 bedtime on the 26th is dated the 25th")`. Backticked Kotlin test names
+  are not used: a JVM method name cannot contain `.` or `:`, so they cannot write `04:00` or carry a
+  case ID at all. Naming this way makes coverage of `scoring-cases.md` checkable from the test report.
+- Run them with `.\gradlew.bat :domain:test` (add `--rerun-tasks` to defeat Gradle's up-to-date
+  check); the readable report is at `domain/build/reports/tests/test/index.html`.
+- Room migrations and non-trivial DAO queries get instrumented tests, on **JUnit 4** as Android
+  requires. JUnit 4 and 5 coexist in the project.
 - Alarm scheduling and the boot receiver are currently expected to be verified by hand on the device.
   If you see a better approach, propose it — this is open question T3 and the user is a QA analyst
   who is not satisfied with the current answer.
