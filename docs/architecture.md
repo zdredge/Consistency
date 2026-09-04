@@ -45,8 +45,9 @@ continuously running app will fail in ways that are hard to reproduce.
 
 ## 2. Platform findings
 
-Two facts materially shaped the choices below. Both are **unverified** in the sense above and both
-should be re-checked before implementation.
+Two facts materially shaped the choices below. **Both were tested on the target device in M0** —
+Pixel 9 Pro, Android 17, build `CP2A.260805.005`, 4 September 2026. Findings are recorded inline.
+**Both came back positive.**
 
 **Exact-time alarms are permission-gated.** `SCHEDULE_EXACT_ALARM` is no longer pre-granted to newly
 installed apps targeting Android 13+ and defaults to denied. There is an install-granted
@@ -60,6 +61,22 @@ restriction is a review matter, not a technical gate. This removes the runtime p
 the degraded fallback path entirely. If the app were ever published, that decision would have to be
 revisited and the fallback built.
 
+> **Verified (M0).** `USE_EXACT_ALARM` was declared and `canScheduleExactAlarms()` returned **true**
+> with **no runtime permission prompt ever shown**. A `setExactAndAllowWhileIdle` alarm two minutes
+> out fired with a **0 s slip**. The install-granted assumption holds, so **the degraded fallback
+> path does not need building.** This was the architecturally decisive half of the question.
+>
+> **Also verified — deep Doze.** The two-minute smoke test never entered Doze, so it was re-run
+> properly: a 15-minute alarm scheduled, the app swiped away, and the device forced into deep idle
+> with `dumpsys battery unplug` + `deviceidle force-idle`. `deviceidle get deep` reported **IDLE**
+> — so the device genuinely was in Doze, not merely screen-off — and the alarm fired with a
+> **0.6 s slip**, battery optimisation unexempted. Comfortably inside the ~1-minute bar a 21:00
+> prompt needs. **The core mechanic holds.**
+>
+> Residual, and not a blocker: this is one forced run. Natural multi-hour Doze also brings
+> maintenance windows, thermal throttling and adaptive-battery learning that a 15-minute forced
+> window cannot reproduce, so §8 keeps its "observe over several days" mitigation.
+
 **Health Connect can produce steps by itself.** On Android 14+ with SDK extension 20 or higher,
 Health Connect is part of the framework rather than a separate install, and once any app holds
 `READ_STEPS` it begins capturing steps from the device automatically. This resolves an open worry
@@ -68,14 +85,24 @@ the June 2026 update, on-device steps are attributed to a device-specific synthe
 rather than the generic `android` package, which matters if step records are ever filtered by source
 to avoid double-counting a phone and a watch.
 
+> **Verified (M0), and the prediction was exactly right.** `HealthConnectClient.getSdkStatus`
+> returned `SDK_AVAILABLE` with **no separate install** — framework-provided, as expected on
+> Android 17. After walking, step records appeared attributed to
+> **`com.android.healthconnect.phone.jf9fc11088d6938c28480cb1ae667b25e`** — the device-specific
+> synthetic package the June-2026 note describes, not the generic `android` package and not a source
+> app. Device reported as Pixel 9 Pro. **On-device step counting works with no sync chain.**
+>
+> **Worth carrying into §8:** Samsung Health *and* Google Health are both installed on the device.
+> Neither produced step records during the test — exactly one origin appeared — but their presence
+> means the multi-source double-counting risk is nearer than "a mislaid watch" implies.
+
 A second Health Connect constraint, unrelated to sync: a newly connected app can read only 30 days
 of past history. Harmless here, but permanent — there is no route to importing older data later.
 
-**Verify this first.** Whether on-device step counting actually works on the target device is the
-single most decision-relevant unknown in this document. It is checkable in an afternoon: grant step
-read permission, walk around, and confirm records appear attributed to the device rather than to a
-source app. If it works, the sync concerns that prompted the platform review do not apply. If it
-does not, the raw sensor escape hatch in §4 becomes live.
+**Resolved: the sync worry does not apply.** Whether on-device step counting works was the single
+most decision-relevant unknown in this document, and it works. The sync concerns that prompted the
+platform review are therefore moot, and **the raw sensor escape hatch in §4 stays unbuilt** — the
+step source interface in §5 keeps exactly one implementation, as designed.
 
 ---
 
@@ -539,9 +566,9 @@ of mind.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Battery optimisation delays alarms even with the exact-alarm permission held | High — undermines the core mechanic | Request a battery-optimisation exemption during setup; verify on the actual device over several days before trusting it |
+| Battery optimisation delays alarms even with the exact-alarm permission held | **Downgraded High → Medium by M0.** | M0 measured it rather than assuming: in confirmed deep Doze (`deviceidle get deep` = IDLE) with battery optimisation unexempted, an exact alarm fired with a **0.6 s slip**. What one forced 15-minute run cannot show is maintenance windows, thermal throttling and adaptive-battery learning over time — so still watch real firings across the first several days of M6, and request a battery-optimisation exemption during setup as cheap insurance. |
 | Rollover job silently fails; all figures quietly wrong | High — invisible | Log every run, record last-successful-rollover, surface staleness in the app rather than only in logs |
-| Step double-counting once a second source appears | Medium, and **dormant rather than hypothetical** | There is exactly one step source today. A Galaxy Watch exists but is currently mislaid; if it turns up and is paired, a second origin could appear with no warning from Health Connect, and step counts would quietly inflate. Because the dashboard only shows a 14-day window, this would read as improvement rather than as a bug. Mitigation is the day-one origin grouping guard in §5, not a filtering system. Note also the synthetic-package-name change from June 2026 when identifying origins. |
+| Step double-counting once a second source appears | Medium, and **dormant rather than hypothetical** | M0 confirmed exactly one step origin today (`com.android.healthconnect.phone.jf9fc...`, the on-device synthetic package). But **Samsung Health and Google Health are both already installed** on the device and simply are not writing steps — so a second origin needs no new hardware, just one of them starting to sync. A mislaid Galaxy Watch would add a third. Any of these could appear with no warning from Health Connect, and step counts would quietly inflate. Because the dashboard only shows a 14-day window, this would read as improvement rather than as a bug. Mitigation is the day-one origin grouping guard in §5, not a filtering system. Note also the synthetic-package-name change from June 2026 when identifying origins. |
 | Health Connect alpha APIs shift under the build | Medium | Pin versions; isolate all Health Connect calls behind one interface in `:data` |
 | Keystore loss | Medium | Off-machine backup before the first release-signed build |
 | Kotlin and Compose learning curve stalls momentum | Medium | Build the check-in flow and Room layer first; leave charts until the data exists |
@@ -553,7 +580,7 @@ of mind.
 
 | # | Question |
 |---|---|
-| T1 | Exact-alarm and Health Connect behaviour must be verified against current documentation before implementation. Both are marked **unverified** above. |
+| ~~T1~~ | **Closed by M0.** Health Connect: framework-provided, on-device counting confirmed, origin package observed. Exact alarms: `USE_EXACT_ALARM` install-granted with no prompt, and a 0.6 s slip in confirmed deep Doze — no fallback path needed. Ongoing multi-day observation of real firings lives in §8 as a risk mitigation, not an open question. See §2. |
 | T2 | Typed columns versus a value blob in `answers` — **Assumed** typed columns; challenge if the mapping code gets ugly. |
 | T3 | How to test alarm scheduling and the boot receiver without relying on manual device verification. |
 | T4 | Whether the rollover job should also pre-compute and cache dashboard figures, or whether scoring on read is fast enough at a few thousand rows. Probably fast enough; worth measuring rather than assuming. |

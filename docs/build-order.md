@@ -34,9 +34,9 @@ Four facts fix most of the order; everything else is arrangement around them.
    seed-data fixture (spec **O7**, now build-order M9). So the dashboard is built **last**.
 3. **The four hard requirements are platform integrations, not logic** (architecture §1):
    exact-time notifications, step reads, the ~04:00 rollover, and reschedule-after-reboot. Two of
-   them rest on **unverified** platform behaviour the architecture says to *verify first*
-   (architecture §2, open question T1). Those verifications are afternoon spikes and gate only the
-   phases that depend on them, so they run up front and in parallel with domain work.
+   them rested on **unverified** platform behaviour the architecture said to *verify first*
+   (architecture §2, T1). **M0 has now run those spikes and both passed:** Health Connect counts
+   steps on-device, and exact alarms fire in confirmed deep Doze with sub-second slip. T1 is closed.
 4. **The app is barely running most of the time** (architecture §1.1). Anything that must survive
    the process dying lives in the database, not in memory. That shapes *what* each phase persists,
    not the order, but it is the reason the check-in loop and the rollover job are separate phases.
@@ -73,7 +73,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M4 | Check-in loop (capture, backfill, pending) | TDD ViewModels; UI manual | M2, M3 | — |
 | M5 | Rollover job (day close, expected check-ins, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
-| M7 | Health Connect steps | TDD the mapping; hand-verify the read | M0, M3 | M4–M6 |
+| M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
 | M8 | Item detail views and charts | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
 | M9 | Seed-data fixture (spec O7) | N/A — it *is* test scaffolding | M3 | M4–M8 |
 | M10 | Dashboard | ViewModel TDD against seeded data | M9 | — |
@@ -81,29 +81,39 @@ on the device, isolate it so there is nothing left in it to get wrong.
 
 ---
 
-## M0 — Platform verification spikes
+## M0 — Platform verification spikes — **RUN 2026-09-04**
 
 **Decided-by-docs.** Architecture §2 says, in bold, *verify this first*. Two assumptions the whole
-platform integration rests on are marked **unverified**, and both are checkable in an afternoon.
-Doing them now means a bad surprise lands before, not after, the integration phases are built on top.
+platform integration rests on were marked **unverified**, and both were checkable in an afternoon.
+Doing them first meant a bad surprise would land before, not after, the integration phases.
 
-**Deliverables** — throwaway spike code, deleted after; findings recorded in `architecture.md` §2 by
-replacing the **unverified** tags with what was observed.
+**Device:** Pixel 9 Pro · Android 17 · build `CP2A.260805.005`.
 
-1. **On-device Health Connect step counting** (architecture §2, the single most decision-relevant
-   unknown). Grant `READ_STEPS`, walk, confirm records appear attributed to the *device* and not to
-   a source app. If it works, M7 is straightforward and the raw-sensor escape hatch stays unbuilt.
-   If it does not, that changes M7's scope before any of it is written.
-2. **Exact alarms.** Confirm `USE_EXACT_ALARM` can be declared and that
-   `setExactAndAllowWhileIdle` fires on time on the actual Pixel with battery optimisation in its
-   real state. This is the mechanic the product is built around; if it is unreliable, that is a
-   product-level conversation, not a coding one.
+1. **On-device Health Connect step counting — CONFIRMED.** `SDK_AVAILABLE`, framework-provided with
+   no separate install. After walking, steps appeared under
+   `com.android.healthconnect.phone.jf9fc…` — the device-specific synthetic package architecture §2
+   predicted, not a source app. **M7 is straightforward and the raw-sensor escape hatch stays
+   unbuilt.** Noted for §8: Samsung Health and Google Health are both installed but wrote nothing, so
+   a second origin needs no new hardware — the day-one origin-grouping guard is well justified.
+2. **Exact alarms — CONFIRMED, including under Doze.** `USE_EXACT_ALARM` was declared,
+   `canScheduleExactAlarms()` returned true, and **no runtime prompt ever appeared**, so the degraded
+   fallback path does not need building. A 2-minute alarm fired with 0 s slip. Because 2 minutes never
+   enters Doze, it was re-run properly: a 15-minute alarm, app swiped away, device forced into deep
+   idle, `deviceidle get deep` confirming **IDLE** — and it fired with a **0.6 s slip** with battery
+   optimisation unexempted. Well inside the ~1-minute bar a 21:00 prompt needs. **The core mechanic
+   holds.**
 
-**Exit criteria.** Both questions answered yes/no against the real device, and architecture §2
-updated. No production code produced or expected.
+**Residual (not a blocker, now a normal M6 observation).** One forced 15-minute run cannot show
+maintenance windows, thermal throttling or adaptive-battery learning. Watch real firings over the
+first several days of M6. This lives in architecture §8 as a risk mitigation, no longer an open
+question.
 
-**Note.** This milestone has no dependency on the domain work, so M1/M2 begin immediately alongside
-it. It gates M6 and M7 only.
+**Exit criteria — met.** Both questions answered yes against the real device. `architecture.md` §2
+updated with findings, §8 risk rows revised (battery-optimisation risk downgraded High → Medium),
+T1 closed. No production code produced.
+
+**Note.** This milestone had no dependency on the domain work. It gated M6 and M7; **both are now
+clear.**
 
 ---
 
@@ -479,7 +489,7 @@ These are the points where the build stops and asks, per `CLAUDE.md`'s "Ask firs
 | Gate | Blocks | What must happen |
 |---|---|---|
 | ~~O1~~ — goal-completion ring formula | — | **Resolved:** two rings, daily + weekly, each instance-based within its granularity (spec §5.1, §3.4). No longer a gate. |
-| **T1 / M0** — platform verification | M6, M7 | Verify exact alarms and on-device step counting on the real Pixel *before* building on them. |
+| ~~T1 / M0~~ — platform verification | ~~M6, M7~~ — **cleared** | **M7:** on-device Health Connect step counting confirmed on the Pixel 9 Pro (Android 17); one origin, synthetic on-device package; the raw-sensor escape hatch stays unbuilt. **M6:** `USE_EXACT_ALARM` install-granted with no prompt, and 0.6 s slip in confirmed deep Doze — no fallback path needed. Multi-day observation of real firings continues in M6 as an architecture §8 mitigation. |
 | **Schema changes** | M3 and anything later | Any change to `answers`, `checkins` or `targets` is a stop-and-ask, never a quiet edit. |
 | **New dependency** | any milestone | Adding one is ask-first. The stack in architecture §4 is the agreed set. |
 | **O4 / O5** — measured-day finality, carousel timing | M5, M10 | Lower-stakes assumptions (provisional-24h, 8s auto-advance); confirm when reached, both reversible. |
@@ -492,8 +502,8 @@ These are the points where the build stops and asks, per `CLAUDE.md`'s "Ask firs
   no persisted derived value.** These are the permanently-out-of-scope items and the constraints
   most likely to be broken by well-meaning code (spec §2 appendix; `CLAUDE.md`).
 - **No work pulled forward across a gate.** O1 (the goal-completion ring formula) is now resolved —
-  a daily + weekly split — so the rings are no longer gated; the remaining gate is M0's platform
-  verification, which still blocks M6 and M7.
+  a daily + weekly split — so the rings are no longer gated. M0 has cleared the platform gate for both M6 and M7.
+  **No gate now blocks starting the build.**
 
 ---
 

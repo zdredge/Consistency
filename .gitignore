@@ -1,0 +1,23 @@
+# --- Android / Gradle / Android Studio ---
+.gradle/
+build/
+/local.properties
+*.iml
+.idea/
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing keys — never commit
+*.jks
+*.keystore
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.log
+
+# M0 throwaway platform-verification spike — never committed (see docs/build-order.md M0).
+# The spike is disposable; keeping it out of history keeps the repo clean.
+/spike/

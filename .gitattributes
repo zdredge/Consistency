@@ -1,0 +1,16 @@
+# Normalise line endings: the repo stores LF, checkouts get LF even on Windows.
+* text=auto eol=lf
+
+# Windows batch files must stay CRLF.
+*.bat text eol=crlf
+# The Gradle wrapper script must stay LF even on Windows, or it won't run.
+gradlew text eol=lf
+
+# Treat as binary — no EOL munging, no diffing.
+*.jar binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.keystore binary
+*.jks binary
