@@ -308,7 +308,12 @@ yes · no · no opportunity) · mindset (1–5)
 
 **Goal granularity in the night set:**
 
-- meals, vitamins and water are **daily** goals.
+- meals, vitamins and water are **daily** goals. **Meals is "at least 3", not "exactly 3."** An extra
+  meal is not a failure and must not score as one — the user has no history of overeating, so an
+  upper bound would manufacture false misses and punish a non-problem. This may deserve revisiting if
+  the app ever has users for whom overeating *is* the thing being tracked; for this user it is not.
+  The wider rule it follows: **a direction must describe what would actually count as failing**, or
+  the score stops meaning anything (see also the pre-sleep absence rule in §3.4).
 - **worked out, stretched and coffee are recorded daily but their targets are weekly**, assessed
   against the weekly roll-up — count-of-yes for the two yes/no items, sum for coffee: e.g. worked
   out ≥ 3/week, stretched ≥ 4/week, coffee ≤ 14/week (all illustrative and editable). This is the
@@ -364,6 +369,10 @@ Added after modelling a full day's check-ins with the user.
 - **Mindset** confirmed an **observation with no target.** A mindset goal would score the user on how
   they felt and drag goal completion down on low days — the shame path §1 avoids. Average mindset is
   surfaced as a derived signal instead.
+- **Meals set to "at least 3" rather than "exactly 3"**, decided during M2 when the scoring engine
+  exposed the consequence: under an exact target a fourth meal scores as a miss, and the attainment
+  figure beside it would cap at 100%, so the dashboard would read "missed, 100%". The direction was
+  wrong, not the arithmetic. No seed goal now uses `exactly`; the direction remains available.
 
 ---
 

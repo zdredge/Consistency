@@ -33,10 +33,12 @@ object GoalScorer {
      * 67% of anything (scoring-cases 2.5) -- and reporting zero would read as total failure, which is
      * exactly the misreading attainment exists to prevent. Absence is the honest representation.
      *
-     * EXACTLY is also null, and that is a judgement call rather than a documented rule: undershooting
-     * 3 meals with 2 arguably *is* 67% of the way, but overshooting with 4 would report as capped
-     * 100% attainment on a missed goal, which is worse than saying nothing. Revisit if a real
-     * EXACTLY goal ever wants it.
+     * EXACTLY is also null. The question came up over meals and was answered by fixing the target
+     * rather than the arithmetic: an extra meal is not a failure, so meals is "at least 3", not
+     * "exactly 3" (spec section 4). **No seed goal currently uses EXACTLY**, so this branch is moot
+     * in practice. Were one ever added, measuring distance from target -- 1 - |actual - target| /
+     * target, giving 2 and 4 the same 67% -- would beat a capped ratio, which would otherwise report
+     * a missed overshoot as 100%.
      */
     private fun attainment(target: Target, answer: Answer?): Double? {
         if (target.direction != Direction.AT_LEAST) return null
