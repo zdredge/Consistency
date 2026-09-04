@@ -2,12 +2,14 @@ package com.zdredge.consistency.domain.scoring
 
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ExclusionReason
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.GoalOutcome
 import com.zdredge.consistency.domain.model.GoalResult
 import com.zdredge.consistency.domain.model.Target
+import java.time.LocalDate
 
 /**
  * Scores one answer against one target, producing the binary outcome and, separately, attainment.
@@ -49,6 +51,44 @@ object GoalScorer {
             GoalOutcome.EXCLUDED -> GoalResult.excluded(ExclusionReason.NOT_SCORABLE)
             else -> GoalResult(outcome = outcome, attainment = attainment(target, answer))
         }
+    }
+
+    /**
+     * Scores an item that has a lifecycle, excluding it outright when it was not active on [on].
+     *
+     * Spec 3.4: scoring covers only items active in the period being scored. An item that did not
+     * exist yet cannot have been skipped, so this is an exclusion carrying NOT_ACTIVE -- never a
+     * miss, and distinguishable from the user having stayed silent.
+     */
+    fun score(
+        item: Item,
+        target: Target,
+        answer: Answer?,
+        on: LocalDate,
+        noOpportunityOptions: Set<OptionId> = emptySet(),
+    ): GoalResult =
+        if (!ItemLifecycle.isActiveOn(item, on)) {
+            GoalResult.excluded(ExclusionReason.NOT_ACTIVE)
+        } else {
+            score(target, answer, noOpportunityOptions)
+        }
+
+    /**
+     * Scores an already-aggregated number, such as a weekly roll-up, against a target.
+     *
+     * Attainment is deliberately not produced here: a roll-up's shortfall is reported through the
+     * roll-up's own figure and its incomplete flag, and inventing an attainment for a week whose
+     * denominator may be missing days would be exactly the plausible-wrong-number this module avoids.
+     */
+    fun scoreValue(target: Target, value: Double): GoalResult {
+        val required = target.valueNumber ?: return GoalResult.excluded(ExclusionReason.NOT_SCORABLE)
+        val met = when (target.direction) {
+            Direction.AT_LEAST -> value >= required
+            Direction.AT_MOST -> value <= required
+            Direction.EXACTLY -> value == required
+            else -> return GoalResult.excluded(ExclusionReason.NOT_SCORABLE)
+        }
+        return GoalResult(if (met) GoalOutcome.MET else GoalOutcome.MISSED)
     }
 
     /**

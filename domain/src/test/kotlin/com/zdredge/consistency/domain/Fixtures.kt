@@ -6,7 +6,9 @@ import com.zdredge.consistency.domain.model.CheckIn
 import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.Direction
+import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersionId
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Period
@@ -103,3 +105,16 @@ internal fun java.time.LocalDateTime.toInstant(): Instant = atZone(TEST_ZONE).to
 val TEST_ZONE: ZoneId = ZoneId.of("America/New_York")
 
 val TEST_CLOCK_ZONE: ZoneId get() = TEST_ZONE
+
+fun item(
+    name: String,
+    createdOn: LocalDate = LocalDate.of(2020, 1, 1),
+    retiredOn: LocalDate? = null,
+    kind: ItemKind = ItemKind.ASKED,
+): Item = Item(id = ItemId(name), kind = kind, createdOn = createdOn, retiredOn = retiredOn)
+
+/** The Monday-start week containing [day], as seven dates. */
+fun weekOf(day: LocalDate, resolver: com.zdredge.consistency.domain.time.DayResolver): List<LocalDate> {
+    val start = resolver.weekStart(day)
+    return (0..6).map { start.plusDays(it.toLong()) }
+}
