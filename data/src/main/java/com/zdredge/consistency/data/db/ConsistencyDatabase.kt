@@ -3,6 +3,11 @@ package com.zdredge.consistency.data.db
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import com.zdredge.consistency.data.db.dao.AnswerDao
+import com.zdredge.consistency.data.db.dao.CheckInDao
+import com.zdredge.consistency.data.db.dao.ItemDao
+import com.zdredge.consistency.data.db.dao.MeasuredDao
+import com.zdredge.consistency.data.db.dao.TargetDao
 import com.zdredge.consistency.data.db.entity.AnswerEntity
 import com.zdredge.consistency.data.db.entity.AnswerSelectionEntity
 import com.zdredge.consistency.data.db.entity.CheckInEntity
@@ -40,4 +45,14 @@ import com.zdredge.consistency.data.db.entity.TargetEntity
     version = 1,
 )
 @TypeConverters(Converters::class)
-abstract class ConsistencyDatabase : RoomDatabase()
+abstract class ConsistencyDatabase : RoomDatabase() {
+    abstract fun itemDao(): ItemDao
+
+    abstract fun targetDao(): TargetDao
+
+    abstract fun checkInDao(): CheckInDao
+
+    abstract fun answerDao(): AnswerDao
+
+    abstract fun measuredDao(): MeasuredDao
+}
