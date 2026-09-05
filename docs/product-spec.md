@@ -320,12 +320,20 @@ yes · no · no opportunity) · mindset (1–5)
   the app ever has users for whom overeating *is* the thing being tracked; for this user it is not.
   The wider rule it follows: **a direction must describe what would actually count as failing**, or
   the score stops meaning anything (see also the pre-sleep absence rule in §3.4).
-- **worked out, stretched and coffee are recorded daily but their targets are weekly**, assessed
-  against the weekly roll-up — count-of-yes for the two yes/no items, sum for coffee: e.g. worked
-  out ≥ 3/week, stretched ≥ 4/week, coffee ≤ 14/week (all illustrative and editable). This is the
-  "one off day should not fail me" case, handled by choosing the right *period* rather than by
-  softening the target: each weekly target is still a clean binary hit or miss (§3.4,
-  dual-granularity). A daily target may also be added if wanted; the two score independently.
+- **worked out and stretched are recorded daily and targeted weekly**, assessed against the weekly
+  roll-up (count-of-yes): e.g. worked out ≥ 3/week, stretched ≥ 4/week (illustrative and editable).
+  This is the "one off day should not fail me" case, handled by choosing the right *period* rather
+  than by softening the target: each weekly target is still a clean binary hit or miss (§3.4,
+  dual-granularity).
+- **Coffee is targeted daily *and* weekly** — e.g. ≤ 2/day and ≤ 14/week (sum), scored independently
+  and reported separately. It was grouped with the two above during the walkthrough and that was
+  wrong, which M3 caught while seeding the library. **Weekly granularity forgives clustering, and
+  whether that is correct depends entirely on the direction.** For a lower bound it is the whole
+  point: three workouts in three days is a good week. For an upper bound it hides the event worth
+  seeing — five coffees in one day and one on each of the others sums to ten and passes a weekly cap
+  of fourteen cleanly. So an upper bound needs the daily target too. The general rule, a sibling of
+  the meals rule above: **moving a target to weekly forgives clustering, which is right for a lower
+  bound and wrong for an upper bound.**
 - **mindset is an observation, not a goal** — recorded and charted, never scored. Scoring a mood
   reintroduces exactly the shame this product is designed against; the derived *average mindset* is
   the signal, watched rather than targeted.
@@ -379,6 +387,13 @@ Added after modelling a full day's check-ins with the user.
   exposed the consequence: under an exact target a fourth meal scores as a miss, and the attainment
   figure beside it would cap at 100%, so the dashboard would read "missed, 100%". The direction was
   wrong, not the arithmetic. No seed goal now uses `exactly`; the direction remains available.
+- **Coffee given a daily cap alongside its weekly one**, decided during M3 while seeding the library.
+  The walkthrough moved worked out, stretched and coffee to weekly targets as one group, but the
+  three are not the same shape: the first two are lower bounds, where weekly granularity correctly
+  forgives clustering, and coffee is an upper bound, where the same forgiveness hides the day worth
+  seeing. Five coffees in one day passes a weekly cap of fourteen with room to spare. The rule this
+  produced is in §4 above and is the third of its family, after the pre-sleep absence rule and meals:
+  **a direction, and now a period, must describe what would genuinely count as failing.**
 
 ---
 

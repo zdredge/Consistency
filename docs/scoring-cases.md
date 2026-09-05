@@ -108,12 +108,19 @@ Spec §3.4: a daily and a weekly target on one item are scored independently and
 |---|---|---|
 | 7.1 | steps, 10,000 daily and 70,000 weekly. Seven days of 8,000 (total 56,000) | daily missed ×7; weekly missed |
 | 7.2 | same targets. Three days of 25,000 and four of 0 (total 75,000) | daily met ×3, missed ×4; **weekly met.** Both reported separately. |
-| 7.3 | coffee recorded daily, **no daily target**, weekly AT_MOST 14 (sum). A week summing to 13 | weekly **met**; there are no daily misses because there is no daily target. |
-| 7.4 | same, a week summing to 16 | weekly **missed**. One 5-coffee day inside an otherwise low week does not by itself fail anything; the week's sum does. This is the "soft via granularity, not partial credit" behaviour for worked out / stretched / coffee. |
+| 7.3 | an item recorded daily with **no daily target** and a weekly AT_MOST 14 (sum). A week summing to 13 | weekly **met**; there are no daily misses because there is no daily target. |
+| 7.4 | same, a week summing to 16 | weekly **missed**. With no daily target, one large day inside an otherwise low week does not by itself fail anything; the week's sum does. This is the "soft via granularity, not partial credit" behaviour that worked out and stretched use. |
 
 7.2 is the case that justifies the rule. A single blended figure would hide which kind of week it was.
-7.3–7.4 record that moving worked out / stretched / coffee to weekly-only targets is still binary
-scoring — the week is a clean hit or miss — not a softened daily target.
+7.3–7.4 record that a weekly-only target is still binary scoring — the week is a clean hit or miss —
+not a softened daily one. That is the configuration **worked out and stretched** use.
+
+**Note what 7.4 also demonstrates, which M3 acted on.** With no daily target, a single large day is
+invisible to the score. For a lower bound that is correct and intended. For an *upper* bound it hides
+exactly the day worth seeing, which is why the seed library gives coffee a daily cap **as well as**
+its weekly one (spec §4) and scores the two independently, as 7.1–7.2 do for steps. These two cases
+are unchanged and still describe the weekly-only configuration; they simply no longer describe the
+seeded coffee item.
 
 ## 8. Derived metrics
 

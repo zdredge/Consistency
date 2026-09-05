@@ -33,11 +33,31 @@ room {
     schemaDirectory("$projectDir/schemas")
 }
 
+// The task that copies the exported schema into the androidTest assets does not re-run when the
+// schema changes on an incremental build, so the packaged copy goes stale. That matters more than it
+// sounds: MigrationTestHelper builds the OLD database from that asset, so a stale copy means a
+// migration test silently verifies a migration from a schema that no longer exists. Found by adding
+// a column and watching the APK keep the previous schema. Forcing the copy costs a file write.
+tasks.matching { it.name.startsWith("copyRoomSchemasToAndroidTestAssets") }.configureEach {
+    outputs.upToDateWhen { false }
+}
+
+// SchemaVersionPinTest reads the committed schema under data/schemas, which the Room compiler
+// writes during KSP. Left implicit, the test can run before that write and assert against the
+// previous build's file -- observed doing exactly that when unit and instrumented tests were invoked
+// together. A check that can read a stale artifact is not a check, so the ordering is declared.
+tasks.withType<Test>().configureEach {
+    dependsOn("kspDebugKotlin")
+}
+
 dependencies {
     api(project(":domain"))
 
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
+
+    // JUnit 4 on the JVM, for the schema-file checks that need no device (see SchemaVersionPinTest).
+    testImplementation(libs.junit)
 
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.test.runner)

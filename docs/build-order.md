@@ -1,6 +1,7 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0, M1 and M2 are complete**; M3 (persistence) is next.
+**Status:** agreed and in progress. **M0, M1, M2 and M3 are complete**; M4 (the check-in loop)
+is next.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -68,7 +69,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M0 | Platform verification spikes | Throwaway; findings written up | — | M1, M2 |
 | M1 | Project skeleton, modules, `Clock`/`DayResolver` | TDD (JVM) | — | M0 |
 | M2 | `:domain` scoring engine | **TDD (JVM), the core TDD phase** | M1 | M0 |
-| M3 | `:data` persistence layer | TDD (instrumented + Robolectric) | M1, M2 | — |
+| M3 | `:data` persistence layer + seed library | TDD (instrumented) | M1, M2 | — |
 | M4 | Check-in loop (capture, backfill, pending) | TDD ViewModels; UI manual | M2, M3 | — |
 | M5 | Rollover job (day close, expected check-ins, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
@@ -209,36 +210,70 @@ caught its own author once, when an over-broad assertion from an earlier phase w
 
 ---
 
-## M3 — Persistence (`:data`)
+## M3 — Persistence (`:data`) — **BUILT 2026-09-05**
 
-**Proposed.** Now that `:domain` defines the shapes it needs, build the store that feeds it. Schema
-is fixed by architecture §5; this milestone realises it and proves the queries.
+Now that `:domain` defines the shapes it needs, the store that feeds it. Schema was fixed by
+architecture §5; this milestone realised it and proved the queries.
 
-**Deliverables.**
-- Room entities, DAOs, migrations for the tables in architecture §5: `items`, `item_versions`,
-  `select_options`, `targets`, `container_sizes`, `checkins`, `answers`, `answer_selections`,
-  `measured_values`, `measured_origins`. `user_id` on every table from the first migration
-  (constraint 15), unused.
-- The repository that maps Room entities ↔ `:domain` types. **Derived values are never persisted**
-  (`CLAUDE.md`; architecture T4) — the repo hands raw rows to `:domain` and stores nothing computed.
-- **Typed nullable value columns**, not a JSON blob (architecture T2, marked Assumed — flag if the
-  mapping turns ugly).
+**Outcome: 61 instrumented tests on the Pixel 9 Pro and 2 JVM tests, all green.** Six phases, one
+commit each.
 
-**TDD.**
-- Reproduce the architecture §5 **worked example (Tuesday 25 Aug 2026)** as a fixture and assert it
-  round-trips: four sleep answers carrying `day_date` = the 25th while arriving via the 26th's
-  morning check-in. This is the concrete proof that `answers.day_date` is not redundant.
-- One test per migration.
-- DAO query tests written result-first: state the rows expected back, then write the query.
-- A test that a single day cannot hold two answer rows for one item — `(item_id, day_date)`
-  uniqueness (`CLAUDE.md` conventions).
+**Delivered.**
+- **Eleven tables**, the ten from architecture §5 plus `roll_up_specs`, with `user_id` on every one
+  from the first schema (constraint 15). Room 2.8.4, KSP 2.3.9, AGP 9.4.0, configuration cache on.
+- **Five DAOs**, written result-first, and a repository mapping rows ↔ `:domain` types with no
+  derived value stored anywhere.
+- **The spec §4 seed library**, sixteen items populated on first run — see the scope note below.
+- **Migration scaffolding** and a pinned schema identity hash.
 
-**Ask-first checkpoint.** `CLAUDE.md` requires asking before any schema change to `answers`,
-`checkins` or `targets`. This milestone *implements* the documented schema; it does not change it. If
-the worked example reveals a needed column, that is a stop-and-ask, not a quiet edit.
+**Three decisions worth carrying forward.**
+- **Instrumented, not Robolectric.** Migrations and non-trivial queries are exactly what a
+  re-implemented SQLite would lie about. Robolectric's API 37 support is beta-only and its SDK
+  sandbox wants JDK 21 against this project's Java 11. The one exception is the schema version pin,
+  a text check needing no SQLite, which runs as a fast JVM test.
+- **Enums persist by name, never ordinal; dates as ISO-8601 text.** Both in architecture §5.
+- **`:data` builds its own database**, so `:app` never touches Room and cannot reach past the
+  repository to a DAO.
 
-**Exit criteria.** Schema migrates cleanly; the worked example persists and reloads intact; DAO
-tests green; the repo feeds `:domain` with no derived values stored.
+**Two scope changes, both agreed before building.**
+- **`roll_up_specs` added.** `:domain` carried a `RollUpSpec` type and spec §3.4 requires roll-ups,
+  but architecture §5 listed no table for them. Outside the three guarded tables, so in scope; in v1
+  rather than a later migration for a requirement already written down.
+- **The seed library landed here, not in M4.** It was unassigned in this plan and M4 cannot render a
+  check-in without it. Note this is the item *library* only — no answers, no check-ins, no
+  manufactured past. Seeded **history** remains M9 and is a different job.
+
+**What M3 caught, in the same family as M2's three.**
+- **Coffee needed a daily cap as well as a weekly one.** The walkthrough moved worked out, stretched
+  and coffee to weekly targets as one group, but the three are not the same shape. The first two are
+  lower bounds, where weekly granularity correctly forgives clustering. Coffee is an upper bound,
+  where the same forgiveness hides the day worth seeing: five in one day and one on each of the
+  others sums to ten and passes a weekly cap of fourteen cleanly. **Moving a target to weekly
+  forgives clustering, which is right for a lower bound and wrong for an upper bound** (spec §4).
+  Found by the user while reviewing the roll-up modelling question, not by a test.
+- **A stale-schema packaging bug.** The task copying exported schemas into the androidTest assets did
+  not re-run on incremental builds, so `MigrationTestHelper` was reading a schema one revision behind
+  the code — which would have made the first real migration test verify a migration from a schema
+  that no longer existed. Forced in `data/build.gradle.kts`.
+- **A test that could not fail.** The first version of the schema-drift test was wrong: the export
+  regenerates every build, so code and file can never disagree. Verified by adding a column and
+  watching all sixty-one tests pass. The real risk is a schema changed *without a version bump*, so
+  the identity hash is now pinned in a JVM test reading the committed file — and that test was
+  verified to fail before being trusted.
+
+**On migration tests.** This plan asked for one test per migration. **At M3 there are none** — there
+is only schema v1, so a test claiming to verify a migration would be theatre. What Phase 6 delivered
+is the apparatus: the exported v1 JSON committed, a `MigrationTestHelper` test rebuilding the schema
+from it, and the version pin. The first real migration test arrives with the first schema change.
+
+**Ask-first checkpoint — honoured.** No change to `answers`, `checkins` or `targets`. `roll_up_specs`
+and the coffee target were both raised and agreed before any code was written.
+
+**Exit criteria — met.** The worked example persists and reloads intact, with four sleep answers
+carrying `day_date` = the 25th while arriving via the 26th's morning check-in; DAO tests green; the
+repository feeds `:domain` with nothing derived stored. The round-trip test was falsified before
+being trusted — dating a sleep answer by its check-in's day killed exactly the three tests that
+should die.
 
 ---
 
