@@ -1,7 +1,7 @@
 # Habit Accountability App — Architecture
 
 **Status:** approved and in build. §2 platform findings were verified on the device in M0;
-§§4–5 record what M1 and M2 actually built.
+§§4–5 record what M1, M2 and M3 actually built.
 **Intended repo path:** `docs/architecture.md`
 **Companion document:** `docs/product-spec.md`, which is the authority on behaviour. Where this
 document and the spec disagree, the spec wins and this document is wrong.
@@ -193,6 +193,23 @@ migrations are explicit.
 **Con:** migrations are hand-written and easy to get wrong; the annotation processor slows builds.
 **Alternative:** SQLDelight, where SQL is written first and Kotlin is generated. Also **DataStore**,
 which is the right tool for user preferences and the wrong shape for records — expect to use both.
+
+**As built (M3).** Room **2.8.4** with **KSP 2.3.9**, plus the `androidx.room` Gradle plugin to
+declare the schema export directory in a form the configuration cache tolerates. KSP's version scheme
+decoupled from the Kotlin compiler version at 2.3.0, so the number does not track Kotlin 2.2.10; AGP
+9 support landed in 2.3.1 and 2.3.3 moved off the deprecated `compilerOptions` KGP API. `:data`
+builds its own database (`createConsistencyDatabase`) so Room stays inside that module — otherwise
+`:app` needs Room on its compile classpath and the §5 module boundary becomes a suggestion.
+
+**No `fallbackToDestructiveMigration`.** It is the convenient default and it silently deletes the
+user's history when a migration is missing. For an app whose entire value is an undeniable record, a
+crash is the better failure.
+
+**Exported schemas are committed** under `data/schemas/`, and v1's identity hash is pinned by a test.
+Room refuses to open a database whose stored hash differs from the compiled one, so the dangerous
+change is a schema edited *without the version being bumped*: everything regenerates together, every
+test stays green, and the failure lands on a real phone holding real history. M3 verified that by
+adding a column and watching all sixty-one instrumented tests pass, which is why the pin exists.
 
 ### AlarmManager — check-in notifications and escalation repeats
 **Why:** the only API that fires at a precise wall-clock time when the app is not running.
@@ -405,6 +422,21 @@ IS_FALSE / MUST_INCLUDE / MUST_NOT_INCLUDE) · `value_number` · `option_id` · 
 
 **`container_sizes`** — `id` · `item_id` · `size_number` · `unit_label` · `effective_from`
 
+**`roll_up_specs`** — **added in M3.** `id` · `item_id` · `source_item_id` · `aggregation`
+(COUNT_OF_YES / SUM / AVERAGE / MAX)
+
+This table was missing from the original model and the gap was found while planning M3: `:domain`
+already carried a `RollUpSpec` type and spec §3.4 requires roll-ups ("an item may declare a weekly
+roll-up naming a source item and an aggregation"), but nothing here stored one. It sits outside the
+three ask-first guarded tables, so adding it was in scope; putting it in schema v1 avoided a certain
+migration for a requirement already written down.
+
+Only the **recipe** is stored, never the figure — a roll-up total is computed on read like every
+other derived value. At v1 `item_id` and `source_item_id` are the same row for all four seeded
+roll-ups, because no derived figure has an identity of its own yet: "workouts this week" is a *view*
+of `worked_out`, deliberately not an asked item (spec §4 change log). `source_item_id` stays distinct
+in the model for when a derived figure does need its own identity, which is an M8 question.
+
 **`checkins`** — a row for every check-in that was *expected*. This is the denominator for response
 rate; without this table the primary metric is unmeasurable. Generated at rollover.
 `id` · `day_date` · `slot` · `scheduled_at` · `state` (PENDING / ANSWERED / MISSED) ·
@@ -470,10 +502,28 @@ convention. It looks like denormalisation worth removing; removing it breaks the
 stretches-this-week, coffee-this-week and average mindset are all computed by `:domain` on read. This is the default answer to T4 below: at a
 few thousand rows, computing on read is cheap, and cached derived values are a class of bug.
 
+#### How types reach SQLite — decided in M3
+
+Two conversion rules are load-bearing, and both guard the failure this project keeps designing
+against: plausible wrong data rather than a crash.
+
+- **Enums persist by name, never by ordinal.** An ordinal means reordering `Direction` or `Capture`
+  silently re-labels every historical row — an `AT_LEAST` target quietly becoming `AT_MOST`, with
+  nothing to notice. A few bytes per row against an unrecoverable corruption.
+- **`LocalDate` and `LocalTime` persist as ISO-8601 text; `Instant` persists as epoch millis.**
+  ISO-8601 dates sort lexicographically in the same order they sort chronologically, so a
+  `day_date BETWEEN ? AND ?` range query is correct with no conversion inside the WHERE clause and
+  the index stays usable. A month boundary is where a sloppier format gives itself away, and
+  `AnswerDaoTest` asserts one. Instants are only compared and subtracted, so a number is honest.
+
+`items.created_at` and `select_options.retired_at` are stored as instants but resolved to days
+through `DayResolver` in the mapping layer — "was this active in this period" is a day-level question
+under the 04:00 boundary, and nothing may compute a day any other way.
+
 #### Challengeable assumptions in this model
 
 - **Typed nullable value columns** rather than a JSON blob or a value-as-text discriminator
-  (**T2**). A blob makes the schema tidy and every aggregation query miserable.
+  (**T2 — now settled, see §9**). A blob makes the schema tidy and every aggregation query miserable.
 - **One answer row per item per day**, keyed on `(item_id, day_date)`. This forecloses ever recording
   the same item twice in one day, which nothing in the spec currently asks for.
 - **No event log.** A correction mutates the row and sets `edited_at`. An append-only
@@ -487,7 +537,7 @@ because `@ParameterizedTest` maps directly onto the `docs/scoring-cases.md` tabl
 conventional camelCase identifiers plus `@DisplayName` carrying the doc-faithful text: a backticked
 Kotlin test name cannot contain `.` or `:`, so it can neither write `04:00` nor carry a scoring-case
 ID like `8.5`, while a display name can. Room migrations and DAO queries get instrumented tests,
-which stay on **JUnit 4** as Android requires; the two coexist. Alarm scheduling and the boot receiver are the hardest things to test
+which stay on **JUnit 4** as Android requires; the two coexist. **M3 confirmed instrumented over Robolectric** for `:data`: migrations and non-trivial queries are precisely what a re-implemented SQLite would lie about, and Robolectric's API 37 support is beta-only with an SDK sandbox wanting JDK 21 against this project's Java 11. The one exception is the schema version pin, a plain text check over the exported JSON that needs no SQLite and so runs as a fast JVM test. Alarm scheduling and the boot receiver are the hardest things to test
 automatically and will mostly be verified by hand on the device — **Assumed**, and if there is a
 better approach it is worth finding, since a silently broken scheduler is the worst failure this app
 has.
@@ -615,7 +665,7 @@ of mind.
 | # | Question |
 |---|---|
 | ~~T1~~ | **Closed by M0.** Health Connect: framework-provided, on-device counting confirmed, origin package observed. Exact alarms: `USE_EXACT_ALARM` install-granted with no prompt, and a 0.6 s slip in confirmed deep Doze — no fallback path needed. Ongoing multi-day observation of real firings lives in §8 as a risk mitigation, not an open question. See §2. |
-| T2 | Typed columns versus a value blob in `answers` — **Assumed** typed columns; challenge if the mapping code gets ugly. |
+| ~~T2~~ | **Closed by M3.** Typed nullable columns were kept and the mapping did not get ugly: `EntityMappers.kt` is a flat set of one-line conversions with no branching on answer type, because the domain `Answer` carries the same typed nullable fields the table does. A blob would have added a serialiser on both sides and made every numeric query a parse. Revisit only if a new answer type cannot be expressed as a column. |
 | T3 | How to test alarm scheduling and the boot receiver without relying on manual device verification. |
 | T4 | Whether the rollover job should also pre-compute and cache dashboard figures, or whether scoring on read is fast enough at a few thousand rows. Probably fast enough; worth measuring rather than assuming. |
 | T5 | Compose navigation approach across the five screens — deliberately not decided here. |
