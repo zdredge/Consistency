@@ -44,6 +44,30 @@ class ConsistencyRepository(
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
 
+    // ---- First run ---------------------------------------------------------------------------
+
+    /**
+     * Populates the spec section 4 library, once, on an empty database.
+     *
+     * Guarded on emptiness rather than on a "seeded" flag because the flag and the rows can disagree
+     * -- and because the library is editable and removable from the moment it lands (spec section
+     * 4). Once the user has deleted an item, re-adding it would be the app overruling them.
+     *
+     * Everything takes effect from [on], so targets apply from the first day rather than from a date
+     * baked into the source, and no period before installation is scored.
+     */
+    suspend fun seedLibraryIfEmpty(on: LocalDate): Boolean {
+        if (db.itemDao().allItems().isNotEmpty()) return false
+
+        db.itemDao().insertItems(SeedLibrary.items(dayResolver.startOfDay(on)))
+        db.itemDao().insertVersions(SeedLibrary.versions(on))
+        db.itemDao().insertOptions(SeedLibrary.options())
+        db.targetDao().insertTargets(SeedLibrary.targets(on))
+        db.targetDao().insertContainerSizes(SeedLibrary.containerSizes(on))
+        db.targetDao().insertRollUpSpecs(SeedLibrary.rollUpSpecs())
+        return true
+    }
+
     // ---- Definitions -------------------------------------------------------------------------
 
     suspend fun items(): List<Item> = db.itemDao().allItems().map { it.toDomain(dayResolver) }
