@@ -36,9 +36,14 @@ class DatabaseOpensTest {
     @After
     fun closeDb() = db.close()
 
+    /**
+     * The version is deliberately not pinned here. `SchemaVersionPinTest` owns that, and a number
+     * asserted in two places is a number that gets updated in one of them -- this test failed on the
+     * v2 bump for no reason of its own, which is exactly that cost showing up.
+     */
     @Test
-    fun databaseOpensAndReportsItsSchemaVersion() {
+    fun databaseOpensAndReportsASchemaVersion() {
         val version = db.openHelper.writableDatabase.version
-        assertTrue("expected schema version 1, was $version", version == 1)
+        assertTrue("a built database must report a positive schema version, was $version", version >= 1)
     }
 }

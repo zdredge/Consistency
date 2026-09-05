@@ -22,4 +22,6 @@ fun createConsistencyDatabase(
     context: Context,
     name: String = DATABASE_NAME,
 ): ConsistencyDatabase =
-    Room.databaseBuilder(context.applicationContext, ConsistencyDatabase::class.java, name).build()
+    Room.databaseBuilder(context.applicationContext, ConsistencyDatabase::class.java, name)
+        .addMigrations(*ALL_MIGRATIONS)
+        .build()

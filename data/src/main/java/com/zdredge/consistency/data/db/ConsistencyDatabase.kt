@@ -23,6 +23,9 @@ import com.zdredge.consistency.data.db.entity.TargetEntity
 /**
  * The single Room database. Schema per docs/architecture.md section 5.
  *
+ * **v2 (M4)** added `items.ordinal`. See `Migrations.kt` for why it is an ALTER rather than a
+ * rebuild, and `SchemaVersionPinTest` for the pins that make a version bump deliberate.
+ *
  * `exportSchema` is left at its default of true and the JSON lands in `data/schemas/`, committed.
  * That export is not documentation: a Room migration test rebuilds the *old* schema from it, so
  * without it there is nothing to migrate from and a schema change becomes unverifiable after the
@@ -42,7 +45,7 @@ import com.zdredge.consistency.data.db.entity.TargetEntity
         MeasuredValueEntity::class,
         MeasuredOriginEntity::class,
     ],
-    version = 1,
+    version = 2,
 )
 @TypeConverters(Converters::class)
 abstract class ConsistencyDatabase : RoomDatabase() {

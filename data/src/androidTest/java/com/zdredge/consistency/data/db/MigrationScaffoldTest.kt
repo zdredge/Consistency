@@ -57,15 +57,15 @@ class MigrationScaffoldTest {
     /**
      * A v1 database built from the export opens under the current entity definitions.
      *
-     * With no migrations to apply this validates v1 against itself, which sounds circular and is
-     * not: the database is built from the *file* and validated against the *code*. Once a v2 exists
-     * this becomes the real migration test, with the migration passed in here.
+     * The database is built from the *file* and validated against the *code*, running every
+     * migration in between. Per-migration assertions live in `MigrationTest`; this one is the
+     * end-to-end path an existing install actually takes on upgrade.
      */
     @Test
-    fun aVersion1DatabaseOpensUnderTheCurrentSchema() {
+    fun aVersion1DatabaseOpensUnderTheCurrentSchemaOnceMigrated() {
         helper.createDatabase(TEST_DB, 1).close()
 
-        helper.runMigrationsAndValidate(TEST_DB, 1, true).close()
+        helper.runMigrationsAndValidate(TEST_DB, 2, true, *ALL_MIGRATIONS).close()
     }
 
     private companion object {

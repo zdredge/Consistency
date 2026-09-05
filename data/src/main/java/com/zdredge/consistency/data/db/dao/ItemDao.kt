@@ -12,7 +12,7 @@ import com.zdredge.consistency.data.db.entity.SelectOptionEntity
 @Dao
 interface ItemDao {
 
-    @Query("SELECT * FROM items ORDER BY id")
+    @Query("SELECT * FROM items ORDER BY ordinal, id")
     suspend fun allItems(): List<ItemEntity>
 
     @Query("SELECT * FROM items WHERE id = :itemId")
@@ -23,7 +23,7 @@ interface ItemDao {
      * active (spec 3.3), so filtering them out here would erase history rather than tidy a list;
      * whether an item was active on a date is :domain's `ItemLifecycle` question, not a WHERE clause.
      */
-    @Query("SELECT * FROM items WHERE kind = :kind ORDER BY id")
+    @Query("SELECT * FROM items WHERE kind = :kind ORDER BY ordinal, id")
     suspend fun itemsOfKind(kind: String): List<ItemEntity>
 
     @Query("SELECT * FROM item_versions ORDER BY item_id, version_no")
