@@ -25,7 +25,9 @@ import java.time.LocalDate
  */
 class MainActivity : ComponentActivity() {
 
-    private val container = AppContainer()
+    // Lazy, not a field initialiser: field initialisers run before the base context is attached,
+    // so applicationContext would be null and the database could not be built.
+    private val container by lazy { AppContainer(applicationContext) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
