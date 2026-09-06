@@ -1,58 +1,68 @@
 package com.zdredge.consistency.ui.theme
 
-import android.app.Activity
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
+/**
+ * One scheme, always dark (M4.5).
+ *
+ * **Dynamic colour is deliberately off.** It was on by default from the scaffold, which meant the
+ * app took its palette from the user's wallpaper — pleasant Android citizenship, and wrong here: a
+ * product whose value is being undeniable should not change character when the home screen does, and
+ * a design that cannot be relied on cannot be designed against.
+ *
+ * There is no light scheme either. The app is opened at 08:00 and 21:00 by one person on one device,
+ * and committing to a single ground means every surface built after this — M6's settings, M8's
+ * charts, M10's rings — is judged against the same background rather than two.
+ *
+ * The mapping below leans on **one accent doing all the emphasis**. Selection, progress and the
+ * primary action are all [Accent]; everything else separates by a step of surface lightness. In an
+ * app that reports on you daily, a second signal colour would be competing for a meaning it does not
+ * have.
+ */
+private val ConsistencyColors = darkColorScheme(
+    primary = Accent,
+    onPrimary = OnAccent,
+    primaryContainer = AccentMuted,
+    onPrimaryContainer = Bone,
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+    // Secondary is intentionally not a second accent -- it is the quiet grey used for controls that
+    // are tappable but not the point of the screen.
+    secondary = Ash,
+    onSecondary = Ink,
 
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    // secondaryContainer is what Material fills a SELECTED chip with, so it has to carry the accent.
+    // It was mapped to Graphite first, which is the card colour, and the result was a selected chip
+    // indistinguishable from an unselected one -- the accent doing none of the one job it has. Caught
+    // by putting it on the device, which is why the theme is the first phase of this milestone.
+    secondaryContainer = AccentMuted,
+    onSecondaryContainer = OnAccentMuted,
+
+    tertiary = Ash,
+    onTertiary = Ink,
+
+    background = Ink,
+    onBackground = Bone,
+
+    surface = Slate,
+    onSurface = Bone,
+    surfaceVariant = Graphite,
+    onSurfaceVariant = Ash,
+
+    outline = Outline,
+    outlineVariant = Outline,
+
+    error = Rust,
+    onError = Ink,
 )
 
 @Composable
-fun ConsistencyTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit
-) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-
+fun ConsistencyTheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+        colorScheme = ConsistencyColors,
+        typography = ConsistencyTypography,
+        shapes = ConsistencyShapes,
+        content = content,
     )
 }
