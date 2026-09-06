@@ -41,12 +41,20 @@ class CheckInLoopRepositoryTest {
 
     private val installDay = LocalDate.of(2026, 9, 1)
 
+    /**
+     * The library is seeded a week before the test's "install day" so every check-in in range has
+     * questions to ask. A check-in that would ask nothing is never expected, which is a rule in its
+     * own right and gets its own test below rather than quietly shaping every other one.
+     */
     @Before
     fun setUp() {
         db = Room.inMemoryDatabaseBuilder(
             ApplicationProvider.getApplicationContext(),
             ConsistencyDatabase::class.java,
         ).build()
+        // Block body, not an expression: JUnit 4 requires @Before to return void, and
+        // `= runBlocking { ... }` would infer Boolean from seedLibraryIfEmpty and fail to load.
+        runBlocking { repoAt("2026-09-01T10:00").seedLibraryIfEmpty(installDay.minusDays(7)) }
     }
 
     @After
@@ -57,7 +65,7 @@ class CheckInLoopRepositoryTest {
      * would open the record with a failure that never happened.
      */
     @Test
-    fun aFreshInstallGeneratesOnlyTodaysCheckIns() = runBlocking {
+    fun generationStartsAtTodayAndReachesNoFurtherBack() = runBlocking {
         val repo = repoAt("2026-09-01T10:00")
 
         assertEquals(2, repo.ensureCheckInsExist(installDay))
@@ -65,6 +73,37 @@ class CheckInLoopRepositoryTest {
             listOf(Slot.MORNING, Slot.NIGHT),
             repo.checkIns(installDay).map { it.slot },
         )
+        assertTrue(repo.checkIns(installDay.minusDays(1)).isEmpty())
+    }
+
+    /**
+     * **The install-day case, found by installing the app and looking at it.**
+     *
+     * On the day the library is seeded, the morning check-in covers *yesterday* — when no item
+     * existed. Generating it would put an unanswerable row into the response-rate denominator, so a
+     * brand-new user opens the app already counted against. A check-in with nothing to ask was never
+     * expected.
+     */
+    @Test
+    fun onTheDayTheLibraryIsSeededOnlyTheNightCheckInIsExpected() = runBlocking {
+        val freshDb = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            ConsistencyDatabase::class.java,
+        ).build()
+        val repo = ConsistencyRepository(
+            freshDb,
+            DayResolver(
+                Clock.fixed(LocalDateTime.parse("2026-09-01T10:00").atZone(zone).toInstant(), zone),
+            ),
+        )
+        try {
+            repo.seedLibraryIfEmpty(installDay)
+            repo.ensureCheckInsExist(installDay)
+
+            assertEquals(listOf(Slot.NIGHT), repo.checkIns(installDay).map { it.slot })
+        } finally {
+            freshDb.close()
+        }
     }
 
     @Test
@@ -154,7 +193,6 @@ class CheckInLoopRepositoryTest {
     @Test
     fun recordingAnAnswerAlsoMarksItsCheckInAnswered() = runBlocking {
         val repo = repoAt("2026-09-01T21:30")
-        repo.seedLibraryIfEmpty(installDay)
         repo.ensureCheckInsExist(installDay)
 
         repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
@@ -173,7 +211,6 @@ class CheckInLoopRepositoryTest {
     @Test
     fun deferringStillMarksTheCheckInAnswered() = runBlocking {
         val repo = repoAt("2026-09-01T21:30")
-        repo.seedLibraryIfEmpty(installDay)
         repo.ensureCheckInsExist(installDay)
 
         repo.recordAnswer(mealsAnswer(Capture.PENDING), installDay, Slot.NIGHT)
@@ -189,7 +226,6 @@ class CheckInLoopRepositoryTest {
     @Test
     fun theNightCheckInAsksTheSeededNightQuestionsInOrder() = runBlocking {
         val repo = repoAt("2026-09-01T21:30")
-        repo.seedLibraryIfEmpty(installDay)
 
         val ids = repo.checkInQuestions(installDay, Slot.NIGHT).map { it.item.id.value }
 

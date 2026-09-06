@@ -164,7 +164,11 @@ class ConsistencyRepository(
         times: CheckInTimes = CheckInTimes(),
     ): Int {
         val from = db.checkInDao().latestDay()?.let { LocalDate.parse(it).plusDays(1) } ?: today
-        val planned = CheckInPlanner(dayResolver).planRange(from, today, times)
+        // Items and versions are passed so a check-in that would ask nothing is never expected.
+        // On install day the morning check-in covers yesterday, when no item existed, and generating
+        // it would put an unanswerable guaranteed miss into the response-rate denominator.
+        val planned = CheckInPlanner(dayResolver)
+            .planRange(from, today, times, items(), versions())
         if (planned.isEmpty()) return 0
 
         // Only the genuinely missing ones. The unique index on (day_date, slot) would reject a

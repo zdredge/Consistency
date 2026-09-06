@@ -1,5 +1,12 @@
 package com.zdredge.consistency.domain.checkin
 
+import com.zdredge.consistency.domain.model.AnswerType
+import com.zdredge.consistency.domain.model.Classification
+import com.zdredge.consistency.domain.model.Item
+import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.model.ItemKind
+import com.zdredge.consistency.domain.model.ItemVersion
+import com.zdredge.consistency.domain.model.ItemVersionId
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.time.DayResolver
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -128,6 +135,85 @@ class CheckInPlannerTest {
             planned.map { it.day }.distinct(),
         )
     }
+
+    // ---- A check-in that would ask nothing was never expected --------------------------------
+
+    /**
+     * **The install-day bug, as a test.** The morning check-in covers yesterday, and on the day the
+     * library is seeded no item existed yesterday. Generating it would put an unanswerable row into
+     * the response-rate denominator, so a brand-new user opens the app already counted against.
+     */
+    @Test
+    @DisplayName("on install day the morning check-in is not expected, because it would ask nothing")
+    fun installDayExpectsOnlyTheNightCheckIn() {
+        val items = listOf(item("meals", createdOn = tuesday), item("bedtime", createdOn = tuesday))
+        val versions = listOf(
+            version("meals", Slot.NIGHT, tuesday),
+            version("bedtime", Slot.MORNING, tuesday),
+        )
+
+        assertEquals(
+            listOf(Slot.NIGHT),
+            planner.plan(tuesday, CheckInTimes(), items, versions).map { it.slot },
+        )
+    }
+
+    @Test
+    @DisplayName("the next day expects both, because yesterday now has items")
+    fun theDayAfterInstallExpectsBoth() {
+        val items = listOf(item("meals", createdOn = tuesday), item("bedtime", createdOn = tuesday))
+        val versions = listOf(
+            version("meals", Slot.NIGHT, tuesday),
+            version("bedtime", Slot.MORNING, tuesday),
+        )
+
+        assertEquals(
+            listOf(Slot.MORNING, Slot.NIGHT),
+            planner.plan(tuesday.plusDays(1), CheckInTimes(), items, versions).map { it.slot },
+        )
+    }
+
+    @Test
+    @DisplayName("with every item retired, no check-in is expected at all")
+    fun anEmptyLibraryExpectsNothing() {
+        // Nothing to ask, nothing expected, nothing missed. The same rule as install day, from the
+        // other end of an item's life.
+        val items = listOf(
+            item("meals", createdOn = LocalDate.of(2026, 8, 1), retiredOn = LocalDate.of(2026, 8, 10)),
+        )
+        val versions = listOf(version("meals", Slot.NIGHT, LocalDate.of(2026, 8, 1)))
+
+        assertTrue(planner.plan(tuesday, CheckInTimes(), items, versions).isEmpty())
+    }
+
+    @Test
+    @DisplayName("a range skips the days that would ask nothing and keeps the rest")
+    fun aRangeSkipsEmptyCheckIns() {
+        val items = listOf(item("meals", createdOn = tuesday))
+        val versions = listOf(version("meals", Slot.NIGHT, tuesday))
+
+        val planned = planner.planRange(tuesday, tuesday.plusDays(2), CheckInTimes(), items, versions)
+
+        // Night only, every day: nothing is ever asked in the morning because no morning item exists.
+        assertEquals(listOf(Slot.NIGHT, Slot.NIGHT, Slot.NIGHT), planned.map { it.slot })
+    }
+
+    private fun item(
+        id: String,
+        createdOn: LocalDate,
+        retiredOn: LocalDate? = null,
+    ) = Item(ItemId(id), ItemKind.ASKED, createdOn, retiredOn)
+
+    private fun version(itemId: String, slot: Slot, from: LocalDate) = ItemVersion(
+        id = ItemVersionId("$itemId.v1"),
+        itemId = ItemId(itemId),
+        versionNo = 1,
+        prompt = itemId,
+        answerType = AnswerType.NUMBER,
+        classification = Classification.GOAL,
+        slot = slot,
+        effectiveFrom = from,
+    )
 
     private fun instant(local: String): Instant =
         LocalDateTime.parse(local).atZone(zone).toInstant()

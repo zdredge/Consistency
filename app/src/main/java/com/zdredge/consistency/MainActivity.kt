@@ -4,86 +4,103 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
+import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.ui.checkin.CheckInScreen
+import com.zdredge.consistency.ui.checkin.CheckInViewModel
+import com.zdredge.consistency.ui.home.HomeScreen
+import com.zdredge.consistency.ui.home.HomeViewModel
 import com.zdredge.consistency.ui.theme.ConsistencyTheme
 import java.time.LocalDate
 
 /**
- * Placeholder screen still, and still not decoration: it renders the day resolved by :domain and
- * the seeded item count read back through :data, which proves both wirings on a real device.
+ * Where the user lands, and the only place navigation is decided.
  *
- * Everything real arrives later — the check-in screen is M4, the dashboard M10.
+ * **No navigation library.** Architecture T5 leaves the approach open, and at two screens a sealed
+ * state switched with a `when` is the whole of it — the same posture as manual constructor
+ * injection: adopt the framework once hand-rolling hurts. It has not yet. T5 gets revisited when the
+ * item detail view and dashboard arrive and there are five screens with a real back stack.
  */
+sealed interface Screen {
+    data object Home : Screen
+    data class CheckIn(val day: LocalDate, val slot: Slot) : Screen
+}
+
 class MainActivity : ComponentActivity() {
 
     // Lazy, not a field initialiser: field initialisers run before the base context is attached,
     // so applicationContext would be null and the database could not be built.
     private val container by lazy { AppContainer(applicationContext) }
 
+    private val homeViewModel by lazy {
+        ViewModelProvider(this, container.viewModelFactory)[HomeViewModel::class.java]
+    }
+    private val checkInViewModel by lazy {
+        ViewModelProvider(this, container.viewModelFactory)[CheckInViewModel::class.java]
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         setContent {
-            var itemCount by remember { mutableStateOf<Int?>(null) }
-
-            // First-run populate of the spec section 4 library (M3). A no-op on every later launch,
-            // and guarded on the database being empty rather than on a stored flag, so a library the
-            // user has edited or pruned is never quietly restored.
-            LaunchedEffect(Unit) {
-                container.repository.seedLibraryIfEmpty(container.dayResolver.today())
-                itemCount = container.repository.items().size
-            }
+            var screen by remember { mutableStateOf<Screen>(Screen.Home) }
 
             ConsistencyTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    SkeletonScreen(
-                        today = container.dayResolver.today(),
-                        itemCount = itemCount,
-                        modifier = Modifier.padding(innerPadding),
-                    )
+                Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
+                    when (val current = screen) {
+                        Screen.Home -> {
+                            val state by homeViewModel.state.collectAsState()
+
+                            // Refreshes on every return, so answering a check-in removes it from the
+                            // outstanding list without needing the screens to talk to each other.
+                            LaunchedEffect(Unit) { homeViewModel.refresh() }
+
+                            HomeScreen(
+                                state = state,
+                                onOpenCheckIn = { day, slot -> screen = Screen.CheckIn(day, slot) },
+                                modifier = Modifier.padding(padding),
+                            )
+                        }
+
+                        is Screen.CheckIn -> {
+                            val state by checkInViewModel.state.collectAsState()
+
+                            LaunchedEffect(current) {
+                                checkInViewModel.load(current.day, current.slot)
+                            }
+                            LaunchedEffect(state.submitted) {
+                                if (state.submitted) screen = Screen.Home
+                            }
+
+                            CheckInScreen(
+                                state = state,
+                                onBool = checkInViewModel::setBool,
+                                onNumber = checkInViewModel::setNumber,
+                                onTime = checkInViewModel::setTime,
+                                onScale = checkInViewModel::setScale,
+                                onSelectOne = checkInViewModel::selectOne,
+                                onToggle = checkInViewModel::toggleSelection,
+                                onNote = checkInViewModel::setNote,
+                                onSubmit = checkInViewModel::submit,
+                                onBack = { screen = Screen.Home },
+                                modifier = Modifier.padding(padding),
+                            )
+                        }
+                    }
                 }
             }
         }
-    }
-}
-
-@Composable
-fun SkeletonScreen(today: LocalDate, itemCount: Int?, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier.padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text("Consistency", style = MaterialTheme.typography.titleLarge)
-        Text("M3 skeleton", style = MaterialTheme.typography.bodyMedium)
-        Text(
-            "Today, per DayResolver: $today",
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Text(
-            "The day boundary is 04:00, so before 4am this still reads as yesterday.",
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            when (itemCount) {
-                null -> "Library: loading..."
-                else -> "Library: $itemCount items seeded from spec section 4"
-            },
-            style = MaterialTheme.typography.bodyLarge,
-        )
     }
 }

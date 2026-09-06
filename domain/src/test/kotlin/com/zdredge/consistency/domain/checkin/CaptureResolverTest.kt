@@ -110,6 +110,51 @@ class CaptureResolverTest {
         )
     }
 
+    // ---- forEntry: the reference day is the CHECK-IN's, not the answer's ---------------------
+
+    @Test
+    @DisplayName("a sleep item answered in its own morning check-in is IN_WINDOW, not a backfill")
+    fun anOrdinaryMorningCheckInIsInWindowEvenThoughItWritesYesterday() {
+        // The mistake this guards: a sleep item answered on the 26th is DATED the 25th, but it is
+        // being answered in its proper window. Measuring capture against the answer's day would make
+        // every ordinary morning check-in a backfill and collapse the in-window-only figure.
+        val morningOf26th = LocalDate.of(2026, 8, 26)
+
+        assertEquals(
+            Capture.IN_WINDOW,
+            CaptureResolver(resolver("2026-08-26T08:55")).forEntry(morningOf26th),
+        )
+    }
+
+    @Test
+    @DisplayName("a night item answered in its own night check-in is IN_WINDOW")
+    fun anOrdinaryNightCheckInIsInWindow() {
+        assertEquals(
+            Capture.IN_WINDOW,
+            CaptureResolver(resolver("2026-08-25T21:14")).forEntry(checkInDay),
+        )
+    }
+
+    @Test
+    @DisplayName("a deferral resolved next morning measures against the night it came from")
+    fun aCarriedOverDeferralIsInWindowByTheException() {
+        // Reference is the 25th (where it was deferred), today is the 26th, and 3.3 rescues it.
+        assertEquals(
+            Capture.IN_WINDOW,
+            CaptureResolver(resolver("2026-08-26T08:55"))
+                .forEntry(LocalDate.of(2026, 8, 26), carriedOverFrom = checkInDay),
+        )
+    }
+
+    @Test
+    @DisplayName("answering yesterday's check-in today is BACKFILLED")
+    fun backfillingYesterdaysCheckInIsBackfilled() {
+        assertEquals(
+            Capture.BACKFILLED,
+            CaptureResolver(resolver("2026-08-26T19:00")).forEntry(checkInDay),
+        )
+    }
+
     private fun captureAt(local: String, resolvingDeferral: Boolean = false): Capture =
         CaptureResolver(resolver(local)).forAnswer(checkInDay, resolvingDeferral)
 

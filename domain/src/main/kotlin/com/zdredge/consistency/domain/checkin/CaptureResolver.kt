@@ -45,6 +45,26 @@ class CaptureResolver(private val dayResolver: DayResolver) {
         }
 
     /**
+     * The capture for one question in the check-in held on [checkInDay].
+     *
+     * **This exists because the reference day is not the day the answer is dated to**, and confusing
+     * the two is an easy mistake with an expensive symptom. A sleep item answered in the morning
+     * check-in of day N+1 is *dated* to day N, but it is being answered in its own proper window —
+     * that is the whole sleep-day convention. Measuring its capture against day N would make every
+     * ordinary morning check-in record as a backfill, and the in-window-only figure (spec §3.2)
+     * would quietly collapse to near zero.
+     *
+     * So a fresh question measures against the check-in it is being asked in; a carried-over
+     * deferral measures against the check-in it was deferred *from*, where the 3.3 exception then
+     * rescues it. [carriedOverFrom] is `CheckInEntry.carriedOverFrom` and is null for anything else.
+     */
+    fun forEntry(checkInDay: LocalDate, carriedOverFrom: LocalDate? = null): Capture =
+        forAnswer(
+            checkInDay = carriedOverFrom ?: checkInDay,
+            resolvingDeferral = carriedOverFrom != null,
+        )
+
+    /**
      * The state a "not yet" is stored with until it is resolved.
      *
      * An unresolved deferral converts to a **missed goal** at rollover while the check-in it was

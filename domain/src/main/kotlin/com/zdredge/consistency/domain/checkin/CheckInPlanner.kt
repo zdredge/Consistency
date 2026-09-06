@@ -1,5 +1,7 @@
 package com.zdredge.consistency.domain.checkin
 
+import com.zdredge.consistency.domain.model.Item
+import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.time.DayResolver
 import java.time.Instant
@@ -44,6 +46,42 @@ class CheckInPlanner(private val dayResolver: DayResolver) {
         PlannedCheckIn(day, Slot.MORNING, dayResolver.instantAt(day, times.morning)),
         PlannedCheckIn(day, Slot.NIGHT, dayResolver.instantAt(day, times.night)),
     ).sortedBy { it.scheduledAt }
+
+    /**
+     * The check-ins expected on [day], **excluding any that would ask nothing**.
+     *
+     * A check-in with no questions was never really expected, and generating one puts an
+     * unanswerable row into the response-rate denominator — a miss the user could not have avoided.
+     * That is not hypothetical: on install day the morning check-in covers *yesterday*, when no item
+     * existed yet, so the very first thing a new user would see is a check-in they cannot answer and
+     * a metric already counting against them. Found by installing it and looking.
+     *
+     * The same rule covers the case where every item has been retired. Nothing to ask, nothing
+     * expected, nothing missed.
+     */
+    fun plan(
+        day: LocalDate,
+        times: CheckInTimes,
+        items: List<Item>,
+        versions: List<ItemVersion>,
+    ): List<PlannedCheckIn> = plan(day, times).filter { planned ->
+        CheckInContent.forCheckIn(day, planned.slot, items, versions).isNotEmpty()
+    }
+
+    /** As [planRange], but skipping check-ins that would ask nothing. See [plan]. */
+    fun planRange(
+        from: LocalDate,
+        to: LocalDate,
+        times: CheckInTimes,
+        items: List<Item>,
+        versions: List<ItemVersion>,
+    ): List<PlannedCheckIn> {
+        if (from.isAfter(to)) return emptyList()
+        return generateSequence(from) { it.plusDays(1) }
+            .takeWhile { !it.isAfter(to) }
+            .flatMap { plan(it, times, items, versions).asSequence() }
+            .toList()
+    }
 
     /**
      * Every check-in expected from [from] to [to], both inclusive.
