@@ -248,6 +248,77 @@ class CheckInLoopRepositoryTest {
         assertEquals(listOf("bedtime", "pre_sleep", "woke_at", "got_up_at"), ids)
     }
 
+    // ---- The deferral cycle, end to end ------------------------------------------------------
+
+    /**
+     * **"Not yet", resolved the next morning.** The full promise: the question comes back, labelled
+     * as belonging to the night it was deferred from, and resolving it there costs nothing
+     * (scoring-cases 3.3, A2.2).
+     */
+    @Test
+    fun aDeferralComesBackTheNextMorningAndResolvesAsInWindow() = runBlocking {
+        val night = repoAt("2026-09-01T21:30")
+        night.ensureCheckInsExist(installDay)
+        night.recordAnswer(mealsAnswer(Capture.PENDING), installDay, Slot.NIGHT)
+
+        // Next morning: the deferred question is carried in, dated the night it came from.
+        val morning = repoAt("2026-09-02T08:30")
+        morning.ensureCheckInsExist(installDay.plusDays(1))
+        val carried = morning.checkInQuestions(installDay.plusDays(1), Slot.MORNING)
+            .single { it.item.id == ItemId("meals") }
+
+        assertEquals(installDay, carried.carriedOverFrom)
+        assertTrue("a carried-over question is never deferrable again", !carried.canDefer)
+
+        // Resolving it replaces the pending row in place and costs nothing.
+        morning.recordAnswer(
+            mealsAnswer(Capture.IN_WINDOW),
+            installDay.plusDays(1),
+            Slot.MORNING,
+        )
+
+        val resolved = morning.answer(ItemId("meals"), installDay)!!
+        assertEquals(Capture.IN_WINDOW, resolved.capture)
+        assertEquals(3.0, resolved.valueNumber!!, 0.0)
+        assertTrue("the deferral is gone once resolved", morning.deferrals().isEmpty())
+    }
+
+    @Test
+    fun anUnresolvedDeferralIsStillCarriedButOnlyIntoTheNextMorning() = runBlocking {
+        val night = repoAt("2026-09-01T21:30")
+        night.ensureCheckInsExist(installDay)
+        night.recordAnswer(mealsAnswer(Capture.PENDING), installDay, Slot.NIGHT)
+
+        // Two mornings later it is not resurrected -- it becomes a missed goal at rollover (A2.1)
+        // rather than reappearing indefinitely.
+        val later = repoAt("2026-09-03T08:30")
+        later.ensureCheckInsExist(installDay.plusDays(2))
+
+        assertTrue(
+            later.checkInQuestions(installDay.plusDays(2), Slot.MORNING).none { it.isCarriedOver },
+        )
+    }
+
+    /** Backfilling yesterday's check-in today records BACKFILLED, permanently (spec §3.2). */
+    @Test
+    fun answeringYesterdaysCheckInTodayRecordsAsBackfilled() = runBlocking {
+        repoAt("2026-09-01T10:00").ensureCheckInsExist(installDay)
+
+        val today = repoAt("2026-09-02T19:00")
+        today.ensureCheckInsExist(installDay.plusDays(1))
+        today.recordAnswer(
+            mealsAnswer(Capture.BACKFILLED),
+            installDay,
+            Slot.NIGHT,
+        )
+
+        assertEquals(Capture.BACKFILLED, today.answer(ItemId("meals"), installDay)!!.capture)
+        assertEquals(
+            CheckInState.ANSWERED,
+            today.checkIns(installDay).single { it.slot == Slot.NIGHT }.state,
+        )
+    }
+
     private fun mealsAnswer(capture: Capture) = Answer(
         itemId = ItemId("meals"),
         itemVersionId = ItemVersionId("meals.v1"),

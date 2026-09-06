@@ -68,6 +68,7 @@ fun CheckInScreen(
     onSelectOne: (QuestionUi, OptionId) -> Unit,
     onToggle: (QuestionUi, OptionId) -> Unit,
     onNote: (QuestionUi, String) -> Unit,
+    onDefer: (QuestionUi) -> Unit,
     onSubmit: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -96,6 +97,7 @@ fun CheckInScreen(
                 onSelectOne = onSelectOne,
                 onToggle = onToggle,
                 onNote = onNote,
+                onDefer = onDefer,
             )
         }
 
@@ -153,6 +155,7 @@ private fun QuestionCard(
     onSelectOne: (QuestionUi, OptionId) -> Unit,
     onToggle: (QuestionUi, OptionId) -> Unit,
     onNote: (QuestionUi, String) -> Unit,
+    onDefer: (QuestionUi) -> Unit,
 ) {
     Card(Modifier.fillMaxWidth()) {
         Column(
@@ -181,6 +184,18 @@ private fun QuestionCard(
                     SelectInput(question, singleChoice = true, onSelectOne, onToggle)
                 question.answerType == AnswerType.MULTI_SELECT ->
                     SelectInput(question, singleChoice = false, onSelectOne, onToggle)
+            }
+
+            if (question.entry.canDefer) {
+                // "Not yet" exists for a specific failure the user named: a check-in arriving while
+                // the items are still actionable, followed by never going back (spec §3.2). It is a
+                // real answer, not a skip -- the check-in still counts as answered, and the deferral
+                // becomes a missed goal only if it is never resolved (A2.1, A2.2).
+                FilterChip(
+                    selected = question.draft.deferred,
+                    onClick = { onDefer(question) },
+                    label = { Text("Not yet") },
+                )
             }
 
             if (!question.readOnly) {

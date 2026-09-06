@@ -8,6 +8,7 @@ import com.zdredge.consistency.domain.checkin.CaptureResolver
 import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
+import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
@@ -34,6 +35,13 @@ data class AnswerDraft(
     val valueScale: Int? = null,
     val selections: Set<OptionId> = emptySet(),
     val note: String = "",
+    /**
+     * The user tapped "not yet". Stored as a value-less answer with `capture = PENDING`, which is
+     * how the rollover finds it to convert into a missed goal if it is never resolved
+     * (scoring-cases A2.1). Mutually exclusive with a value: answering clears it, deferring clears
+     * the value, because "3 meals, but not yet" is not a thing the record can mean.
+     */
+    val deferred: Boolean = false,
 ) {
     /**
      * Whether the user actually answered.
@@ -136,26 +144,40 @@ class CheckInViewModel(
             valueScale = existing.valueScale,
             selections = existing.selections,
             note = existing.note.orEmpty(),
+            // Reopening a check-in that was deferred must show it as deferred, not as blank.
+            // Blank would read as "never answered" and quietly drop the deferral on re-submit.
+            deferred = existing.capture == Capture.PENDING,
         )
     }
 
-    fun setBool(item: QuestionUi, value: Boolean?) = update(item) { it.copy(valueBool = value) }
+    fun setBool(item: QuestionUi, value: Boolean?) = answered(item) { it.copy(valueBool = value) }
 
-    fun setNumber(item: QuestionUi, value: Double?) = update(item) { it.copy(valueNumber = value) }
+    fun setNumber(item: QuestionUi, value: Double?) = answered(item) { it.copy(valueNumber = value) }
 
-    fun setTime(item: QuestionUi, value: LocalTime?) = update(item) { it.copy(valueTime = value) }
+    fun setTime(item: QuestionUi, value: LocalTime?) = answered(item) { it.copy(valueTime = value) }
 
-    fun setScale(item: QuestionUi, value: Int?) = update(item) { it.copy(valueScale = value) }
+    fun setScale(item: QuestionUi, value: Int?) = answered(item) { it.copy(valueScale = value) }
+
+    /**
+     * "Not yet" — defer this question to the next morning's check-in.
+     *
+     * Tapping it again cancels the deferral. Setting any value cancels it too, which is why every
+     * other setter goes through [answered]: a draft that is both deferred and answered would have to
+     * be resolved arbitrarily at submit time, and arbitrary is how a silent wrong answer gets in.
+     */
+    fun toggleDeferred(item: QuestionUi) = update(item) {
+        if (it.deferred) it.copy(deferred = false) else AnswerDraft(note = it.note, deferred = true)
+    }
 
     fun setNote(item: QuestionUi, note: String) = update(item) { it.copy(note = note) }
 
     /** Single-select replaces; tapping the chosen option again clears it. */
-    fun selectOne(item: QuestionUi, option: OptionId) = update(item) {
+    fun selectOne(item: QuestionUi, option: OptionId) = answered(item) {
         it.copy(selections = if (option in it.selections) emptySet() else setOf(option))
     }
 
     /** Multi-select toggles. Nothing here knows or cares which option is "no opportunity". */
-    fun toggleSelection(item: QuestionUi, option: OptionId) = update(item) {
+    fun toggleSelection(item: QuestionUi, option: OptionId) = answered(item) {
         it.copy(
             selections = if (option in it.selections) it.selections - option else it.selections + option,
         )
@@ -180,7 +202,8 @@ class CheckInViewModel(
 
         viewModelScope.launch {
             for (question in current.questions) {
-                if (question.readOnly || !question.draft.isAnswered) continue
+                if (question.readOnly) continue
+                if (!question.draft.isAnswered && !question.draft.deferred) continue
                 repository.recordAnswer(question.toAnswer(day, slot), day, slot)
             }
             repository.markCheckInAnswered(day, slot, dayResolver.now())
@@ -197,7 +220,7 @@ class CheckInViewModel(
             itemId = entry.item.id,
             itemVersionId = entry.version.id,
             day = answersDay,
-            capture = capture.forEntry(day, entry.carriedOverFrom),
+            capture = if (draft.deferred) capture.deferred() else capture.forEntry(day, entry.carriedOverFrom),
             submittedAt = dayResolver.now(),
             valueBool = draft.valueBool,
             valueNumber = draft.valueNumber,
@@ -207,6 +230,10 @@ class CheckInViewModel(
             note = draft.note.takeIf { it.isNotBlank() },
         )
     }
+
+    /** Any answer cancels a pending deferral. See [toggleDeferred]. */
+    private fun answered(item: QuestionUi, change: (AnswerDraft) -> AnswerDraft) =
+        update(item) { change(it).copy(deferred = false) }
 
     private fun update(item: QuestionUi, change: (AnswerDraft) -> AnswerDraft) {
         _state.update { state ->

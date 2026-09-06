@@ -228,6 +228,66 @@ class CheckInContentTest {
         assertTrue(entries.none { it.isCarriedOver })
     }
 
+    // ---- "Not yet" eligibility (spec 3.2: night goal questions) ------------------------------
+
+    @Test
+    @DisplayName("night goals may be deferred")
+    fun nightGoalsMayBeDeferred() {
+        val deferrable = contentFor(tuesday, Slot.NIGHT).filter { it.canDefer }
+        assertEquals(listOf("meals", "vitamins"), deferrable.map { it.item.id.value })
+    }
+
+    @Test
+    @DisplayName("morning questions may not be deferred, because the night has already happened")
+    fun morningQuestionsMayNotBeDeferred() {
+        // The deferral exists for items still actionable at 21:00. Nothing can be done about last
+        // night, so "not yet" there would only be a way to avoid answering.
+        assertTrue(contentFor(wednesday, Slot.MORNING).none { it.canDefer })
+    }
+
+    @Test
+    @DisplayName("an observation may not be deferred, because tomorrow's answer is a different one")
+    fun observationsMayNotBeDeferred() {
+        val mindset = item("mindset", ordinal = 6)
+        val versions = listOf(
+            version("mindset", Slot.NIGHT, AnswerType.SCALE)
+                .copy(classification = Classification.OBSERVATION),
+        )
+
+        assertTrue(
+            CheckInContent.forCheckIn(tuesday, Slot.NIGHT, listOf(mindset), versions)
+                .none { it.canDefer },
+        )
+    }
+
+    @Test
+    @DisplayName("a carried-over question may not be deferred again")
+    fun aCarriedOverQuestionMayNotBeDeferredAgain() {
+        // "Not yet" promises the question comes back once. Deferring indefinitely would be a way of
+        // never answering while never being marked as having failed to (scoring-cases A2.1).
+        val entries = CheckInContent.forCheckIn(
+            wednesday, Slot.MORNING, allItems, allVersions, deferrals = listOf(deferredVitamins),
+        )
+
+        assertFalse(entries.single { it.isCarriedOver }.canDefer)
+    }
+
+    @Test
+    @DisplayName("the weekly questions on Sunday night may not be deferred")
+    fun weeklyQuestionsMayNotBeDeferred() {
+        // They close the week the moment it ends (spec 1). There is no next morning to resolve them
+        // into that still belongs to that week.
+        assertFalse(
+            contentFor(sunday, Slot.NIGHT).single { it.item.id.value == "saw_friends" }.canDefer,
+        )
+    }
+
+    @Test
+    @DisplayName("a measured item is never deferrable, since it is never asked")
+    fun measuredItemsAreNotDeferrable() {
+        assertFalse(contentFor(tuesday, Slot.NIGHT).single { it.readOnly }.canDefer)
+    }
+
     private val deferredVitamins = Answer(
         itemId = ItemId("vitamins"),
         itemVersionId = ItemVersionId("vitamins.v1"),

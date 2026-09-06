@@ -1,6 +1,7 @@
 package com.zdredge.consistency.domain.checkin
 
 import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.Classification
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemKind
@@ -26,6 +27,12 @@ data class CheckInEntry(
     val version: ItemVersion,
     val carriedOverFrom: LocalDate? = null,
     val readOnly: Boolean = false,
+    /**
+     * Whether this question may be answered "not yet". See [CheckInContent.canDefer] for the rule;
+     * it is decided when the check-in is assembled rather than by the screen, because offering the
+     * deferral in the wrong place makes a promise the rulebook does not keep.
+     */
+    val canDefer: Boolean = false,
 ) {
     val isCarriedOver: Boolean get() = carriedOverFrom != null
 }
@@ -67,7 +74,7 @@ object CheckInContent {
             .mapNotNull { item ->
                 val version = versions.versionFor(item, answersDay) ?: return@mapNotNull null
                 if (version.slot !in slotsAskedIn(slot, checkInDay)) return@mapNotNull null
-                CheckInEntry(item, version)
+                CheckInEntry(item, version, canDefer = canDefer(version, slot))
             }
 
         // Measured items are shown, never asked, and only alongside the day they measure.
@@ -108,6 +115,29 @@ object CheckInContent {
      * The weekly questions are appended to **Sunday night's** check-in rather than forming their own
      * (spec §1), which closes the Monday–Sunday week the moment it ends.
      */
+    /**
+     * Whether a question may be answered "not yet".
+     *
+     * Spec §3.2 scopes the deferral precisely: **night goal questions.** Both halves matter.
+     *
+     * *Night*, because the deferral exists for a specific failure the user named — a check-in
+     * arriving at 21:00 while the items are still actionable, followed by never going back. A
+     * morning question is about a night that has already happened; there is nothing left to do about
+     * it, so "not yet" would only be a way to avoid answering.
+     *
+     * *Goal*, because an observation has no target to hit later. Deferring "how was your mindset"
+     * defers a feeling, and the answer tomorrow is a different answer, not a delayed one.
+     *
+     * A carried-over question is never deferrable again: the promise "not yet" makes is that the
+     * question comes back **once**, and an unresolved deferral becomes a missed goal at rollover
+     * (scoring-cases A2.1). Letting it be deferred indefinitely would turn a deferral into a way of
+     * never answering while never being marked as having failed to.
+     */
+    private fun canDefer(version: ItemVersion, slot: Slot): Boolean =
+        slot == Slot.NIGHT &&
+            version.slot == Slot.NIGHT &&
+            version.classification == Classification.GOAL
+
     private fun slotsAskedIn(slot: Slot, checkInDay: LocalDate): Set<Slot> = when {
         slot == Slot.NIGHT && checkInDay.dayOfWeek == DayOfWeek.SUNDAY -> setOf(Slot.NIGHT, Slot.WEEKLY)
         else -> setOf(slot)

@@ -93,6 +93,7 @@ class MainActivity : ComponentActivity() {
                                 onSelectOne = checkInViewModel::selectOne,
                                 onToggle = checkInViewModel::toggleSelection,
                                 onNote = checkInViewModel::setNote,
+                                onDefer = checkInViewModel::toggleDeferred,
                                 onSubmit = checkInViewModel::submit,
                                 onBack = { screen = Screen.Home },
                                 modifier = Modifier.padding(padding),

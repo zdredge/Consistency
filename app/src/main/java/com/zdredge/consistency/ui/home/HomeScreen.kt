@@ -28,7 +28,8 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
  *
  * The outstanding check-ins are listed here rather than blocking the way in. Spec §5.1 is explicit
  * that the banner must be persistent and *not* modal: trapping the user on open is what teaches them
- * not to open it. Its proper banner form arrives in Phase 5 alongside backfill.
+ * not to open it. Backfilling is reached from here in one tap, and a check-in that will record as
+ * a backfill says so before it is opened — the metric is not for sale, so the user should know.
  */
 @Composable
 fun HomeScreen(
@@ -52,13 +53,17 @@ fun HomeScreen(
         }
 
         if (state.outstanding.isEmpty()) {
-            Text(
-                "Nothing outstanding.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            Text("Nothing outstanding.", style = MaterialTheme.typography.bodyMedium)
         } else {
+            // Persistent, not modal, and it does not block anything below it (spec §5.1). Trapping
+            // the user on open is what teaches them not to open it, so this states plainly what is
+            // unanswered and then gets out of the way.
             Text(
-                "Outstanding check-ins",
+                if (state.outstanding.size == 1) {
+                    "1 check-in unanswered"
+                } else {
+                    "${state.outstanding.size} check-ins unanswered"
+                },
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(top = 8.dp),
             )
