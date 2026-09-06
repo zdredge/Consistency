@@ -51,6 +51,23 @@ class DayResolver(private val clock: Clock) {
      */
     fun endOfDayExclusive(day: LocalDate): Instant = startOfDay(day.plusDays(1))
 
+    /**
+     * The instant at which [time] occurs **within** [day], respecting the 04:00 boundary.
+     *
+     * A wall-clock time at or after 04:00 falls on the same calendar date; anything earlier belongs
+     * to the *next* calendar date, because that is when it next occurs inside this day. A night
+     * check-in set to 01:00 on Tuesday happens in the small hours of Wednesday morning — and a
+     * scheduler that naively used `day.atTime(time)` would fire it a full day early.
+     *
+     * This lives here rather than in the caller for the reason the whole class exists: the boundary
+     * is the kind of rule that gets reimplemented slightly differently in four places
+     * (architecture §5).
+     */
+    fun instantAt(day: LocalDate, time: LocalTime): Instant {
+        val date = if (time < DAY_START) day.plusDays(1) else day
+        return date.atTime(time).atZone(clock.zone).toInstant()
+    }
+
     /** The Monday of the week containing [day]. A Monday resolves to itself. */
     fun weekStart(day: LocalDate): LocalDate =
         day.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
