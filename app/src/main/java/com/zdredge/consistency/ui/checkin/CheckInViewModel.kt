@@ -47,9 +47,14 @@ data class AnswerDraft(
      * Whether the user actually answered.
      *
      * A blank draft is **silence**, and silence is never stored: an empty answer must never satisfy
-     * a must-not-include goal (spec constraint 11, scoring-cases 1.13). Note that an *answered*
-     * multi-select with nothing selected is a different thing entirely and is not expressible here —
-     * it needs the select UI to say so, which is why it stays a Phase 5 concern along with "not yet".
+     * a must-not-include goal (spec constraint 11, scoring-cases 1.13).
+     *
+     * **Known gap, carried out of M4.** An *answered* multi-select with nothing selected — "I did
+     * none of these before bed" — is a different thing from silence and scores differently: it meets
+     * a must-not-include goal, where silence is excluded. Storage already distinguishes them
+     * (`AnswerDaoTest.anAnsweredMultiSelectWithNothingSelectedIsNotTheSameAsNoAnswer`), but the
+     * screen offers no way to say it, so today that answer is unreachable. It needs a "none of
+     * these" affordance, which is a product decision rather than a missing line of code.
      */
     val isAnswered: Boolean
         get() = valueBool != null || valueNumber != null || valueTime != null ||

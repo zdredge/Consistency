@@ -205,7 +205,8 @@ builds its own database (`createConsistencyDatabase`) so Room stays inside that 
 user's history when a migration is missing. For an app whose entire value is an undeniable record, a
 crash is the better failure.
 
-**Exported schemas are committed** under `data/schemas/`, and v1's identity hash is pinned by a test.
+**Exported schemas are committed** under `data/schemas/`, and every version's identity hash is pinned
+by a test.
 Room refuses to open a database whose stored hash differs from the compiled one, so the dangerous
 change is a schema edited *without the version being bumped*: everything regenerates together, every
 test stays green, and the failure lands on a real phone holding real history. M3 verified that by
@@ -392,7 +393,14 @@ Column lists below are the fields that carry meaning; routine bookkeeping column
 table also carries `user_id`, unused in v1 (spec constraint 15).
 
 **`items`** — stable identity only. Nothing mutable lives here.
-`id` · `kind` (ASKED / MEASURED) · `created_at` · `retired_at`
+`id` · `kind` (ASKED / MEASURED) · `ordinal` · `created_at` · `retired_at`
+
+`ordinal` was **added in M4 as schema v2**, the first real migration. Nothing in the spec said what
+order questions are asked in, and with no ordinal the only stable order was by id — which put "got
+out of bed at" before "woke at" in the morning check-in. Order belongs in data rather than in a rule
+inferred from the item, so a question created later gets a position without a code change;
+`select_options` had worked this way since v1 and items not doing so was an omission. The migration
+is an `ALTER TABLE ... ADD COLUMN ... DEFAULT 0`, so an existing install keeps every item.
 
 **`item_versions`** — the mutable definition. Answers reference a *version*, so rewording a question
 never retroactively changes what an old answer meant (spec constraint 6).

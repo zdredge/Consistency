@@ -14,7 +14,7 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0, M1, M2 and M3 are complete; M4 (the check-in loop) is next.** Do not begin a later milestone than the
+**M0 through M4 are complete; M5 (the rollover job) is next.** Do not begin a later milestone than the
 one in progress. Two ordering facts behind it: `:domain` can be proven correct
 without a device, and the dashboard cannot be evaluated without substantial seeded history, so scoring
 belongs early and the dashboard late. The dashboard is also gated on the seed-data fixture (spec O7;
@@ -69,6 +69,15 @@ likely to be broken by well-intentioned code:
 - **Enums persist by name, never by ordinal, and dates as ISO-8601 text.** An ordinal means
   reordering `Direction` silently re-labels every historical row. ISO-8601 makes a `day_date` range
   query sort chronologically as text, with no conversion in the WHERE clause. Architecture §5.
+- **A check-in's window is its own day**, ending at 04:00. `IN_WINDOW` until then, `BACKFILLED`
+  through the end of the next day, `LATE` after. Spec §2's "repeat twice, then mark missed" is the
+  notification sequence stopping, not the window shutting. Capture is measured against the **check-in
+  being answered**, never the day the answer is dated to — a sleep item answered this morning is
+  dated yesterday but is in its own proper window, and confusing the two makes every morning check-in
+  read as a backfill. Spec §3.2, `CaptureResolver`.
+- **A check-in that would ask nothing is never expected.** No row, so it cannot be missed. Covers
+  install day (the morning check-in covers yesterday, when no item existed) and a fully retired
+  library. Found in M4 by installing the app and looking at it.
 - **Moving a target to weekly forgives clustering, which is right for a lower bound and wrong for an
   upper bound.** Worked out ≥ 3/week is correct; coffee ≤ 14/week alone is not, because five in one
   day passes it. An upper bound needs the daily target too. Found in M3; spec §4.
@@ -132,6 +141,10 @@ module. This is what makes the whole rulebook testable without an emulator, whic
   `.\gradlew.bat :data:connectedDebugAndroidTest` — **the Pixel must be connected** (`adb devices`).
   The exception is the schema version pin, which needs no SQLite and so runs as a JVM test under
   `.\gradlew.bat :data:testDebugUnitTest`.
+- **`:app` has no tests, deliberately.** Every decision that could be *wrong* rather than merely
+  ugly lives in `:domain`; what is left in a ViewModel is assembly and what is left in a composable
+  is layout. If you find yourself wanting to test a ViewModel, that is the signal a rule has leaked
+  upward — move it down rather than extracting a repository interface to fake.
 - **Before trusting a test that guards something important, make it fail.** M3 produced two tests
   that could not: one asserted a drift the build makes impossible, and one read a stale packaged
   asset. Both looked green and guarded nothing. Mutating the code under a new guard costs one run.
