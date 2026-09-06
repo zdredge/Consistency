@@ -2,18 +2,19 @@ package com.zdredge.consistency.ui.checkin
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -36,7 +37,6 @@ import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Slot
-import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -44,19 +44,24 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
- * The check-in.
+ * The check-in: **one question per screen**.
  *
- * **Tap-first, keyboard only for the optional note** (spec §5.6). Every primary input here is a tap:
- * numbers use a stepper rather than a text field, the 1–5 scale is five buttons, times use the
- * picker. A check-in that needs the keyboard is a check-in that takes longer than sixty seconds, and
- * notification fatigue is the primary abandonment risk (spec §1).
+ * M4 presented all nine as a scrolling list of cards. It worked and it felt wrong — an always-open
+ * note field roughly doubled every card, nothing showed what had been answered, and Done was
+ * reachable only after scrolling past everything. One question at a time gives each the whole
+ * screen, and the segmented bar carries the sense of progress the list never had.
  *
- * One scrollable list rather than one question per page: eight items paged is eight taps of
- * navigation on top of the answers themselves.
+ * **Next works with no answer selected**, deliberately. Skipping has to be possible because silence
+ * is a real state that scores differently from an answer (spec constraint 11) — a flow that trapped
+ * you until you answered would force a value where the truth is that you have none.
  *
- * There are no tests for this file, by design (build-order). Everything that could be *wrong* rather
- * than merely ugly lives in `:domain` and is tested there; what is left here is layout, and layout
- * is checked by looking at it.
+ * Advancement is manual. Auto-advance was considered and deferred: while the number input is still a
+ * stepper there is no moment where "the user has answered" is unambiguous, so a screen that advanced
+ * itself would be least predictable exactly where it needed to be trusted. Phase 4's chips are what
+ * make it viable later.
+ *
+ * There are no tests for this file, by design (`CLAUDE.md`). Everything that could be *wrong* rather
+ * than merely ugly lives in `:domain`; what is left here is layout, and layout is checked by looking.
  */
 @Composable
 fun CheckInScreen(
@@ -69,85 +74,106 @@ fun CheckInScreen(
     onToggle: (QuestionUi, OptionId) -> Unit,
     onNote: (QuestionUi, String) -> Unit,
     onDefer: (QuestionUi) -> Unit,
-    onSubmit: () -> Unit,
+    onNext: () -> Unit,
     onBack: () -> Unit,
+    onFinish: () -> Unit,
+    onLeave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (state.loading) {
+    val question = state.current
+    if (state.loading || question == null) {
         Column(modifier.fillMaxSize(), Arrangement.Center, Alignment.CenterHorizontally) {
-            CircularProgressIndicator()
+            if (state.loading) CircularProgressIndicator()
         }
         return
     }
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    Column(
+        modifier = modifier.fillMaxSize().padding(horizontal = 20.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        item { CheckInHeader(state) }
+        SegmentedProgress(
+            total = state.questions.size,
+            current = state.index,
+            answered = state.answeredIndices,
+        )
 
-        items(state.questions, key = { it.entry.item.id.value }) { question ->
-            QuestionCard(
-                question = question,
-                onBool = onBool,
-                onNumber = onNumber,
-                onTime = onTime,
-                onScale = onScale,
-                onSelectOne = onSelectOne,
-                onToggle = onToggle,
-                onNote = onNote,
-                onDefer = onDefer,
-            )
-        }
+        CheckInHeader(state, onLeave)
 
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                OutlinedButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Back") }
-                Button(onClick = onSubmit, modifier = Modifier.weight(2f)) { Text("Done") }
-            }
+        QuestionCard(
+            question = question,
+            modifier = Modifier.weight(1f),
+            onBool = onBool,
+            onNumber = onNumber,
+            onTime = onTime,
+            onScale = onScale,
+            onSelectOne = onSelectOne,
+            onToggle = onToggle,
+            onNote = onNote,
+            onDefer = onDefer,
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            OutlinedButton(
+                onClick = onBack,
+                enabled = !state.isFirst,
+                modifier = Modifier.weight(1f),
+            ) { Text("Back") }
+
+            Button(
+                onClick = if (state.isLast) onFinish else onNext,
+                modifier = Modifier.weight(2f),
+            ) { Text(if (state.isLast) "Done" else "Next") }
         }
     }
 }
 
 /**
- * States which day is being answered, always.
+ * Persistent across every question, because it describes the whole session rather than any one of
+ * them.
  *
- * The morning check-in writes to *yesterday* (spec §3.1), and a user who does not realise that will
- * answer the wrong day's questions without ever noticing. Spec §5.6 requires the date be
- * unmistakable, so it is the largest thing on the screen rather than a subtitle.
+ * The date is the largest thing on the screen. A morning check-in writes to *yesterday* (spec §3.1),
+ * and a user who does not notice will answer the wrong day's questions without ever finding out — so
+ * spec §5.6 requires it be unmistakable, not a subtitle.
  */
 @Composable
-private fun CheckInHeader(state: CheckInUiState) {
+private fun CheckInHeader(state: CheckInUiState, onLeave: () -> Unit) {
     val answersDay = state.answersDay ?: return
-    val writesToAnEarlierDay = state.checkInDay != answersDay
 
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(
-            when (state.slot) {
-                Slot.MORNING -> "Morning check-in"
-                Slot.NIGHT -> "Night check-in"
-                else -> "Check-in"
-            },
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(answersDay.format(dayFormat), style = MaterialTheme.typography.headlineSmall)
-        if (writesToAnEarlierDay) {
+    Row(verticalAlignment = Alignment.Top) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
             Text(
-                "You're answering for last night, not today.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
+                when (state.slot) {
+                    Slot.MORNING -> "Morning check-in"
+                    Slot.NIGHT -> "Night check-in"
+                    else -> "Check-in"
+                },
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(answersDay.format(dayFormat), style = MaterialTheme.typography.headlineMedium)
+            if (state.checkInDay != answersDay) {
+                Text(
+                    "You're answering for last night, not today.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
+
+        // Leaving is always available and never confirmed. Answers are already written, and a flow
+        // that holds the user hostage is the one they stop opening (spec §5.1).
+        TextButton(onClick = onLeave) { Text("Close") }
     }
 }
 
 @Composable
 private fun QuestionCard(
     question: QuestionUi,
+    modifier: Modifier,
     onBool: (QuestionUi, Boolean?) -> Unit,
     onNumber: (QuestionUi, Double?) -> Unit,
     onTime: (QuestionUi, LocalTime?) -> Unit,
@@ -157,10 +183,21 @@ private fun QuestionCard(
     onNote: (QuestionUi, String) -> Unit,
     onDefer: (QuestionUi) -> Unit,
 ) {
-    Card(Modifier.fillMaxWidth()) {
+    Card(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+            // Explicit, because a surfaceVariant container defaults its content to onSurfaceVariant
+            // -- the muted grey meant for labels. That left the question prompt, the one thing the
+            // card exists to show, quieter than the note button under it.
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    ) {
         Column(
-            Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
         ) {
             question.entry.carriedOverFrom?.let { deferredFrom ->
                 // The promise "not yet" made was that this comes back, labelled as belonging to the
@@ -172,7 +209,14 @@ private fun QuestionCard(
                 )
             }
 
-            Text(question.prompt, style = MaterialTheme.typography.titleSmall)
+            // The prompt and its answer sit as one group a little above centre, rather than pinned
+            // to the top with a void beneath. Optical centre is higher than true centre, hence the
+            // heavier weight below than above.
+            Spacer(Modifier.weight(1f))
+
+            Text(question.prompt, style = MaterialTheme.typography.headlineSmall)
+
+            Spacer(Modifier.height(20.dp))
 
             when {
                 question.readOnly -> ReadOnlyValue(question)
@@ -186,25 +230,20 @@ private fun QuestionCard(
                     SelectInput(question, singleChoice = false, onSelectOne, onToggle)
             }
 
+            Spacer(Modifier.weight(1.3f))
+
+            if (!question.readOnly) {
+                NoteField(question, onNote)
+            }
+
             if (question.entry.canDefer) {
-                // "Not yet" exists for a specific failure the user named: a check-in arriving while
-                // the items are still actionable, followed by never going back (spec §3.2). It is a
-                // real answer, not a skip -- the check-in still counts as answered, and the deferral
-                // becomes a missed goal only if it is never resolved (A2.1, A2.2).
+                // Below the answers and quieter than them: "not yet" is a deferral, not a value. It
+                // is still a real answer — the check-in counts as completed, and the deferral becomes
+                // a missed goal only if it is never resolved (A2.1, A2.2).
                 FilterChip(
                     selected = question.draft.deferred,
                     onClick = { onDefer(question) },
                     label = { Text("Not yet") },
-                )
-            }
-
-            if (!question.readOnly) {
-                OutlinedTextField(
-                    value = question.draft.note,
-                    onValueChange = { onNote(question, it) },
-                    label = { Text("Note (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
@@ -212,21 +251,46 @@ private fun QuestionCard(
 }
 
 /**
+ * The note: collapsed until asked for.
+ *
+ * It was an always-open text field on every card in M4, roughly doubling each one for something
+ * optional and rarely used. It is also the only thing in a check-in that needs the keyboard, and the
+ * keyboard is what turns a sixty-second session into a longer one (spec §5.6).
+ */
+@Composable
+private fun NoteField(question: QuestionUi, onNote: (QuestionUi, String) -> Unit) {
+    var expanded by remember(question.entry.item.id) {
+        mutableStateOf(question.draft.note.isNotBlank())
+    }
+
+    if (expanded) {
+        OutlinedTextField(
+            value = question.draft.note,
+            onValueChange = { onNote(question, it) },
+            label = { Text("Note") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+    } else {
+        TextButton(onClick = { expanded = true }) { Text("Add note") }
+    }
+}
+
+/**
  * Measured items are shown, never asked (spec §3.3). Steps has no value until Health Connect arrives
- * in M7, and saying so plainly is better than hiding the row and having it appear later unexplained.
+ * in M7, and saying so plainly beats hiding the row and having it appear later unexplained.
  */
 @Composable
 private fun ReadOnlyValue(question: QuestionUi) {
     Text(
         question.draft.valueNumber?.let { "%,.0f".format(it) } ?: "Not available yet",
-        style = MaterialTheme.typography.bodyLarge,
+        style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
 }
 
 @Composable
 private fun BoolInput(question: QuestionUi, onBool: (QuestionUi, Boolean?) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         // Tapping the selected answer again clears it, so a mis-tap is one tap to undo rather than
         // an answer the user cannot take back.
         FilterChip(
@@ -242,7 +306,7 @@ private fun BoolInput(question: QuestionUi, onBool: (QuestionUi, Boolean?) -> Un
     }
 }
 
-/** A stepper, not a text field: the keyboard is reserved for the note (spec §5.6). */
+/** Still a stepper at Phase 3 — chips replace it in Phase 4, along with the zero-versus-blank fix. */
 @Composable
 private fun NumberInput(question: QuestionUi, onNumber: (QuestionUi, Double?) -> Unit) {
     val value = question.draft.valueNumber ?: 0.0
@@ -255,16 +319,16 @@ private fun NumberInput(question: QuestionUi, onNumber: (QuestionUi, Double?) ->
 
         Text(
             text = "%,.0f".format(value),
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineMedium,
             textAlign = TextAlign.Center,
-            modifier = Modifier.width(72.dp),
+            modifier = Modifier.width(80.dp),
         )
 
         OutlinedButton(onClick = { onNumber(question, value + 1) }) { Text("+") }
 
         question.unitLabel?.let {
             Spacer(Modifier.width(12.dp))
-            Text(it, style = MaterialTheme.typography.bodyMedium)
+            Text(it, style = MaterialTheme.typography.bodyLarge)
         }
     }
 }
@@ -306,7 +370,7 @@ private fun TimeInput(question: QuestionUi, onTime: (QuestionUi, LocalTime?) -> 
 
 @Composable
 private fun ScaleInput(question: QuestionUi, onScale: (QuestionUi, Int?) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         for (n in 1..5) {
             FilterChip(
                 selected = question.draft.valueScale == n,
@@ -331,9 +395,9 @@ private fun SelectInput(
     onSelectOne: (QuestionUi, OptionId) -> Unit,
     onToggle: (QuestionUi, OptionId) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         question.options.chunked(2).forEach { row ->
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 row.forEach { option ->
                     FilterChip(
                         selected = option.id in question.draft.selections,
