@@ -41,6 +41,15 @@ class DayResolver(private val clock: Clock) {
     /** The day "now" belongs to, per the injected clock. */
     fun today(): LocalDate = dayFor(clock.instant())
 
+    /**
+     * The current instant, per the injected clock.
+     *
+     * Exposed so callers that need a timestamp -- an answer's `submitted_at`, a check-in's
+     * `answered_at` -- take it from the same clock everything else dates through, rather than
+     * reaching for `Instant.now()` and quietly escaping the test clock.
+     */
+    fun now(): Instant = clock.instant()
+
     /** The instant [day] begins — 04:00 local. */
     fun startOfDay(day: LocalDate): Instant =
         day.atTime(DAY_START).atZone(clock.zone).toInstant()
