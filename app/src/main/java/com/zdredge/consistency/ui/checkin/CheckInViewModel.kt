@@ -42,23 +42,30 @@ data class AnswerDraft(
      * the value, because "3 meals, but not yet" is not a thing the record can mean.
      */
     val deferred: Boolean = false,
+    /**
+     * The user answered a multi-select with **nothing selected** — "I did none of these before bed".
+     *
+     * This is a different thing from silence and scores differently: an answered-but-empty
+     * multi-select *meets* a must-not-include goal, where silence is excluded (spec constraint 11,
+     * scoring-cases 1.13). Storage has always distinguished them — an empty answer row versus no row
+     * — but until now the screen had no way to say it, so that answer was unreachable. Known gap
+     * carried out of M4, closed here.
+     */
+    val noneSelected: Boolean = false,
 ) {
     /**
      * Whether the user actually answered.
      *
      * A blank draft is **silence**, and silence is never stored: an empty answer must never satisfy
-     * a must-not-include goal (spec constraint 11, scoring-cases 1.13).
-     *
-     * **Known gap, carried out of M4.** An *answered* multi-select with nothing selected — "I did
-     * none of these before bed" — is a different thing from silence and scores differently: it meets
-     * a must-not-include goal, where silence is excluded. Storage already distinguishes them
-     * (`AnswerDaoTest.anAnsweredMultiSelectWithNothingSelectedIsNotTheSameAsNoAnswer`), but the
-     * screen offers no way to say it, so today that answer is unreachable. It needs a "none of
-     * these" affordance, which is a product decision rather than a missing line of code.
+     * a must-not-include goal (spec constraint 11, scoring-cases 1.13). [noneSelected] is the
+     * deliberate exception — an answer whose content is "nothing", which is not the same as no answer.
      */
     val isAnswered: Boolean
         get() = valueBool != null || valueNumber != null || valueTime != null ||
-            valueScale != null || selections.isNotEmpty()
+            valueScale != null || selections.isNotEmpty() || noneSelected
+
+    /** Whether there is anything worth writing at all. */
+    val hasContent: Boolean get() = isAnswered || deferred
 }
 
 /** One question as the screen needs it: what to ask, how to ask it, and what has been entered. */
@@ -66,6 +73,13 @@ data class QuestionUi(
     val entry: CheckInEntry,
     val options: List<SelectOption> = emptyList(),
     val draft: AnswerDraft = AnswerDraft(),
+    /**
+     * Changed since it was last written. Only dirty questions are committed when the user leaves
+     * them, so walking back and forth through a set does not rewrite unchanged answers — which
+     * would keep bumping `submitted_at` and make the record say the answer was given later than it
+     * was.
+     */
+    val dirty: Boolean = false,
 ) {
     val prompt: String get() = entry.version.prompt
     val answerType: AnswerType get() = entry.version.answerType
@@ -84,16 +98,38 @@ data class CheckInUiState(
      */
     val answersDay: LocalDate? = null,
     val questions: List<QuestionUi> = emptyList(),
-    val submitted: Boolean = false,
-)
+    /** Which question is on screen. One question at a time (M4.5). */
+    val index: Int = 0,
+    /**
+     * The screen is done with and the caller should navigate away. Set by both [CheckInViewModel.finish]
+     * and [CheckInViewModel.close], because **either way the question on screen must be committed
+     * first** — leaving through Close used to drop it, so an answer given and then closed was simply
+     * lost. Found by reading the database rather than by looking at the screen.
+     */
+    val exit: Boolean = false,
+) {
+    val current: QuestionUi? get() = questions.getOrNull(index)
+    val isFirst: Boolean get() = index == 0
+    val isLast: Boolean get() = index >= questions.lastIndex
+
+    /** For the progress bar: which questions have something recorded against them. */
+    val answeredIndices: Set<Int>
+        get() = questions.indices.filter { questions[it].draft.hasContent }.toSet()
+}
 
 /**
  * The check-in screen's state holder.
  *
  * It is deliberately thin. Every decision that could be *wrong* rather than merely ugly — which day
  * an answer belongs to, which capture state it earns, which questions are asked at all — lives in
- * `:domain` and is tested there without a device. What is left here is assembly, which is why the
- * screen above it can be verified by hand.
+ * `:domain` and is tested there without a device. What is left here is assembly and position, which
+ * is why the screen above it can be verified by hand.
+ *
+ * **Answers are written as the user leaves each question**, not all at once at the end. The app is
+ * barely running most of the time (architecture §1.1), so an answer that only exists in memory is an
+ * answer one process death away from never having happened. The cost is that a half-finished
+ * check-in leaves real rows behind — which is correct, and why finishing is what marks the check-in
+ * answered rather than answering anything does.
  */
 class CheckInViewModel(
     private val repository: ConsistencyRepository,
@@ -105,7 +141,23 @@ class CheckInViewModel(
     private val _state = MutableStateFlow(CheckInUiState())
     val state: StateFlow<CheckInUiState> = _state.asStateFlow()
 
+    /**
+     * Loads a check-in, or does nothing if it is already loaded.
+     *
+     * The guard matters: the screen calls this from a `LaunchedEffect`, which re-runs when the
+     * composition restarts. Reloading would reset the position to the first question, so a rotation
+     * mid-check-in would silently send the user back to the start.
+     */
     fun load(day: LocalDate, slot: Slot) {
+        val current = _state.value
+        // Reload after an exit: the flag has to clear, or reopening the same check-in would navigate
+        // straight back out again.
+        if (!current.loading && !current.exit &&
+            current.checkInDay == day && current.slot == slot
+        ) {
+            return
+        }
+
         viewModelScope.launch {
             val entries = repository.checkInQuestions(day, slot)
             val questions = entries.map { entry ->
@@ -131,9 +183,8 @@ class CheckInViewModel(
     }
 
     /**
-     * Pre-fills from an answer already given, so opening a check-in a second time — to correct
-     * something, or to finish it — shows what is there rather than a blank form. History is editable
-     * and edits are never silent (spec §3.2).
+     * Pre-fills from an answer already given, so returning to a check-in — to correct something, or
+     * to finish it — shows what is there rather than a blank form.
      */
     private suspend fun existingDraft(
         entry: CheckInEntry,
@@ -152,8 +203,88 @@ class CheckInViewModel(
             // Reopening a check-in that was deferred must show it as deferred, not as blank.
             // Blank would read as "never answered" and quietly drop the deferral on re-submit.
             deferred = existing.capture == Capture.PENDING,
+            // A stored multi-select row with no selections is the "none of these" answer. Reloading
+            // it as a blank draft would turn a real answer back into silence on the next commit.
+            noneSelected = entry.version.answerType == AnswerType.MULTI_SELECT &&
+                existing.selections.isEmpty() &&
+                existing.capture != Capture.PENDING,
         )
     }
+
+    // ---- Navigation --------------------------------------------------------------------------
+
+    /** Advances, committing whatever is on screen. Works with no answer given — skipping is real. */
+    fun next() = moveTo(_state.value.index + 1)
+
+    fun back() = moveTo(_state.value.index - 1)
+
+    /** Jumps straight to a question. Used by the summary in Phase 5. */
+    fun goTo(index: Int) = moveTo(index)
+
+    /**
+     * Ends the set: commits the last question and **marks the check-in answered**.
+     *
+     * This is the only thing that marks it, and it is the single most consequential action in the
+     * app — response rate, the primary metric, counts check-ins in this state. Answering questions
+     * does not do it; reaching the end does.
+     */
+    fun finish() {
+        val current = _state.value
+        val day = current.checkInDay ?: return
+        val slot = current.slot ?: return
+
+        viewModelScope.launch {
+            commitCurrent()
+            repository.markCheckInAnswered(day, slot, dayResolver.now())
+            _state.update { it.copy(exit = true) }
+        }
+    }
+
+    /**
+     * Leaves without finishing: commits the question on screen, and does **not** mark the check-in
+     * answered.
+     *
+     * Closing is always allowed and never confirmed — a flow that holds the user hostage is the one
+     * they stop opening (spec §5.1). What they gave is kept; the check-in stays honestly outstanding.
+     */
+    fun close() {
+        viewModelScope.launch {
+            commitCurrent()
+            _state.update { it.copy(exit = true) }
+        }
+    }
+
+    private fun moveTo(target: Int) {
+        val current = _state.value
+        val bounded = target.coerceIn(0, current.questions.lastIndex.coerceAtLeast(0))
+        if (bounded == current.index && !current.questions[current.index].dirty) return
+
+        viewModelScope.launch {
+            commitCurrent()
+            _state.update { it.copy(index = bounded) }
+        }
+    }
+
+    /** Writes the question on screen, if it has anything to say and has changed since it was last written. */
+    private suspend fun commitCurrent() {
+        val current = _state.value
+        val question = current.current ?: return
+        val day = current.checkInDay ?: return
+        val slot = current.slot ?: return
+
+        if (question.readOnly || !question.dirty || !question.draft.hasContent) return
+
+        repository.recordAnswer(question.toAnswer(day, slot), day, slot)
+        _state.update { state ->
+            state.copy(
+                questions = state.questions.map {
+                    if (it.entry.item.id == question.entry.item.id) it.copy(dirty = false) else it
+                },
+            )
+        }
+    }
+
+    // ---- Answering ---------------------------------------------------------------------------
 
     fun setBool(item: QuestionUi, value: Boolean?) = answered(item) { it.copy(valueBool = value) }
 
@@ -168,7 +299,7 @@ class CheckInViewModel(
      *
      * Tapping it again cancels the deferral. Setting any value cancels it too, which is why every
      * other setter goes through [answered]: a draft that is both deferred and answered would have to
-     * be resolved arbitrarily at submit time, and arbitrary is how a silent wrong answer gets in.
+     * be resolved arbitrarily at commit time, and arbitrary is how a silent wrong answer gets in.
      */
     fun toggleDeferred(item: QuestionUi) = update(item) {
         if (it.deferred) it.copy(deferred = false) else AnswerDraft(note = it.note, deferred = true)
@@ -178,42 +309,29 @@ class CheckInViewModel(
 
     /** Single-select replaces; tapping the chosen option again clears it. */
     fun selectOne(item: QuestionUi, option: OptionId) = answered(item) {
-        it.copy(selections = if (option in it.selections) emptySet() else setOf(option))
+        it.copy(
+            selections = if (option in it.selections) emptySet() else setOf(option),
+            noneSelected = false,
+        )
     }
 
     /** Multi-select toggles. Nothing here knows or cares which option is "no opportunity". */
     fun toggleSelection(item: QuestionUi, option: OptionId) = answered(item) {
         it.copy(
             selections = if (option in it.selections) it.selections - option else it.selections + option,
+            noneSelected = false,
         )
     }
 
     /**
-     * Stores every answered question and marks the check-in answered.
+     * "None of these" — an answered multi-select with nothing selected.
      *
-     * **Unanswered questions are not stored.** Silence must stay silence — writing an empty row
-     * would let an absence satisfy a must-not-include goal, which spec constraint 11 calls the single
-     * most likely place for the scoring to be implemented wrong.
-     *
-     * The check-in is marked answered regardless of how much was filled in, and that is the product
-     * working as designed rather than a loophole: response rate measures **showing up**, goal
-     * completion measures doing. A sparse check-in scores well on the first and badly on the second,
-     * which is exactly the split spec §1 is built around.
+     * Tapping it again clears back to silence, because "I answered nothing" and "I did not answer"
+     * are both states the user is entitled to, and only one of them meets a must-not-include goal.
      */
-    fun submit() {
-        val current = _state.value
-        val day = current.checkInDay ?: return
-        val slot = current.slot ?: return
-
-        viewModelScope.launch {
-            for (question in current.questions) {
-                if (question.readOnly) continue
-                if (!question.draft.isAnswered && !question.draft.deferred) continue
-                repository.recordAnswer(question.toAnswer(day, slot), day, slot)
-            }
-            repository.markCheckInAnswered(day, slot, dayResolver.now())
-            _state.update { it.copy(submitted = true) }
-        }
+    fun selectNone(item: QuestionUi) = update(item) {
+        if (it.noneSelected) it.copy(noneSelected = false)
+        else it.copy(selections = emptySet(), noneSelected = true, deferred = false)
     }
 
     private fun QuestionUi.toAnswer(day: LocalDate, slot: Slot): Answer {
@@ -244,7 +362,11 @@ class CheckInViewModel(
         _state.update { state ->
             state.copy(
                 questions = state.questions.map {
-                    if (it.entry.item.id == item.entry.item.id) it.copy(draft = change(it.draft)) else it
+                    if (it.entry.item.id == item.entry.item.id) {
+                        it.copy(draft = change(it.draft), dirty = true)
+                    } else {
+                        it
+                    }
                 },
             )
         }

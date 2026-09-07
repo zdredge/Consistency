@@ -271,22 +271,29 @@ class ConsistencyRepository(
      * identity across the edit so nothing referencing it dangles.
      */
     /**
-     * Records an answer given in the check-in held on [checkInDay] in [slot], and marks that
-     * check-in answered.
+     * Records an answer given in the check-in held on [checkInDay] in [slot].
      *
-     * This is the check-in loop's entry point, and it takes the check-in by day and slot rather than
-     * by id because the domain `CheckIn` deliberately carries no id — a check-in is identified by
-     * *when it was expected*, which is also what makes it unique in the schema.
+     * It takes the check-in by day and slot rather than by id because the domain `CheckIn`
+     * deliberately carries no id — a check-in is identified by *when it was expected*, which is also
+     * what makes it unique in the schema.
      *
-     * The check-in is marked answered even when the answer is a deferral. That is spec §3.2 and
-     * scoring-case A2.2: "not yet" is an act of completing the check-in, and an unresolved deferral
-     * costs the *goal*, never the response rate. Marking it here rather than leaving it to the caller
-     * is what stops that pair coming apart.
+     * **It deliberately does not mark the check-in answered** — [markCheckInAnswered] does, and only
+     * when the user finishes the set.
+     *
+     * M4 paired the two here, on the reasoning that leaving the second to the caller is how a
+     * completed check-in ends up counting as missed. That was right while a single Done wrote every
+     * answer at once. M4.5 writes each answer as the user leaves its question, which makes the
+     * pairing wrong twice over: the *first* answer would mark the check-in answered, so the Done
+     * button would be decorative — and the primary metric would be satisfied by opening a check-in
+     * and tapping one chip. Response rate measures showing up, and showing up has to mean reaching
+     * the end.
+     *
+     * The consequence is deliberate: abandoning a check-in halfway keeps every answer given and
+     * leaves the check-in honestly outstanding.
      */
     suspend fun recordAnswer(answer: Answer, checkInDay: LocalDate, slot: Slot) {
         val checkIn = db.checkInDao().onDayInSlot(checkInDay.toString(), slot.name)
         recordAnswer(answer, checkIn?.id)
-        markCheckInAnswered(checkInDay, slot, dayResolver.now())
     }
 
     suspend fun recordAnswer(answer: Answer, viaCheckInId: String? = null) {

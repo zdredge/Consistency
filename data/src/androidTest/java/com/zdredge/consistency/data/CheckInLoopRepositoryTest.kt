@@ -186,34 +186,83 @@ class CheckInLoopRepositoryTest {
     }
 
     /**
-     * Answering must move two things together: the answer is stored, and the check-in it was given
-     * in is marked answered. Leaving the second to the caller is how a completed check-in ends up
-     * counting as missed.
+     * **Answers are written as they are given; only finishing marks the check-in answered.**
+     *
+     * M4 paired the two, on the reasoning that leaving the second to the caller is how a completed
+     * check-in ends up counting as missed. M4.5 writes each answer as the user leaves its question,
+     * which makes the pairing wrong: the first answer would mark the check-in answered, and the
+     * primary metric would be satisfied by opening a check-in and tapping one chip. Response rate
+     * measures showing up, and showing up has to mean reaching the end.
      */
     @Test
-    fun recordingAnAnswerAlsoMarksItsCheckInAnswered() = runBlocking {
+    fun recordingAnAnswerStoresItWithoutMarkingTheCheckInAnswered() = runBlocking {
         val repo = repoAt("2026-09-01T21:30")
         repo.ensureCheckInsExist(installDay)
 
         repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
 
+        assertEquals(3.0, repo.answer(ItemId("meals"), installDay)!!.valueNumber!!, 0.0)
+        assertEquals(
+            "the answer is kept; the check-in is not yet answered",
+            CheckInState.PENDING,
+            repo.checkIns(installDay).single { it.slot == Slot.NIGHT }.state,
+        )
+    }
+
+    /**
+     * Abandoning a check-in halfway keeps every answer given and leaves the check-in honestly
+     * outstanding, so the banner still offers it.
+     */
+    @Test
+    fun anAbandonedCheckInKeepsItsAnswersAndStaysOutstanding() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+
+        assertEquals(3.0, repo.answer(ItemId("meals"), installDay)!!.valueNumber!!, 0.0)
+        assertTrue(
+            "an unfinished check-in is still offered",
+            repo.outstandingCheckIns(installDay).any { it.slot == Slot.NIGHT },
+        )
+    }
+
+    @Test
+    fun finishingTheSetIsWhatMarksTheCheckInAnswered() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+
+        repo.markCheckInAnswered(installDay, Slot.NIGHT, Instant.parse("2026-09-02T01:35:00Z"))
+
         assertEquals(
             CheckInState.ANSWERED,
             repo.checkIns(installDay).single { it.slot == Slot.NIGHT }.state,
         )
-        assertEquals(3.0, repo.answer(ItemId("meals"), installDay)!!.valueNumber!!, 0.0)
+        // Only the night one. That morning's check-in is still legitimately outstanding, which is
+        // why this asserts the slot rather than an empty list.
+        assertTrue(
+            "a finished check-in stops being offered",
+            repo.outstandingCheckIns(installDay).none { it.slot == Slot.NIGHT },
+        )
     }
 
     /**
-     * Scoring-case A2.2: "not yet" is an act of *completing* the check-in. An unresolved deferral
-     * costs the goal, never the response rate.
+     * **Scoring-case A2.2, which survives the M4.5 change untouched.** "Not yet" is an act of
+     * completing the check-in, so a check-in finished with an unresolved deferral in it stays
+     * ANSWERED: the deferral costs the *goal*, never the response rate.
+     *
+     * What moved is only the trigger — finishing the set marks it answered, rather than the deferral
+     * itself doing so. The rule this test exists to protect is unchanged, and dropping it while
+     * rewriting for the new trigger would have been easy and silent.
      */
     @Test
-    fun deferringStillMarksTheCheckInAnswered() = runBlocking {
+    fun aCheckInFinishedWithAnUnresolvedDeferralStaysAnswered() = runBlocking {
         val repo = repoAt("2026-09-01T21:30")
         repo.ensureCheckInsExist(installDay)
 
         repo.recordAnswer(mealsAnswer(Capture.PENDING), installDay, Slot.NIGHT)
+        repo.markCheckInAnswered(installDay, Slot.NIGHT, Instant.parse("2026-09-02T01:35:00Z"))
 
         assertEquals(
             CheckInState.ANSWERED,
@@ -311,6 +360,8 @@ class CheckInLoopRepositoryTest {
             installDay,
             Slot.NIGHT,
         )
+        // Finishing the set is what repairs the check-in, exactly as it is for a same-day one.
+        today.markCheckInAnswered(installDay, Slot.NIGHT, Instant.parse("2026-09-02T23:05:00Z"))
 
         assertEquals(Capture.BACKFILLED, today.answer(ItemId("meals"), installDay)!!.capture)
         assertEquals(

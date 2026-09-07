@@ -3,6 +3,7 @@ package com.zdredge.consistency
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -52,7 +53,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Forced dark, not system-following. The app has one scheme (M4.5), so letting the
+        // system bars follow the device theme would put dark status icons on a dark ground the
+        // moment the phone is in light mode.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
 
         setContent {
             var screen by remember { mutableStateOf<Screen>(Screen.Home) }
@@ -80,8 +87,8 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(current) {
                                 checkInViewModel.load(current.day, current.slot)
                             }
-                            LaunchedEffect(state.submitted) {
-                                if (state.submitted) screen = Screen.Home
+                            LaunchedEffect(state.exit) {
+                                if (state.exit) screen = Screen.Home
                             }
 
                             CheckInScreen(
@@ -94,8 +101,11 @@ class MainActivity : ComponentActivity() {
                                 onToggle = checkInViewModel::toggleSelection,
                                 onNote = checkInViewModel::setNote,
                                 onDefer = checkInViewModel::toggleDeferred,
-                                onSubmit = checkInViewModel::submit,
-                                onBack = { screen = Screen.Home },
+                                onSelectNone = checkInViewModel::selectNone,
+                                onNext = checkInViewModel::next,
+                                onBack = checkInViewModel::back,
+                                onFinish = checkInViewModel::finish,
+                                onLeave = checkInViewModel::close,
                                 modifier = Modifier.padding(padding),
                             )
                         }
