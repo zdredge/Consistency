@@ -156,6 +156,16 @@ than two.
   backfilled answer that was subsequently corrected.
 - Windows do not close permanently. Backfill is allowed **until the end of the next day** and is
   permanently marked as backfilled. **The in-window-only figure must always be recoverable.**
+- **A check-in's window is its own day**, which ends at 04:00 like every other day boundary. Settled
+  in M4, where the three statements above and in §2 had to be reconciled: §2 says notifications
+  "repeat twice at ~20 min, then mark missed", but that describes the *notification sequence*
+  stopping, not the window shutting — otherwise an answer given the next morning could not be
+  "backfilled within grace" as §3.2 and scoring-case 3.2 both require. The practical consequence:
+  answering at 22:00, an hour after a 21:00 prompt and the same evening, is still in-window.
+- **A check-in that would ask nothing is never expected**, so no row is created and it cannot be
+  missed. This covers install day — the morning check-in covers *yesterday*, when no item existed —
+  and a fully retired library. Without it a brand-new user opens the app already counted against by
+  a check-in they could not have answered. Found in M4 by installing the app and looking at it.
 - **Pending ("not yet"):** night goal questions may be answered "not yet". The question reappears in
   the next morning's check-in for a final answer and **still counts as in-window if resolved there.**
   The morning check-in must make it unmistakably clear that the item belongs to the previous day.

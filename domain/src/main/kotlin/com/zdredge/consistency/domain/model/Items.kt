@@ -15,6 +15,16 @@ data class Item(
     val createdOn: LocalDate,
     /** Null while active. A retired item stays visible for the periods it was active in (spec 3.3). */
     val retiredOn: LocalDate? = null,
+    /**
+     * Position within a check-in, low first. Added in M4 (schema v2), because nothing in the spec
+     * said what order questions are asked in and sorting by id gave the morning check-in as
+     * bedtime, got up at, pre-sleep, woke at -- asking when you got up before when you woke.
+     *
+     * It is data rather than a rule inferred from the item, so a question you create later gets a
+     * position and reordering never means editing code. `select_options` already worked this way;
+     * items not doing so was an omission rather than a decision.
+     */
+    val ordinal: Int = 0,
 )
 
 /**

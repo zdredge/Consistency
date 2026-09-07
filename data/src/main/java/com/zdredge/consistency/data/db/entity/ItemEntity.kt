@@ -33,6 +33,14 @@ data class ItemEntity(
     val userId: String,
     @ColumnInfo(name = "kind")
     val kind: ItemKind,
+    /**
+     * Position within a check-in, low first. Added in schema v2 (M4): nothing in the spec said what
+     * order questions are asked in, and ordering by id put "got out of bed at" before "woke at".
+     * Order is data so a user-created item gets a position without a code change -- the same reason
+     * `select_options` has carried an ordinal since v1.
+     */
+    @ColumnInfo(name = "ordinal", defaultValue = "0")
+    val ordinal: Int = 0,
     @ColumnInfo(name = "created_at")
     val createdAt: Instant,
     /** Null while active. A retired item stays visible for the periods it was active in (spec 3.3). */

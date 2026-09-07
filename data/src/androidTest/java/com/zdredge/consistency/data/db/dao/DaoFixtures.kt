@@ -37,7 +37,15 @@ internal object Rows {
         kind: ItemKind = ItemKind.ASKED,
         createdAt: Instant = Instant.EPOCH,
         retiredAt: Instant? = null,
-    ) = ItemEntity(id, LOCAL_USER_ID, kind, createdAt, retiredAt)
+        ordinal: Int = 0,
+    ) = ItemEntity(
+        id = id,
+        userId = LOCAL_USER_ID,
+        kind = kind,
+        ordinal = ordinal,
+        createdAt = createdAt,
+        retiredAt = retiredAt,
+    )
 
     fun version(
         id: String,

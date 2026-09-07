@@ -1,11 +1,18 @@
 package com.zdredge.consistency.data
 
 import com.zdredge.consistency.data.db.ConsistencyDatabase
+import com.zdredge.consistency.data.db.LOCAL_USER_ID
+import com.zdredge.consistency.data.db.entity.CheckInEntity
 import com.zdredge.consistency.data.mapper.originEntities
 import com.zdredge.consistency.data.mapper.selectionEntities
 import com.zdredge.consistency.data.mapper.toDomain
 import com.zdredge.consistency.data.mapper.toEntity
+import com.zdredge.consistency.domain.checkin.CheckInContent
+import com.zdredge.consistency.domain.checkin.CheckInEntry
+import com.zdredge.consistency.domain.checkin.CheckInPlanner
+import com.zdredge.consistency.domain.checkin.CheckInTimes
 import com.zdredge.consistency.domain.model.Answer
+import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.CheckIn
 import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.ContainerSize
@@ -139,6 +146,91 @@ class ConsistencyRepository(
         db.checkInDao().onDay(day.toString()).map { it.toDomain() }
 
     /**
+     * Creates any check-in rows that should exist and do not, up to and including [today].
+     *
+     * Called on app open. Without it a day the user never opened the app on has no row, and a day
+     * with no row is a day that silently never counted — so skipping a week would *improve* response
+     * rate instead of damaging it (architecture §5). Returns how many were created.
+     *
+     * **Generation starts from the day after the last one already covered, or from [today] on a
+     * fresh install.** An install owes no history, and fabricating missed check-ins for days before
+     * the app existed would open the record with a failure that never happened.
+     *
+     * M5 wraps `CheckInPlanner` in the rollover worker for the same purpose. This is the same
+     * function, so the two cannot disagree; what M5 adds is running without the user present.
+     */
+    suspend fun ensureCheckInsExist(
+        today: LocalDate,
+        times: CheckInTimes = CheckInTimes(),
+    ): Int {
+        val from = db.checkInDao().latestDay()?.let { LocalDate.parse(it).plusDays(1) } ?: today
+        // Items and versions are passed so a check-in that would ask nothing is never expected.
+        // On install day the morning check-in covers yesterday, when no item existed, and generating
+        // it would put an unanswerable guaranteed miss into the response-rate denominator.
+        val planned = CheckInPlanner(dayResolver)
+            .planRange(from, today, times, items(), versions())
+        if (planned.isEmpty()) return 0
+
+        // Only the genuinely missing ones. The unique index on (day_date, slot) would reject a
+        // duplicate anyway, but relying on a constraint violation as control flow would make a real
+        // bug indistinguishable from ordinary re-entry.
+        val existing = db.checkInDao().between(from.toString(), today.toString())
+            .map { it.dayDate to it.slot }
+            .toSet()
+
+        val rows = planned
+            .filterNot { (it.day to it.slot) in existing }
+            .map {
+                CheckInEntity(
+                    id = newId(),
+                    userId = LOCAL_USER_ID,
+                    dayDate = it.day,
+                    slot = it.slot,
+                    scheduledAt = it.scheduledAt,
+                    state = CheckInState.PENDING,
+                )
+            }
+
+        db.checkInDao().insert(rows)
+        return rows.size
+    }
+
+    /**
+     * Check-ins the user can still answer: unanswered, already due, and inside the grace window.
+     *
+     * The window is today and yesterday, because backfill runs until the end of the next day (spec
+     * §3.2). Anything older is still *answerable* — a late answer keeps the data — but it is no
+     * longer outstanding, because it can no longer repair the metric (A1.2), and a banner that never
+     * empties is one the user stops reading.
+     */
+    suspend fun outstandingCheckIns(today: LocalDate): List<CheckIn> =
+        db.checkInDao().outstanding(
+            from = today.minusDays(1).toString(),
+            to = today.toString(),
+            now = dayResolver.now().toEpochMilli(),
+        ).map { it.toDomain() }
+
+    /**
+     * The questions a check-in asks, resolved through `:domain`.
+     *
+     * Three reads composed by one pure function, which is why it sits here rather than in a
+     * ViewModel: item activity, version-in-force and deferral carry-over are rules, and rules belong
+     * where they can be tested without a device.
+     */
+    suspend fun checkInQuestions(day: LocalDate, slot: Slot): List<CheckInEntry> =
+        CheckInContent.forCheckIn(
+            checkInDay = day,
+            slot = slot,
+            items = items(),
+            versions = versions(),
+            deferrals = deferrals(),
+        )
+
+    /** Unresolved "not yet" answers, for carry-over into the next morning. */
+    suspend fun deferrals(): List<Answer> =
+        db.answerDao().withCapture(Capture.PENDING.name).map { it.toDomain() }
+
+    /**
      * Marks a check-in answered. Note it does not touch the answers: a check-in answered "not yet"
      * stays ANSWERED even if the deferral is never resolved, because the user did complete the
      * check-in (scoring-cases A2.2), and a LATE answer must not repair a MISSED one (A1.2). Deriving
@@ -178,6 +270,25 @@ class ConsistencyRepository(
      * method, because "not yet" then answered is one answer that changed, not two. The row keeps its
      * identity across the edit so nothing referencing it dangles.
      */
+    /**
+     * Records an answer given in the check-in held on [checkInDay] in [slot], and marks that
+     * check-in answered.
+     *
+     * This is the check-in loop's entry point, and it takes the check-in by day and slot rather than
+     * by id because the domain `CheckIn` deliberately carries no id — a check-in is identified by
+     * *when it was expected*, which is also what makes it unique in the schema.
+     *
+     * The check-in is marked answered even when the answer is a deferral. That is spec §3.2 and
+     * scoring-case A2.2: "not yet" is an act of completing the check-in, and an unresolved deferral
+     * costs the *goal*, never the response rate. Marking it here rather than leaving it to the caller
+     * is what stops that pair coming apart.
+     */
+    suspend fun recordAnswer(answer: Answer, checkInDay: LocalDate, slot: Slot) {
+        val checkIn = db.checkInDao().onDayInSlot(checkInDay.toString(), slot.name)
+        recordAnswer(answer, checkIn?.id)
+        markCheckInAnswered(checkInDay, slot, dayResolver.now())
+    }
+
     suspend fun recordAnswer(answer: Answer, viaCheckInId: String? = null) {
         val existing = db.answerDao().forItemOnDay(answer.itemId.value, answer.day.toString())
         val id = existing?.answer?.id ?: newId()

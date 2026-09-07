@@ -66,9 +66,16 @@ object SeedLibrary {
     /** The three weekly social goals and "took time" share this option shape (spec section 4). */
     private val yesNoNoOpportunity = listOf("yes", "no", "no_opportunity")
 
+    /**
+     * **Order is spec section 4's listing order, and it is deliberate rather than incidental.**
+     * The morning set runs chronologically through the night -- went to bed, what you did before
+     * sleeping, woke, got up -- which is the order the questions are answerable in. Ordering by id
+     * instead would ask when you got out of bed before asking when you woke.
+     */
     fun items(createdAt: Instant): List<ItemEntity> =
-        (askedItemIds + weeklyItemIds).map { item(it, ItemKind.ASKED, createdAt) } +
-            item(STEPS, ItemKind.MEASURED, createdAt)
+        (askedItemIds + weeklyItemIds + STEPS).mapIndexed { ordinal, id ->
+            item(id, if (id == STEPS) ItemKind.MEASURED else ItemKind.ASKED, createdAt, ordinal)
+        }
 
     private val askedItemIds = listOf(
         BEDTIME, PRE_SLEEP, WOKE_AT, GOT_UP_AT,
@@ -189,8 +196,14 @@ object SeedLibrary {
         rollUp(MINDSET, RollUpAggregation.AVERAGE),
     )
 
-    private fun item(id: String, kind: ItemKind, createdAt: Instant) =
-        ItemEntity(id = id, userId = LOCAL_USER_ID, kind = kind, createdAt = createdAt)
+    private fun item(id: String, kind: ItemKind, createdAt: Instant, ordinal: Int) =
+        ItemEntity(
+            id = id,
+            userId = LOCAL_USER_ID,
+            kind = kind,
+            createdAt = createdAt,
+            ordinal = ordinal,
+        )
 
     private fun version(
         itemId: String,

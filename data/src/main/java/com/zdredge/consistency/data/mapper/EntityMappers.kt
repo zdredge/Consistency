@@ -54,6 +54,7 @@ fun ItemEntity.toDomain(dayResolver: DayResolver) = Item(
     kind = kind,
     createdOn = dayResolver.dayFor(createdAt),
     retiredOn = retiredAt?.let(dayResolver::dayFor),
+    ordinal = ordinal,
 )
 
 fun ItemVersionEntity.toDomain() = ItemVersion(
@@ -143,6 +144,7 @@ fun Item.toEntity(dayResolver: DayResolver) = ItemEntity(
     kind = kind,
     createdAt = dayResolver.startOfDay(createdOn),
     retiredAt = retiredOn?.let(dayResolver::startOfDay),
+    ordinal = ordinal,
 )
 
 fun ItemVersion.toEntity() = ItemVersionEntity(

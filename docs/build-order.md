@@ -1,7 +1,6 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0, M1, M2 and M3 are complete**; M4 (the check-in loop)
-is next.
+**Status:** agreed and in progress. **M0 through M4 are complete**; M5 (the rollover job) is next.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -70,7 +69,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M1 | Project skeleton, modules, `Clock`/`DayResolver` | TDD (JVM) | — | M0 |
 | M2 | `:domain` scoring engine | **TDD (JVM), the core TDD phase** | M1 | M0 |
 | M3 | `:data` persistence layer + seed library | TDD (instrumented) | M1, M2 | — |
-| M4 | Check-in loop (capture, backfill, pending) | TDD ViewModels; UI manual | M2, M3 | — |
+| M4 | Check-in loop (capture, backfill, pending) | TDD in `:domain`; UI manual | M2, M3 | — |
 | M5 | Rollover job (day close, expected check-ins, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
@@ -277,33 +276,69 @@ should die.
 
 ---
 
-## M4 — The check-in loop
+## M4 — The check-in loop — **BUILT 2026-09-06**
 
-**Proposed, and this is the first thing the user can actually use.** The core interaction: answer a
-check-in in under 60 seconds, backfill a missed one in place, defer with "not yet".
+**The first thing the user can actually use.** Answer a check-in in under 60 seconds, defer with
+"not yet", backfill a missed one from the banner.
 
-**Deliverables.**
-- Check-in screen (spec §5.6): tap-first, keyboard only for the optional note. One primary answer
-  format per item plus the note (constraint 9).
-- Answer capture writing the correct `capture` state and `day_date`, including the **sleep-day
-  convention**: the morning check-in writes answers dated *yesterday*, and the UI must make that
-  date unmistakable (spec §3.1, §5.6; `CLAUDE.md`).
-- "Not yet" / pending, carried into the next morning and labelled as belonging to the previous day.
-- In-place backfill from the outstanding-check-in banner (spec §5.1).
-- The **no-opportunity** answer option on the goals that carry it ("took time for yourself" and the
-  weekly social goals) — presented as an ordinary answer choice. Its neutral scoring lives entirely
-  in `:domain`; the screen only needs to record the chosen option.
+**Outcome: 184 `:domain` tests, 3 JVM, 79 instrumented on the Pixel 9 Pro, all green.** Six phases.
 
-**TDD.** The capture-state and day-dating decisions are logic, not UI — extract them into a pure
-function or a ViewModel tested with a fake repo and the test `Clock`, and drive those first:
-- Morning answer for a sleep item lands on `day_date` = yesterday.
-- Answer inside window → `IN_WINDOW`; after close but within grace → `BACKFILLED`; "not yet"
-  resolved next morning → `IN_WINDOW` (scoring-cases 3.3).
-- **The Compose screen itself is verified by hand** — no front-end tests. The extraction above is
-  what makes that safe: the screen should be left with nothing to assert but layout.
+**Delivered.**
+- **`:domain/checkin/`** — `CaptureResolver`, `AnswerDay`, `CheckInPlanner`, `CheckInContent`. Every
+  decision that could be *wrong* rather than merely ugly, testable with no device.
+- **Repository support** — generating expected check-ins, offering the outstanding ones, recording
+  an answer against the check-in it was given in.
+- **Two screens** — a landing surface with the outstanding-check-in banner, and the check-in itself:
+  tap-first, all six answer types, keyboard only for the optional note.
+- **Schema v2** — `items.ordinal`, and the first real migration.
 
-**Exit criteria.** A check-in can be completed, deferred, and backfilled on a real device; every
-capture-state transition is covered by a fast test; the previous-day labelling is present and tested.
+**Decisions.**
+- **The capture window is the check-in's own day** (spec §3.2). Three statements had to be
+  reconciled; only this reading fits all three. An answer at 22:00, an hour after the prompt, still
+  counts.
+- **Two check-ins a day, always.** The weekly questions append to Sunday night's rather than forming
+  a third, so `Slot.WEEKLY` is an item's slot and never a check-in's. A third row would inflate
+  Sunday's denominator for no behavioural reason.
+- **No navigation library** (T5 still open). A sealed screen state and a `when`; revisit at five
+  screens with a real back stack.
+- **No new dependencies.** `lifecycle-viewmodel` was already transitive, so ViewModels come free and
+  drafts survive rotation.
+- **`items.ordinal` as schema v2** rather than an order inferred from the item. Order is data, so a
+  question created later gets a position without a code change.
+
+**What M4 caught.**
+- **The capture reference day.** Capture was first measured against the day an answer is *dated to*.
+  A sleep item answered this morning is dated *yesterday* but is being answered in its own proper
+  window, so that would have made **every ordinary morning check-in record as a backfill**, quietly
+  collapsing the in-window-only figure. Now `CaptureResolver.forEntry`, in `:domain` with tests.
+- **The install-day check-in, found by installing the app and looking at it.** The morning check-in
+  covers yesterday, when no item existed, so it rendered with a correct header and *zero questions* —
+  while still sitting in the response-rate denominator as an unanswerable guaranteed miss. A
+  check-in that would ask nothing is now never expected. Recorded in spec §3.2.
+- **A stale-schema packaging bug's sibling**: five instrumented tests failed when that fix landed,
+  because they had never seeded a library. The fixtures were wrong, not the rule.
+
+**On testing the `:app` layer.** Build-order proposed ViewModel TDD against a fake repository, which
+would have meant extracting an interface from `ConsistencyRepository` purely to support the test.
+The decisions went to `:domain` instead — faster, no fake, and the ViewModel left with nothing to
+assert. Both mistakes above were caught by domain tests or by looking at the screen; neither could
+have hidden in a ViewModel test. **`:app` has no tests, deliberately.**
+
+**Exit criteria — met.** A check-in can be completed, deferred and backfilled on the device; every
+capture-state transition is covered by a fast test; the previous-day labelling is present and stated
+in the largest type on the screen.
+
+**Known gap, carried out of M4.** An *answered* multi-select with nothing selected — "I did none of
+these before bed" — is a different thing from silence and scores differently: it **meets** a
+must-not-include goal, where silence is excluded. Storage already distinguishes the two and a DAO
+test asserts it, but the screen offers no way to say it, so that answer is currently unreachable.
+Closing it means adding a "none of these" affordance, which is a product decision rather than a
+missing line of code.
+
+**What M5 inherits.** `CheckInPlanner` is already the rule for which check-ins should exist — M5
+wraps that same function in the rollover worker rather than writing a second one, and adds what only
+a scheduled job can do: marking check-ins missed once grace closes, converting unresolved deferrals
+to missed goals (A2.1), and freezing provisional step values.
 
 ---
 

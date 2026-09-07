@@ -41,6 +41,15 @@ class DayResolver(private val clock: Clock) {
     /** The day "now" belongs to, per the injected clock. */
     fun today(): LocalDate = dayFor(clock.instant())
 
+    /**
+     * The current instant, per the injected clock.
+     *
+     * Exposed so callers that need a timestamp -- an answer's `submitted_at`, a check-in's
+     * `answered_at` -- take it from the same clock everything else dates through, rather than
+     * reaching for `Instant.now()` and quietly escaping the test clock.
+     */
+    fun now(): Instant = clock.instant()
+
     /** The instant [day] begins — 04:00 local. */
     fun startOfDay(day: LocalDate): Instant =
         day.atTime(DAY_START).atZone(clock.zone).toInstant()
@@ -50,6 +59,23 @@ class DayResolver(private val clock: Clock) {
      * "23:59:59.999" so range checks cannot silently drop the final fraction of a second.
      */
     fun endOfDayExclusive(day: LocalDate): Instant = startOfDay(day.plusDays(1))
+
+    /**
+     * The instant at which [time] occurs **within** [day], respecting the 04:00 boundary.
+     *
+     * A wall-clock time at or after 04:00 falls on the same calendar date; anything earlier belongs
+     * to the *next* calendar date, because that is when it next occurs inside this day. A night
+     * check-in set to 01:00 on Tuesday happens in the small hours of Wednesday morning — and a
+     * scheduler that naively used `day.atTime(time)` would fire it a full day early.
+     *
+     * This lives here rather than in the caller for the reason the whole class exists: the boundary
+     * is the kind of rule that gets reimplemented slightly differently in four places
+     * (architecture §5).
+     */
+    fun instantAt(day: LocalDate, time: LocalTime): Instant {
+        val date = if (time < DAY_START) day.plusDays(1) else day
+        return date.atTime(time).atZone(clock.zone).toInstant()
+    }
 
     /** The Monday of the week containing [day]. A Monday resolves to itself. */
     fun weekStart(day: LocalDate): LocalDate =

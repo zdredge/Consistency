@@ -29,17 +29,30 @@ import java.io.File
 class SchemaVersionPinTest {
 
     @Test
-    fun schemaVersion1IdentityHashIsUnchanged() {
-        val schema = schemaFile(version = 1).readText()
+    fun everyExportedSchemaHasTheIdentityHashItWasPinnedWith() {
+        for ((version, expected) in PINNED_HASHES) {
+            val schema = schemaFile(version).readText()
 
-        assertEquals(
-            "Schema v1 changed. Room refuses to open an existing v1 database whose identity hash " +
-                "no longer matches, so this needs a version bump and a migration -- not a new " +
-                "constant here. Update the constant only once that is done.",
-            V1_IDENTITY_HASH,
-            schema.field("identityHash"),
-        )
-        assertEquals("1", schema.field("version"))
+            assertEquals(
+                "Schema v$version changed. Room refuses to open an existing v$version database " +
+                    "whose identity hash no longer matches, so this needs a version bump and a " +
+                    "migration -- not a new constant here. Update the constant only once that is " +
+                    "done.",
+                expected,
+                schema.field("identityHash"),
+            )
+            assertEquals(version.toString(), schema.field("version"))
+        }
+    }
+
+    /**
+     * A shipped version is frozen. v1 is on the device, so editing it rather than migrating from it
+     * would leave that install unable to open its own database -- the failure this whole test exists
+     * to prevent, and the reason v1 stayed byte-identical when v2 added `items.ordinal`.
+     */
+    @Test
+    fun theOldestSchemaIsStillTheOneThatWasShipped() {
+        assertEquals("f80d6929ba81b4a2c4d2382989fd4b57", schemaFile(1).readText().field("identityHash"))
     }
 
     /**
@@ -67,7 +80,7 @@ class SchemaVersionPinTest {
         assertEquals(
             "a new exported schema means a new database version; it needs a migration and a " +
                 "migration test, then this list updated",
-            listOf("1.json"),
+            listOf("1.json", "2.json"),
             exported,
         )
     }
@@ -79,7 +92,16 @@ class SchemaVersionPinTest {
     }
 
     private companion object {
-        /** Pinned when v1 was finished in M3. Read the test above before changing this. */
-        const val V1_IDENTITY_HASH = "f80d6929ba81b4a2c4d2382989fd4b57"
+        /**
+         * Every schema version and the hash it was pinned with. Read the test above before touching
+         * an existing entry; adding one is what a deliberate version bump looks like.
+         *
+         * v1 — M3, the original eleven tables.
+         * v2 — M4, added `items.ordinal` so check-in question order is data rather than a guess.
+         */
+        val PINNED_HASHES = mapOf(
+            1 to "f80d6929ba81b4a2c4d2382989fd4b57",
+            2 to "683ac7e67cbb9fc0fe1907a369aa50cf",
+        )
     }
 }
