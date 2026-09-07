@@ -92,7 +92,7 @@ object SeedLibrary {
 
         version(MEALS, "How many meals did you eat?", AnswerType.NUMBER, Slot.NIGHT, Classification.GOAL, effectiveFrom),
         version(VITAMINS, "Did you take your vitamins?", AnswerType.BOOL, Slot.NIGHT, Classification.GOAL, effectiveFrom),
-        version(WATER, "How much water did you drink?", AnswerType.NUMBER, Slot.NIGHT, Classification.GOAL, effectiveFrom, unitLabel = "bottles"),
+        version(WATER, "How much water did you drink? (Bottles)", AnswerType.NUMBER, Slot.NIGHT, Classification.GOAL, effectiveFrom, unitLabel = "bottles"),
         version(WORKED_OUT, "Did you work out?", AnswerType.BOOL, Slot.NIGHT, Classification.GOAL, effectiveFrom),
         version(STRETCHED, "Did you stretch?", AnswerType.BOOL, Slot.NIGHT, Classification.GOAL, effectiveFrom),
         version(COFFEE, "How many coffees did you have?", AnswerType.NUMBER, Slot.NIGHT, Classification.GOAL, effectiveFrom),

@@ -87,8 +87,8 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(current) {
                                 checkInViewModel.load(current.day, current.slot)
                             }
-                            LaunchedEffect(state.finished) {
-                                if (state.finished) screen = Screen.Home
+                            LaunchedEffect(state.exit) {
+                                if (state.exit) screen = Screen.Home
                             }
 
                             CheckInScreen(
@@ -101,10 +101,11 @@ class MainActivity : ComponentActivity() {
                                 onToggle = checkInViewModel::toggleSelection,
                                 onNote = checkInViewModel::setNote,
                                 onDefer = checkInViewModel::toggleDeferred,
+                                onSelectNone = checkInViewModel::selectNone,
                                 onNext = checkInViewModel::next,
                                 onBack = checkInViewModel::back,
                                 onFinish = checkInViewModel::finish,
-                                onLeave = { screen = Screen.Home },
+                                onLeave = checkInViewModel::close,
                                 modifier = Modifier.padding(padding),
                             )
                         }

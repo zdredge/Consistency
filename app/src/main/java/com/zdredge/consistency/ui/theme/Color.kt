@@ -35,14 +35,21 @@ val Outline = Color(0xFF3A404A)
 /** The one accent. Carries selection, progress and the primary action, and nothing else. */
 val Accent = Color(0xFF8AB4F8)
 
-/** Text and icons sitting on a filled [AccentMuted] surface — a selected chip. */
-val OnAccentMuted = Color(0xFFD6E3FB)
+/** Text and icons sitting on a filled [AccentMuted] surface — a selected answer. */
+val OnAccentMuted = Color(0xFFEAF1FD)
 
 /** Text and icons sitting on [Accent]. Dark enough to stay legible at small sizes. */
 val OnAccent = Color(0xFF0A1F3D)
 
-/** A filled accent surface at low emphasis — a selected chip, a filled progress segment. */
-val AccentMuted = Color(0xFF2B4770)
+/**
+ * A filled accent surface — a selected answer.
+ *
+ * Brightened from a much darker navy: at 62dp a full-width row needs to read as *chosen* from arm's
+ * length in a dark room, and the first value was legible only once you were looking for it. Still
+ * short of [Accent] itself, which stays reserved for the primary action so a selected answer never
+ * competes with the button that moves you on.
+ */
+val AccentMuted = Color(0xFF3E6FB5)
 
 /** Primary text. Not pure white: full contrast on a dark ground reads as glare. */
 val Bone = Color(0xFFE4E6EA)

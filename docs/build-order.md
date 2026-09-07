@@ -342,6 +342,67 @@ to missed goals (A2.1), and freezing provisional step values.
 
 ---
 
+## M4.5 — Check-in UI — **IN PROGRESS**
+
+A UI milestone inserted between M4 and M5: one question per screen, a dark visual language, and the
+answer types reworked. Documented in full at the end of the milestone; what follows is the defect
+list, recorded as it was found.
+
+### Defects found during M4.5, to fix after the UI work
+
+Both are about **state after leaving a question**, both predate the M4.5 UI changes, and both are
+agreed to be fixed once the UI settles.
+
+**1. Reopening a check-in immediately after closing one is swallowed.** Every first reopen after a
+close lands straight back on the home screen; a second tap works. Traced on the device, 4 attempts
+out of 4:
+
+```
+open  → check-in opens
+close → home
+open  → home          ← bounced
+open  → check-in opens
+```
+
+`MainActivity` runs `LaunchedEffect(state.exit) { if (state.exit) screen = Home }` when the check-in
+screen enters composition, while `exit` is still `true` from the previous `close()`. `load()` clears
+it, but does so in a coroutine, so the navigation wins the race. The second attempt works because
+`load()` has completed by then.
+
+The fix is to stop navigation depending on a flag that outlives the screen — either clear `exit`
+synchronously at the start of `load()`, or make the exit a one-shot event rather than a state field.
+The second is the better shape and is worth doing while M5 is still ahead rather than behind.
+
+**2. Clearing an answer that was already stored does not delete it.** `CheckInViewModel.commitCurrent`
+returns early when the draft has no content:
+
+```kotlin
+if (question.readOnly || !question.dirty || !question.draft.hasContent) return
+```
+
+`recordAnswer` is the only write path and there is no delete, so the stored row survives. The screen
+reports the answer cleared and reopening shows the old value again, because `existingDraft` reads the
+row that was never removed.
+
+This applies to every answer type — un-selecting a bool or a chip, clearing a number, and now
+**Reset** on a time dial, which is a prominent control that explicitly promises to clear. Read from
+source and reasoned through rather than demonstrated: the only stored answers available to reproduce
+against were real user data, and the experiment destroys one if the diagnosis is wrong.
+
+Fixing it means deciding what "no answer" means at the storage boundary — delete the row, or keep it
+and record the retraction. That is a product question (an edit history is spec territory), not just a
+missing `else` branch, which is why it is not a one-line fix.
+
+### Deferred, not a defect
+
+**Time questions all open at 07:00.** Right for "woke up" and "got out of bed", wrong for "went to
+bed", which needs an AM/PM tap plus a drag. A per-item default is the fix and has nowhere to live:
+item configuration is spec §5.7, **still unassigned to any milestone**. The cheap alternative is
+defaulting to the previous answer for that item, which improves with use and costs one query per
+time question.
+
+---
+
 ## M5 — The rollover job
 
 **Decided-by-docs.** Architecture §6 calls this "the only thing that writes without the user" and

@@ -103,8 +103,8 @@ private fun OutstandingCheckInCard(
         ) {
             Text(
                 when (checkIn.slot) {
-                    Slot.MORNING -> "Morning check-in"
-                    Slot.NIGHT -> "Night check-in"
+                    Slot.MORNING -> "Morning Check-in"
+                    Slot.NIGHT -> "Nightly Check-in"
                     else -> "Check-in"
                 },
                 style = MaterialTheme.typography.titleSmall,
@@ -121,3 +121,4 @@ private fun OutstandingCheckInCard(
         }
     }
 }
+

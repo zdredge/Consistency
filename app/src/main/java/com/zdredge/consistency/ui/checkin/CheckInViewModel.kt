@@ -42,20 +42,27 @@ data class AnswerDraft(
      * the value, because "3 meals, but not yet" is not a thing the record can mean.
      */
     val deferred: Boolean = false,
+    /**
+     * The user answered a multi-select with **nothing selected** — "I did none of these before bed".
+     *
+     * This is a different thing from silence and scores differently: an answered-but-empty
+     * multi-select *meets* a must-not-include goal, where silence is excluded (spec constraint 11,
+     * scoring-cases 1.13). Storage has always distinguished them — an empty answer row versus no row
+     * — but until now the screen had no way to say it, so that answer was unreachable. Known gap
+     * carried out of M4, closed here.
+     */
+    val noneSelected: Boolean = false,
 ) {
     /**
      * Whether the user actually answered.
      *
      * A blank draft is **silence**, and silence is never stored: an empty answer must never satisfy
-     * a must-not-include goal (spec constraint 11, scoring-cases 1.13).
-     *
-     * **Known gap, carried out of M4.** An *answered* multi-select with nothing selected — "I did
-     * none of these before bed" — is a different thing from silence and scores differently. Storage
-     * already distinguishes them; the screen offers no way to say it. Closed in Phase 4.
+     * a must-not-include goal (spec constraint 11, scoring-cases 1.13). [noneSelected] is the
+     * deliberate exception — an answer whose content is "nothing", which is not the same as no answer.
      */
     val isAnswered: Boolean
         get() = valueBool != null || valueNumber != null || valueTime != null ||
-            valueScale != null || selections.isNotEmpty()
+            valueScale != null || selections.isNotEmpty() || noneSelected
 
     /** Whether there is anything worth writing at all. */
     val hasContent: Boolean get() = isAnswered || deferred
@@ -93,7 +100,13 @@ data class CheckInUiState(
     val questions: List<QuestionUi> = emptyList(),
     /** Which question is on screen. One question at a time (M4.5). */
     val index: Int = 0,
-    val finished: Boolean = false,
+    /**
+     * The screen is done with and the caller should navigate away. Set by both [CheckInViewModel.finish]
+     * and [CheckInViewModel.close], because **either way the question on screen must be committed
+     * first** — leaving through Close used to drop it, so an answer given and then closed was simply
+     * lost. Found by reading the database rather than by looking at the screen.
+     */
+    val exit: Boolean = false,
 ) {
     val current: QuestionUi? get() = questions.getOrNull(index)
     val isFirst: Boolean get() = index == 0
@@ -137,7 +150,13 @@ class CheckInViewModel(
      */
     fun load(day: LocalDate, slot: Slot) {
         val current = _state.value
-        if (!current.loading && current.checkInDay == day && current.slot == slot) return
+        // Reload after an exit: the flag has to clear, or reopening the same check-in would navigate
+        // straight back out again.
+        if (!current.loading && !current.exit &&
+            current.checkInDay == day && current.slot == slot
+        ) {
+            return
+        }
 
         viewModelScope.launch {
             val entries = repository.checkInQuestions(day, slot)
@@ -184,6 +203,11 @@ class CheckInViewModel(
             // Reopening a check-in that was deferred must show it as deferred, not as blank.
             // Blank would read as "never answered" and quietly drop the deferral on re-submit.
             deferred = existing.capture == Capture.PENDING,
+            // A stored multi-select row with no selections is the "none of these" answer. Reloading
+            // it as a blank draft would turn a real answer back into silence on the next commit.
+            noneSelected = entry.version.answerType == AnswerType.MULTI_SELECT &&
+                existing.selections.isEmpty() &&
+                existing.capture != Capture.PENDING,
         )
     }
 
@@ -212,7 +236,21 @@ class CheckInViewModel(
         viewModelScope.launch {
             commitCurrent()
             repository.markCheckInAnswered(day, slot, dayResolver.now())
-            _state.update { it.copy(finished = true) }
+            _state.update { it.copy(exit = true) }
+        }
+    }
+
+    /**
+     * Leaves without finishing: commits the question on screen, and does **not** mark the check-in
+     * answered.
+     *
+     * Closing is always allowed and never confirmed — a flow that holds the user hostage is the one
+     * they stop opening (spec §5.1). What they gave is kept; the check-in stays honestly outstanding.
+     */
+    fun close() {
+        viewModelScope.launch {
+            commitCurrent()
+            _state.update { it.copy(exit = true) }
         }
     }
 
@@ -271,14 +309,29 @@ class CheckInViewModel(
 
     /** Single-select replaces; tapping the chosen option again clears it. */
     fun selectOne(item: QuestionUi, option: OptionId) = answered(item) {
-        it.copy(selections = if (option in it.selections) emptySet() else setOf(option))
+        it.copy(
+            selections = if (option in it.selections) emptySet() else setOf(option),
+            noneSelected = false,
+        )
     }
 
     /** Multi-select toggles. Nothing here knows or cares which option is "no opportunity". */
     fun toggleSelection(item: QuestionUi, option: OptionId) = answered(item) {
         it.copy(
             selections = if (option in it.selections) it.selections - option else it.selections + option,
+            noneSelected = false,
         )
+    }
+
+    /**
+     * "None of these" — an answered multi-select with nothing selected.
+     *
+     * Tapping it again clears back to silence, because "I answered nothing" and "I did not answer"
+     * are both states the user is entitled to, and only one of them meets a must-not-include goal.
+     */
+    fun selectNone(item: QuestionUi) = update(item) {
+        if (it.noneSelected) it.copy(noneSelected = false)
+        else it.copy(selections = emptySet(), noneSelected = true, deferred = false)
     }
 
     private fun QuestionUi.toAnswer(day: LocalDate, slot: Slot): Answer {
