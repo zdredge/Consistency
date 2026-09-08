@@ -105,6 +105,9 @@ class MainActivity : ComponentActivity() {
                                 onNext = checkInViewModel::next,
                                 onBack = checkInViewModel::back,
                                 onFinish = checkInViewModel::finish,
+                                onEdit = checkInViewModel::editFromSummary,
+                                onReturnToSummary = checkInViewModel::returnToSummary,
+                                onConfirm = checkInViewModel::confirm,
                                 onLeave = checkInViewModel::close,
                                 modifier = Modifier.padding(padding),
                             )

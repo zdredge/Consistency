@@ -62,14 +62,6 @@ import kotlinx.coroutines.flow.drop
 private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 
 /**
- * Twelve-hour, to match the dial.
- *
- * The dial has an AM/PM toggle, so it is a 12-hour control; printing its value as `19:30` underneath
- * made the screen speak two conventions at once about the same number.
- */
-private val timeFormat = DateTimeFormatter.ofPattern("h:mm a")
-
-/**
  * The check-in: **one question per screen**.
  *
  * M4 presented all nine as a scrolling list of cards. It worked and it felt wrong — an always-open
@@ -104,6 +96,9 @@ fun CheckInScreen(
     onNext: () -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit,
+    onEdit: (Int) -> Unit,
+    onReturnToSummary: () -> Unit,
+    onConfirm: () -> Unit,
     onLeave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -121,37 +116,59 @@ fun CheckInScreen(
     ) {
         SegmentedProgress(
             total = state.questions.size,
-            current = state.index,
+            // No current segment on the summary: there is no question in hand, so the bar reads
+            // purely as answered-versus-skipped, which is what it is worth on that page.
+            current = if (state.onSummary) -1 else state.index,
             answered = state.answeredIndices,
         )
 
         CheckInHeader(state, onLeave)
 
-        QuestionCard(
-            question = question,
-            modifier = Modifier.weight(1f),
-            onBool = onBool,
-            onNumber = onNumber,
-            onTime = onTime,
-            onScale = onScale,
-            onSelectOne = onSelectOne,
-            onToggle = onToggle,
-            onNote = onNote,
-            onDefer = onDefer,
-            onSelectNone = onSelectNone,
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(
-                onClick = onBack,
-                enabled = !state.isFirst,
+        if (state.onSummary) {
+            CheckInSummary(
+                state = state,
+                onEdit = onEdit,
                 modifier = Modifier.weight(1f),
-            ) { Text("Back") }
+            )
+        } else {
+            QuestionCard(
+                question = question,
+                modifier = Modifier.weight(1f),
+                onBool = onBool,
+                onNumber = onNumber,
+                onTime = onTime,
+                onScale = onScale,
+                onSelectOne = onSelectOne,
+                onToggle = onToggle,
+                onNote = onNote,
+                onDefer = onDefer,
+                onSelectNone = onSelectNone,
+            )
+        }
 
-            Button(
-                onClick = if (state.isLast) onFinish else onNext,
-                modifier = Modifier.weight(2f),
-            ) { Text(if (state.isLast) "Done" else "Next") }
+        when {
+            state.onSummary ->
+                Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) { Text("Confirm") }
+
+            // Entry decides exit. A question opened from the summary gets one unambiguous way out
+            // rather than Back and Next quietly meaning something else than they did a screen ago.
+            state.fromSummary ->
+                Button(onClick = onReturnToSummary, modifier = Modifier.fillMaxWidth()) {
+                    Text("Back to summary")
+                }
+
+            else -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = onBack,
+                    enabled = !state.isFirst,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Back") }
+
+                Button(
+                    onClick = if (state.isLast) onFinish else onNext,
+                    modifier = Modifier.weight(2f),
+                ) { Text(if (state.isLast) "Done" else "Next") }
+            }
         }
     }
 }

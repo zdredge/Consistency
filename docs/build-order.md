@@ -393,6 +393,26 @@ Fixing it means deciding what "no answer" means at the storage boundary — dele
 and record the retraction. That is a product question (an edit history is spec territory), not just a
 missing `else` branch, which is why it is not a one-line fix.
 
+**3. `edited_at` is never set, and a correction overwrites how the answer was first given.** The
+field exists on the schema, on the domain `Answer`, in the mapper and in a domain test
+(scoring-cases 3.4) — but nothing in the app ever writes it. `CheckInViewModel.toAnswer` builds an
+`Answer` without it, so every write stores `edited_at = null`.
+
+Worse than the missing flag: `recordAnswer` replaces the row wholesale, so a correction also stamps a
+fresh `submitted_at` and a freshly resolved `capture`. Spec §3.2 requires the opposite — *"History is
+editable; edits set the edited flag. Never a silent overwrite"* — and constraint 4 exists precisely so
+a backfilled-then-edited answer stays describable.
+
+The rule to land, in `:domain` with tests rather than in the ViewModel:
+
+- **first write** — `submitted_at` now, `capture` resolved, `edited_at` null
+- **later change** — `submitted_at` and `capture` preserved, `edited_at` now
+- **except resolving a deferral** — a `PENDING` capture must still move when the answer arrives, or
+  A2.1 and A2.2 break. This is the exception that stops "preserve capture" from being a one-liner.
+
+Not reachable through the UI today, since a completed check-in cannot be reopened. It is recorded now
+because the first path that does reach it will otherwise get it wrong silently.
+
 ### Deferred, not a defect
 
 **Time questions all open at 07:00.** Right for "woke up" and "got out of bed", wrong for "went to

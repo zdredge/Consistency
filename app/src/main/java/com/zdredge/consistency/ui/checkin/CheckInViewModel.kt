@@ -101,7 +101,23 @@ data class CheckInUiState(
     /** Which question is on screen. One question at a time (M4.5). */
     val index: Int = 0,
     /**
-     * The screen is done with and the caller should navigate away. Set by both [CheckInViewModel.finish]
+     * The summary is showing: the questions are done with and the user is looking at what they gave.
+     *
+     * It is a **page of this screen, not a screen of its own**. It needs the same state holder, the
+     * same header and the same progress bar, and routing it through `MainActivity` would put it
+     * behind [exit] — which is defect 1 in `docs/build-order.md`, and this is not a thing to build
+     * on top of.
+     */
+    val onSummary: Boolean = false,
+    /**
+     * The question on screen was opened *from* the summary, so leaving it returns there rather than
+     * advancing. Entry decides exit: the same question is reached two ways and has to leave the way
+     * it came, or correcting one answer would dump the user back into the middle of a set they had
+     * already finished.
+     */
+    val fromSummary: Boolean = false,
+    /**
+     * The screen is done with and the caller should navigate away. Set by [CheckInViewModel.confirm]
      * and [CheckInViewModel.close], because **either way the question on screen must be committed
      * first** — leaving through Close used to drop it, so an answer given and then closed was simply
      * lost. Found by reading the database rather than by looking at the screen.
@@ -218,15 +234,17 @@ class CheckInViewModel(
 
     fun back() = moveTo(_state.value.index - 1)
 
-    /** Jumps straight to a question. Used by the summary in Phase 5. */
-    fun goTo(index: Int) = moveTo(index)
-
     /**
-     * Ends the set: commits the last question and **marks the check-in answered**.
+     * Ends the set: commits the last question, **marks the check-in answered**, and shows the summary.
      *
-     * This is the only thing that marks it, and it is the single most consequential action in the
-     * app — response rate, the primary metric, counts check-ins in this state. Answering questions
-     * does not do it; reaching the end does.
+     * Marking here is the single most consequential action in the app — response rate, the primary
+     * metric, counts check-ins in this state. Answering questions does not do it; reaching the end
+     * does.
+     *
+     * **The summary is a review of a completed check-in, not a gate before one.** Confirming does not
+     * mark anything, so a user who reads the summary and closes instead is already counted. That is a
+     * deliberate cost: it keeps the question set, rather than the ceremony after it, as the thing
+     * that completes.
      */
     fun finish() {
         val current = _state.value
@@ -236,7 +254,43 @@ class CheckInViewModel(
         viewModelScope.launch {
             commitCurrent()
             repository.markCheckInAnswered(day, slot, dayResolver.now())
+            _state.update { it.copy(onSummary = true, fromSummary = false) }
+        }
+    }
+
+    /**
+     * Leaves the summary. Nothing is written and nothing is marked — [finish] already did both.
+     *
+     * It exists because the user asked for "some indication of completing the question set", and a
+     * set that ends by the screen simply vanishing does not give one.
+     */
+    fun confirm() {
+        viewModelScope.launch {
+            commitCurrent()
             _state.update { it.copy(exit = true) }
+        }
+    }
+
+    /**
+     * Opens one question from the summary, to correct it.
+     *
+     * Deliberately **not** routed through [moveTo]: that returns early when the target is already the
+     * current index and nothing is dirty, which is exactly the case here — the summary is reached
+     * from the last question, so tapping the last question's row would be a no-op and the summary
+     * flag would never clear. There is nothing to commit on the way out of a summary anyway.
+     */
+    fun editFromSummary(index: Int) {
+        val questions = _state.value.questions
+        if (questions.isEmpty()) return
+        val target = index.coerceIn(0, questions.lastIndex)
+        _state.update { it.copy(index = target, onSummary = false, fromSummary = true) }
+    }
+
+    /** Returns to the summary from a question opened out of it, committing the correction. */
+    fun returnToSummary() {
+        viewModelScope.launch {
+            commitCurrent()
+            _state.update { it.copy(onSummary = true, fromSummary = false) }
         }
     }
 
