@@ -87,8 +87,11 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(current) {
                                 checkInViewModel.load(current.day, current.slot)
                             }
-                            LaunchedEffect(state.exit) {
-                                if (state.exit) screen = Screen.Home
+                            // Collect, not observe. The exit is an event delivered once (see
+                            // CheckInViewModel.exit); a Boolean here was defect 1, because a field
+                            // set on the way out is still set on the way back in.
+                            LaunchedEffect(Unit) {
+                                checkInViewModel.exit.collect { screen = Screen.Home }
                             }
 
                             CheckInScreen(

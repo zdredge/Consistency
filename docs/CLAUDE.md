@@ -14,10 +14,18 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M4.5 are complete.** The agreed next work is the **four defects M4.5 found**, listed at
-the end of its build-order section — all four concern state after leaving a check-in question, and
-two of them share a root. **M5 (the rollover job) follows.** Do not begin a later milestone than the
-one in progress. Two ordering facts behind it: `:domain` can be proven correct
+**M0 through M4.5 are complete, and the four defects M4.5 found are fixed. M5 (the rollover job) is
+next.** Do not begin a later milestone than the one in progress.
+
+Two rules those fixes settled, both worth knowing before touching answers:
+
+- **No value, no row.** Clearing an answer deletes it, and a note on its own is not stored. A row
+  that exists with nothing in it is the real answer *"none of these"* for a select item, so blanking
+  a retraction would turn it into a met goal.
+- **An edit is a change made through a different check-in** than the one that first recorded the
+  answer. Corrections while giving a check-in — including from its summary — are part of that
+  answering. `AnswerRevision` in `:domain` owns this; do not set `submitted_at`, `capture` or
+  `edited_at` from a caller. Two ordering facts behind it: `:domain` can be proven correct
 without a device, and the dashboard cannot be evaluated without substantial seeded history, so scoring
 belongs early and the dashboard late. The dashboard is also gated on the seed-data fixture (spec O7;
 designed as build-order M9) and the goal-completion formula (spec O1).

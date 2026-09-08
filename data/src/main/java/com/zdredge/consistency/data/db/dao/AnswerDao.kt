@@ -69,6 +69,19 @@ interface AnswerDao {
     suspend fun clearSelections(answerId: String)
 
     /**
+     * Removes an answer entirely, for an item and day.
+     *
+     * **Clearing an answer has to delete the row, not blank it.** A row that exists with nothing in
+     * it is not "no answer" — for a select item it is the real answer *"none of these"*, which
+     * satisfies a must-not-include target where silence is excluded (`DirectionEvaluator`,
+     * scoring-cases 1.13). Blanking would silently convert a retracted answer into a met goal.
+     *
+     * Selections go with it through the `ON DELETE CASCADE` on `answer_selections`.
+     */
+    @Query("DELETE FROM answers WHERE item_id = :itemId AND day_date = :day")
+    suspend fun deleteForItemOnDay(itemId: String, day: String)
+
+    /**
      * Replace an answer and its selections together. Editing a multi-select is a wholesale swap, and
      * doing it in two ungrouped statements leaves a window in which the answer carries the old
      * selections -- a window the rollover job or the debug fixture could read.

@@ -207,6 +207,12 @@ class WorkedExampleRoundTripTest {
      * Re-answering replaces rather than duplicating, and the row keeps its identity across the edit
      * -- which is what makes the database-level one-answer-per-item-per-day rule survivable in
      * normal use rather than something callers have to route around.
+     *
+     * **The edit flag is the repository's to set, not the caller's.** This test used to pass an
+     * `editedAt` in and assert it came back, which is what let defect 3 exist: every real caller
+     * built its `Answer` without one, so `edited_at` was never written and a correction silently
+     * restamped `submitted_at` and re-resolved `capture`. `AnswerRevision` now decides all three, so
+     * a caller cannot forget — and any value passed in is ignored, as asserted below.
      */
     @Test
     fun correctingAnAnswerReplacesItInPlace() = runBlocking {
@@ -215,6 +221,8 @@ class WorkedExampleRoundTripTest {
         repo.recordAnswer(
             repo.answer(ItemId("meals"), theNight)!!.copy(
                 valueNumber = 5.0,
+                // Deliberately wrong, and deliberately ignored.
+                submittedAt = Instant.parse("2026-08-26T15:00:00Z"),
                 editedAt = Instant.parse("2026-08-26T15:00:00Z"),
             ),
         )
@@ -227,7 +235,14 @@ class WorkedExampleRoundTripTest {
         // Spec constraint 4: capture is how the answer was FIRST recorded, and an edit does not
         // rewrite it. The two facts -- answered in window, corrected later -- must both survive.
         assertEquals(Capture.IN_WINDOW, after.capture)
-        assertEquals(Instant.parse("2026-08-26T15:00:00Z"), after.editedAt)
+        assertEquals(
+            "when it was first given never moves",
+            before.submittedAt,
+            after.submittedAt,
+        )
+        // Recorded through no check-in at all, so it cannot be the sitting that first stored it:
+        // an edit, stamped from the repository's clock rather than from what the caller supplied.
+        assertEquals(Instant.parse("2026-08-26T12:00:00Z"), after.editedAt)
     }
 
     // ---- The fixture -------------------------------------------------------------------------

@@ -114,7 +114,10 @@ private fun SummaryRow(question: QuestionUi, onClick: () -> Unit) {
         )
         if (question.draft.note.isNotBlank()) {
             Text(
-                "Note: ${question.draft.note}",
+                // A note with no answer is not stored (see NoteDialog), so the summary must not
+                // report it as recorded — which is exactly what it did before defect 4 was found.
+                if (value == null) "Note, not kept: ${question.draft.note}"
+                else "Note: ${question.draft.note}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,

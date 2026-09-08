@@ -1,7 +1,7 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0 through M4.5 are complete**; three defects found
-during M4.5 are the agreed next work, then M5 (the rollover job).
+**Status:** agreed and in progress. **M0 through M4.5 are complete**, and the four defects M4.5
+found are fixed. **M5 (the rollover job) is next.**
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -409,11 +409,27 @@ all. Spec §5.6 now requires it.
 repository behaviour except that `recordAnswer` no longer marks a check-in answered. It does hand
 over four defects.
 
-### Defects found during M4.5, to fix after the UI work
+### Defects found during M4.5 — **all four fixed 2026-09-08**
 
-All four are about **state after leaving a question**, all predate or were exposed by the M4.5 UI
-work, and all are agreed to be fixed once the UI settles. Defects 2 and 4 share a root: the
-`hasContent` gate in `commitCurrent`.
+All four were about **state after leaving a question**, all predated or were exposed by the M4.5 UI
+work, and they were fixed together after it. Defects 2 and 4 shared a root: the `hasContent` gate in
+`commitCurrent`. Each is left described as it was found, with the fix recorded underneath, because
+the diagnosis is the part worth keeping.
+
+**Outcome: 191 `:domain` tests (up 7), 3 JVM, 84 instrumented (up 3), all green.** Two decisions were
+taken before any code was written, both of them product questions rather than implementation ones:
+what a draft with no value means at the storage boundary, and what counts as an edit.
+
+**Decision — no value, no row.** Clearing an answer deletes it. It has to be a delete rather than a
+blanking: a row that exists with nothing in it is the real answer *"none of these"* for a select
+item, which satisfies a must-not-include target where silence is excluded, so blanking would quietly
+turn a retraction into a met goal. A note alone still does not create a row, for the same reason —
+and the screen now says so instead of implying otherwise.
+
+**Decision — an edit is a change made through a different check-in** than the one that first recorded
+the answer, or outside any check-in. Corrections made while giving a check-in are part of that
+answering, including from its own summary, which exists to invite them. The alternative — any change
+after the first write — would have stamped `edited_at` on ordinary use and left it meaning nothing.
 
 **1. Reopening a check-in immediately after closing one is swallowed.** Every first reopen after a
 close lands straight back on the home screen; a second tap works. Traced on the device, 4 attempts
@@ -431,9 +447,12 @@ screen enters composition, while `exit` is still `true` from the previous `close
 it, but does so in a coroutine, so the navigation wins the race. The second attempt works because
 `load()` has completed by then.
 
-The fix is to stop navigation depending on a flag that outlives the screen — either clear `exit`
-synchronously at the start of `load()`, or make the exit a one-shot event rather than a state field.
-The second is the better shape and is worth doing while M5 is still ahead rather than behind.
+**Fixed** by the second option: `exit` is a `Channel` delivered once and collected by
+`MainActivity`, not a field anyone can observe twice, so the race has nowhere left to live. Leaving
+also resets the state to `loading`, which is what makes re-entry rebuild — otherwise `load()`'s guard
+would have shown the check-in exactly as it was left, sitting on its own summary. Verified on the
+device: three open-close-reopen cycles, all opening first time, where every first reopen used to
+bounce.
 
 **2. Clearing an answer that was already stored does not delete it.** `CheckInViewModel.commitCurrent`
 returns early when the draft has no content:
@@ -451,9 +470,10 @@ This applies to every answer type — un-selecting a bool or a chip, clearing a 
 source and reasoned through rather than demonstrated: the only stored answers available to reproduce
 against were real user data, and the experiment destroys one if the diagnosis is wrong.
 
-Fixing it means deciding what "no answer" means at the storage boundary — delete the row, or keep it
-and record the retraction. That is a product question (an edit history is spec territory), not just a
-missing `else` branch, which is why it is not a one-line fix.
+**Fixed**: an emptied draft deletes the row (`AnswerDao.deleteForItemOnDay`,
+`ConsistencyRepository.deleteAnswer`). Delete rather than blank, for the reason in the decision above.
+Guarded by an instrumented test, and verified on the device — record a time, leave the question,
+return, Reset, leave again, and the row is gone rather than restored on the next open.
 
 **3. `edited_at` is never set, and a correction overwrites how the answer was first given.** The
 field exists on the schema, on the domain `Answer`, in the mapper and in a domain test
@@ -472,8 +492,14 @@ The rule to land, in `:domain` with tests rather than in the ViewModel:
 - **except resolving a deferral** — a `PENDING` capture must still move when the answer arrives, or
   A2.1 and A2.2 break. This is the exception that stops "preserve capture" from being a one-liner.
 
-Not reachable through the UI today, since a completed check-in cannot be reopened. It is recorded now
-because the first path that does reach it will otherwise get it wrong silently.
+**Fixed** in `:domain` as `AnswerRevision`, with seven tests including both deferral directions —
+resolving one must take the new capture, and deferring an already-answered question must store
+`PENDING` or the rollover cannot find it. `recordAnswer` now decides `submitted_at`, `capture` and
+`edited_at` itself, so a caller cannot forget; the existing round-trip test that used to *pass an
+`edited_at` in* was the shape of the defect, and now asserts the value it supplies is ignored.
+
+The rule was mutation-tested before being trusted (`CLAUDE.md`): reverting `AnswerRevision` to the
+pre-fix behaviour failed three of the seven.
 
 **4. A note with no answer is silently discarded.** Same `hasContent` gate as defect 2:
 
@@ -490,8 +516,13 @@ invisible. And spec §3.3 makes the note the place prose belongs — *"real answ
 more detail than one field can hold"* — so "no value, but here is what happened" is a natural thing
 to want to write, and it is exactly what is thrown away.
 
-The fix is bound up with defect 2, because both turn on what a draft with no primary value means at
-the storage boundary. Decide them together.
+**Fixed** by making the screen honest rather than by storing the note. The note editor now says
+*"Answer the question to keep this note."* while the question is unanswered, and the summary row
+reads *"Note, not kept:"* instead of *"Note:"*. Storing it was rejected for the reason in the
+decision above: the row it would create is indistinguishable from a real "none of these" on a select
+item, and distinguishing them means a schema change and an edit to how scoring reads selects —
+scoring-cases 1.13, the highest-priority test in that document. Revisit if note-without-answer turns
+out to be something wanted often.
 
 ### Deferred, not a defect
 

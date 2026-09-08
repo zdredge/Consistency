@@ -399,18 +399,33 @@ private fun NoteDialog(
         onDismissRequest = onDone,
         title = { Text("Notes") },
         text = {
-            OutlinedTextField(
-                value = question.draft.note,
-                onValueChange = { onNote(question, it) },
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                placeholder = { Text("Anything worth remembering") },
-                minLines = 3,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = { onDone() }),
-            )
+            Column {
+                OutlinedTextField(
+                    value = question.draft.note,
+                    onValueChange = { onNote(question, it) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                    placeholder = { Text("Anything worth remembering") },
+                    minLines = 3,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { onDone() }),
+                )
+
+                // A note rides along with an answer; on its own it is not stored, because the row it
+                // would create is indistinguishable from a real answer of "none of these" on a
+                // select item. Said here rather than left to be discovered: the previous behaviour
+                // took the note, showed it back, and dropped it (defect 4).
+                if (!question.draft.isAnswered && !question.draft.deferred) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Answer the question to keep this note.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
         confirmButton = { TextButton(onClick = onDone) { Text("Done") } },
     )
