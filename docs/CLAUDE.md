@@ -14,7 +14,9 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M4 are complete; M5 (the rollover job) is next.** Do not begin a later milestone than the
+**M0 through M4.5 are complete.** The agreed next work is the **four defects M4.5 found**, listed at
+the end of its build-order section — all four concern state after leaving a check-in question, and
+two of them share a root. **M5 (the rollover job) follows.** Do not begin a later milestone than the
 one in progress. Two ordering facts behind it: `:domain` can be proven correct
 without a device, and the dashboard cannot be evaluated without substantial seeded history, so scoring
 belongs early and the dashboard late. The dashboard is also gated on the seed-data fixture (spec O7;
@@ -118,6 +120,29 @@ module. This is what makes the whole rulebook testable without an emulator, whic
   interface exists for version pinning, not provider abstraction.
 - Charts: Compose Canvas for the calendar heatmap, Vico for line charts. Time-of-day line charts must
   respect the 04:00 boundary or a 01:30 bedtime plots as the earliest night of the month.
+
+## UI
+
+Rules earned in M4.5, which rebuilt the check-in screen. The full account is in that milestone's
+build-order section.
+
+- **A displayed value must never look like a given one.** This is the dangerous class in this layer
+  and it recurs on every new surface. The number stepper rendered `valueNumber ?: 0.0`, so an
+  unanswered question showed `0` — identical to a real zero, which scores differently. The
+  always-visible time dial had the same trap, and the summary would have been the third. It is the UI
+  face of constraint 11: silence and an answer are different states, so the screen must never make
+  them look alike. Prefer designs where the distinction is structural — nothing is selected until
+  something is tapped — over designs that rely on a placeholder.
+- **Every answer type renders through `AnswerOption`** (`app/.../ui/checkin/AnswerOption.kt`). A new
+  answer type does not get its own control. Four slightly different `FilterChip` treatments drifted
+  into existence before this, which is how "all answers look the same" stops being true.
+- **Value formatting is shared** in `app/.../ui/checkin/AnswerFormat.kt`, so an input and the summary
+  cannot disagree about the same stored number — no `19:30` under a dial reading 7:30 PM.
+- **Skips are shown, never scolded.** No red, no warning, no gate on finishing. Silence is a real
+  answer; a screen that pressures the user out of it corrupts what is being measured.
+- **What the user sees must match what was stored.** Three M4.5 defects rendered perfectly and were
+  wrong underneath, and each was found by reading the database or by tapping a value that did not
+  change — not by looking. When verifying a UI change that writes, check the row.
 
 ## Testing
 

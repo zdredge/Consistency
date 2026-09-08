@@ -1,6 +1,7 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0 through M4 are complete**; M5 (the rollover job) is next.
+**Status:** agreed and in progress. **M0 through M4.5 are complete**; three defects found
+during M4.5 are the agreed next work, then M5 (the rollover job).
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -70,10 +71,11 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M2 | `:domain` scoring engine | **TDD (JVM), the core TDD phase** | M1 | M0 |
 | M3 | `:data` persistence layer + seed library | TDD (instrumented) | M1, M2 | — |
 | M4 | Check-in loop (capture, backfill, pending) | TDD in `:domain`; UI manual | M2, M3 | — |
+| M4.5 | Check-in UI — one question per screen, summary | Hand-verified; `:app` has no tests | M4 | — |
 | M5 | Rollover job (day close, expected check-ins, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
-| M8 | Item detail views and charts | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
+| M8 | Item detail views and charts, **plus item configuration (spec §5.7)** | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
 | M9 | Seed-data fixture (spec O7) | N/A — it *is* test scaffolding | M3 | M4–M8 |
 | M10 | Dashboard | ViewModel TDD against seeded data | M9 | — |
 | M11 | Export | TDD the serialiser; hand-verify the picker | M3 | M10 |
@@ -289,7 +291,9 @@ should die.
 - **Repository support** — generating expected check-ins, offering the outstanding ones, recording
   an answer against the check-in it was given in.
 - **Two screens** — a landing surface with the outstanding-check-in banner, and the check-in itself:
-  tap-first, all six answer types, keyboard only for the optional note.
+  tap-first, all six answer types, keyboard only for the optional note. *(The check-in screen
+  described here was a scrolling list of cards. **M4.5 replaced it** — see that section for what the
+  screen is now. The landing surface is unchanged.)*
 - **Schema v2** — `items.ordinal`, and the first real migration.
 
 **Decisions.**
@@ -328,12 +332,13 @@ have hidden in a ViewModel test. **`:app` has no tests, deliberately.**
 capture-state transition is covered by a fast test; the previous-day labelling is present and stated
 in the largest type on the screen.
 
-**Known gap, carried out of M4.** An *answered* multi-select with nothing selected — "I did none of
-these before bed" — is a different thing from silence and scores differently: it **meets** a
-must-not-include goal, where silence is excluded. Storage already distinguishes the two and a DAO
-test asserts it, but the screen offers no way to say it, so that answer is currently unreachable.
-Closing it means adding a "none of these" affordance, which is a product decision rather than a
-missing line of code.
+**Known gap, carried out of M4 — closed by M4.5.** An *answered* multi-select with nothing selected
+— "I did none of these before bed" — is a different thing from silence and scores differently: it
+**meets** a must-not-include goal, where silence is excluded. Storage always distinguished the two
+and a DAO test asserted it, but the screen offered no way to say it, so the answer was unreachable.
+M4.5 Phase 4 added the "None of these" row, and Phase 6 verified it in the data: a stored `pre_sleep`
+row with no selections, sitting beside days that have no row at all. It is now a requirement in spec
+§5.6 rather than an implementation detail that could be dropped by a later redesign.
 
 **What M5 inherits.** `CheckInPlanner` is already the rule for which check-ins should exist — M5
 wraps that same function in the rollover worker rather than writing a second one, and adds what only
@@ -342,16 +347,73 @@ to missed goals (A2.1), and freezing provisional step values.
 
 ---
 
-## M4.5 — Check-in UI — **IN PROGRESS**
+## M4.5 — Check-in UI — **BUILT 2026-09-08**
 
-A UI milestone inserted between M4 and M5: one question per screen, a dark visual language, and the
-answer types reworked. Documented in full at the end of the milestone; what follows is the defect
-list, recorded as it was found.
+**Not in the original plan.** M4 delivered a working check-in and the user, using it, did not like
+it. This milestone was inserted between M4 and M5 out of a design discussion rather than the build
+order, which is why it carries a decimal. It is worth recording that the trigger was *using the
+thing*, not reviewing the plan.
+
+**Outcome: 184 `:domain` tests, 3 JVM, 81 instrumented — all unchanged**, which is the correct result
+for a milestone that touched only `:app`. Six phases.
+
+**Delivered.**
+- **One question per screen**, replacing M4's scrolling list of cards, with a segmented progress bar
+  that distinguishes answered from skipped.
+- **A dark visual language** — one `darkColorScheme`, no dynamic colour, soft corners, no neon.
+- **Every answer type through one component** (`AnswerOption`): full-width stacked rows, uniform
+  across bool, scale, both selects and numbers.
+- **The time dial inline**, replacing a button that opened a picker in a dialog.
+- **The note in a dialog**, because a field in the card's footer is where the keyboard opens.
+- **A closing summary** listing every question and what was recorded, each row correctable in place.
+
+**Decisions.**
+- **The summary has no spec basis.** §5.6 was three sentences about being tap-first and under sixty
+  seconds; there was no review step anywhere in the docs. It was a product decision made here, and
+  §5.6 has been rewritten to say so rather than to imply the spec asked for it.
+- **Done marks the check-in answered; Confirm does not.** The summary is a review of a completed
+  check-in, not a gate before one — so reaching the summary and closing still counts. Deliberate: it
+  keeps the question set, rather than the ceremony after it, as the thing that completes.
+- **The summary is a page inside the check-in, not a third screen.** Routing it through
+  `MainActivity` would have put it behind the `exit` flag, which is defect 1 below.
+- **Entry decides exit.** A question opened from the summary returns there, with a single button
+  rather than Back and Next quietly meaning something new.
+- **Halves removed from the number options.** Two layouts were compared on the device; as full-width
+  rows both read badly. 1.5 is still recordable through the keypad, which matters because spec §1
+  rests its argument for reporting attainment on *"1.5 of 2 bottles every single day"*.
+
+**What M4.5 caught.** Every one of these rendered perfectly and was wrong underneath.
+- **The number stepper showed `0` for an unanswered question**, indistinguishable from a real zero —
+  which scores differently, since silence is excluded and a real 0 misses "at least 3". Options fix
+  it by construction: nothing is selected until something is tapped.
+- **The time dial recorded a stale value.** Reading the picker on pointer release, even on the Final
+  pass, is one interaction behind: tapping 9 on a dial showing 7 recorded 7:00. Found by tapping a
+  value that *changed*, after an earlier test tapping an *unchanged* value had passed and proved
+  nothing. It now takes two mechanisms — an observer for changes, a release handler for the tap that
+  changes nothing.
+- **Close dropped the question on screen**, so an answer given and then closed was simply lost. Found
+  by reading the database, not by looking at the screen.
+- **Selected options were invisible** — `secondaryContainer` was mapped to the card colour. Caught by
+  a screenshot, not by source review.
+
+**The generalisation, now in `CLAUDE.md`:** the dangerous class in this layer is **a displayed value
+that cannot be told apart from a given one**. It recurs on every new surface — the stepper, the dial,
+and then the summary, which had to be built to avoid it a third time.
+
+**Known gap closed.** The answered-but-empty multi-select carried out of M4 — "I did none of these
+before bed", which *meets* a must-not-include goal where silence is excluded — is reachable as of
+Phase 4 and verified in Phase 6: a stored `pre_sleep` row with no selections, distinct from no row at
+all. Spec §5.6 now requires it.
+
+**What M5 inherits.** Nothing structural — this milestone changed no schema, no domain rule and no
+repository behaviour except that `recordAnswer` no longer marks a check-in answered. It does hand
+over four defects.
 
 ### Defects found during M4.5, to fix after the UI work
 
-Both are about **state after leaving a question**, both predate the M4.5 UI changes, and both are
-agreed to be fixed once the UI settles.
+All four are about **state after leaving a question**, all predate or were exposed by the M4.5 UI
+work, and all are agreed to be fixed once the UI settles. Defects 2 and 4 share a root: the
+`hasContent` gate in `commitCurrent`.
 
 **1. Reopening a check-in immediately after closing one is swallowed.** Every first reopen after a
 close lands straight back on the home screen; a second tap works. Traced on the device, 4 attempts
@@ -413,13 +475,36 @@ The rule to land, in `:domain` with tests rather than in the ViewModel:
 Not reachable through the UI today, since a completed check-in cannot be reopened. It is recorded now
 because the first path that does reach it will otherwise get it wrong silently.
 
+**4. A note with no answer is silently discarded.** Same `hasContent` gate as defect 2:
+
+```kotlin
+val hasContent: Boolean get() = isAnswered || deferred
+```
+
+A note is neither, so a question answered *only* with a note never reaches storage. Demonstrated on
+the device in Phase 6: a note was typed on a time question, the summary displayed it under
+"Recorded.", the check-in was confirmed, and no row for that item exists.
+
+Two things make it worse than it sounds. The screen states the note was recorded, so the loss is
+invisible. And spec §3.3 makes the note the place prose belongs — *"real answers consistently carry
+more detail than one field can hold"* — so "no value, but here is what happened" is a natural thing
+to want to write, and it is exactly what is thrown away.
+
+The fix is bound up with defect 2, because both turn on what a draft with no primary value means at
+the storage boundary. Decide them together.
+
 ### Deferred, not a defect
 
 **Time questions all open at 07:00.** Right for "woke up" and "got out of bed", wrong for "went to
-bed", which needs an AM/PM tap plus a drag. A per-item default is the fix and has nowhere to live:
-item configuration is spec §5.7, **still unassigned to any milestone**. The cheap alternative is
-defaulting to the previous answer for that item, which improves with use and costs one query per
-time question.
+bed", which needs an AM/PM tap plus a drag. A per-item default is the fix and now has somewhere to
+live: item configuration is spec §5.7, **assigned to M8** alongside the item detail view. The cheap
+alternative is defaulting to the previous answer for that item, which improves with use and costs one
+query per time question.
+
+**The summary loses its scroll position after an edit.** Correcting a row near the bottom returns to
+the top of the list. Tolerable at nine questions and annoying at twenty; recorded rather than fixed so
+the behaviour can be seen before a fix is chosen. Hoisting the scroll state above the page switch is
+the obvious approach.
 
 ---
 
@@ -525,6 +610,13 @@ waits (it needs history and O1); the detail view does not.
   was chosen must be legible, so leaning on it is visible rather than hidden.
 - Notes surfaced per data point (spec §5.4).
 - Charts: Compose Canvas for the heatmap, Vico for line charts (architecture §4; `CLAUDE.md`).
+- **Item configuration (spec §5.7)**, assigned here as of M4.5. It had no milestone at all and was
+  flagged four times across M3, M4 and M4.5 without landing anywhere. It belongs beside the detail
+  view because that is the surface already devoted to a single item, and editing an item's setup is
+  what a user reaching that screen would next want. It also **unblocks per-item defaults** — the time
+  questions currently all open at 07:00, which is wrong for bedtime, and there is nowhere to record a
+  better starting value until items are configurable. Note this makes M8 the milestone that first
+  touches item versioning from the UI: items are versioned and retired, never deleted.
 
 **TDD.** The chart-type selection is a pure map from answer type — tested exhaustively. The
 clock-axis transform for time-of-day (the 04:00 wrap) is pure and is the one with a real bug waiting

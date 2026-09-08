@@ -1,7 +1,7 @@
 # Habit Accountability App — Architecture
 
 **Status:** approved and in build. §2 platform findings were verified on the device in M0;
-§§4–5 record what M1, M2 and M3 actually built.
+§§4–5 record what M1, M2, M3, M4 and M4.5 actually built, in the "As built" notes.
 **Intended repo path:** `docs/architecture.md`
 **Companion document:** `docs/product-spec.md`, which is the authority on behaviour. Where this
 document and the spec disagree, the spec wins and this document is wrong.
@@ -185,6 +185,23 @@ performance footguns.
 **Alternative:** XML layouts with Views. Better documented, substantially more boilerplate, and the
 legacy path.
 
+**As built (M4, M4.5).** Two screens in `app/.../ui/`: `home/HomeScreen` and the check-in, which is
+`checkin/CheckInScreen` plus `CheckInSummary`, `AnswerOption`, `NumberInput`, `SegmentedProgress` and
+`AnswerFormat`. Material3, a single `darkColorScheme` with `dynamicColor = false`, and no navigation
+library (T5). M4 built the check-in as one scrolling list of cards; M4.5 replaced it with one question
+per screen and a closing summary, which is why this note spans two milestones.
+
+**The recomposition footgun above was not the one that bit.** Every real defect here was a *state*
+defect that rendered perfectly: a stepper showing `0` for an unanswered question, indistinguishable
+from a real zero that scores differently; a time dial read on pointer release, one interaction stale,
+so tapping 9 recorded 7. Both looked correct on screen and were found by reading the database or by
+tapping a value that had not changed. The lesson for later UI milestones is that **the dangerous
+class here is a displayed value that cannot be told apart from a given one** — not frame cost.
+
+One shared component renders every answer type (`AnswerOption`) and one file formats every value
+(`AnswerFormat`), so an input and the summary cannot disagree about the same stored number. `:app`
+carries no tests deliberately — see §5, testing posture.
+
 ### Room — persistence
 **Why:** the data is genuinely relational and the scoring queries are real queries. Room is a thin
 type-safe layer over SQLite that validates SQL at compile time.
@@ -335,6 +352,14 @@ exactly — the whole rulebook was provable without a device, which is what just
 **Con:** hand-wiring gets tedious as it grows.
 **Alternative:** Hilt, the Android standard. Worth adopting the moment several ViewModels need the
 same dependencies. **Assumed:** start manual, switch if the wiring hurts.
+
+**As built (M4, M4.5).** `AppContainer` is four objects — the clock, the `DayResolver`, the
+repository, and a hand-written `ViewModelProvider.Factory` — and it carried two screens and two
+ViewModels through both milestones without hurting. The database is deliberately not exposed on it:
+`:data` builds its own (`createConsistencyDatabase`), so nothing in `:app` can reach past the
+repository to a DAO. The factory is hand-written rather than skipped because plain state holders in
+`remember` die on rotation, and losing a half-finished check-in to a screen turn is the friction §1
+says ends the product. Still no reason to adopt Hilt.
 
 ---
 
@@ -676,4 +701,4 @@ of mind.
 | ~~T2~~ | **Closed by M3.** Typed nullable columns were kept and the mapping did not get ugly: `EntityMappers.kt` is a flat set of one-line conversions with no branching on answer type, because the domain `Answer` carries the same typed nullable fields the table does. A blob would have added a serialiser on both sides and made every numeric query a parse. Revisit only if a new answer type cannot be expressed as a column. |
 | T3 | How to test alarm scheduling and the boot receiver without relying on manual device verification. |
 | T4 | Whether the rollover job should also pre-compute and cache dashboard figures, or whether scoring on read is fast enough at a few thousand rows. Probably fast enough; worth measuring rather than assuming. |
-| T5 | Compose navigation approach across the five screens — deliberately not decided here. |
+| T5 | Compose navigation approach across the five screens — deliberately not decided here. **Evidence from M4.5, still open:** two screens are a sealed `Screen` and a `when`, and the check-in summary was made a *page inside* the check-in rather than a third screen — routing it through `MainActivity` would have put it behind the `exit` flag, which is a live defect (build-order M4.5, defect 1). That defect is itself the argument: navigation currently depends on a state field that outlives the screen setting it, and a one-shot event or a real back stack both fix it. Decide when the item detail view and dashboard make five screens real. |

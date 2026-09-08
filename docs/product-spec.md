@@ -397,6 +397,13 @@ Added after modelling a full day's check-ins with the user.
   exposed the consequence: under an exact target a fourth meal scores as a miss, and the attainment
   figure beside it would cap at 100%, so the dashboard would read "missed, 100%". The direction was
   wrong, not the arithmetic. No seed goal now uses `exactly`; the direction remains available.
+- **Water's prompt carries its unit**, decided during M4.5 when the answer options became full-width
+  rows. The item's `unit_label` had been repeated on every option — "1 bottle", "2 bottles" — which
+  read as noise once each option filled the screen width, and made the numbers harder to compare at a
+  glance than bare digits. The prompt became *"How much water did you drink? (Bottles)"* and the
+  options became plain numbers. The rule: **a unit belongs to the question, which is read once, not
+  to every answer, which is scanned.** `unit_label` stays on the item for charts and the detail view,
+  where a number appears without its question beside it.
 - **Coffee given a daily cap alongside its weekly one**, decided during M3 while seeding the library.
   The walkthrough moved worked out, stretched and coffee to weekly targets as one group, but the
   three are not the same shape: the first two are lower bounds, where weekly granularity correctly
@@ -504,6 +511,35 @@ than no chart.
 
 Tap-first, keyboard only for the optional note, under 60 seconds. Pending items carried from the
 previous night must be unmistakably labelled as belonging to the previous day.
+
+**Rewritten during M4.5**, which rebuilt this screen. The three requirements below were product
+decisions taken in that milestone, not pre-existing spec — recorded here because they are behavioural
+and a later change that quietly undid one would be a regression rather than a redesign.
+
+**One question at a time**, with progress visible across the set. The alternative — every question on
+one scrolling surface — was built first in M4 and abandoned: nothing showed what had been answered,
+and the end of the set was reachable only by scrolling past everything.
+
+**A skipped question must be nameable as skipped, and skipping must never be blocked or scolded.**
+This is the surface consequence of constraint 11. Silence and an answer are different states that
+score differently, so a screen that cannot show the difference, or that pressures the user out of
+silence, corrupts the thing being measured. No warning, no error colour, no gate on finishing.
+
+**An answered-but-empty multi-select must be expressible** — "I did none of these before bed" as a
+distinct act from not answering. It *meets* a must-not-include goal where silence is excluded
+(constraint 11, scoring-cases 1.13). Storage always held the distinction; until M4.5 the screen had
+no way to say it, so the answer was unreachable.
+
+**A review step ends the set**, listing every question and what was recorded, each row correctable in
+place. It exists because a nine-question set that ends by the screen vanishing gives no sense of
+having finished, and because it is the only surface that states a skip in words rather than implying
+it. It is a review of a completed check-in, not a gate before one: what marks a check-in answered is
+reaching the end of the questions, and no confirmation step may become the thing response rate
+depends on.
+
+**The note is reached in a dialog**, not a field on the card. Same rule as before — the keyboard is
+for the note and nothing else — but a field at the foot of a full-height screen is exactly where the
+keyboard opens, so the user was typing into something they could not see.
 
 ### 5.7 Setup
 
