@@ -62,14 +62,6 @@ import kotlinx.coroutines.flow.drop
 private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 
 /**
- * Twelve-hour, to match the dial.
- *
- * The dial has an AM/PM toggle, so it is a 12-hour control; printing its value as `19:30` underneath
- * made the screen speak two conventions at once about the same number.
- */
-private val timeFormat = DateTimeFormatter.ofPattern("h:mm a")
-
-/**
  * The check-in: **one question per screen**.
  *
  * M4 presented all nine as a scrolling list of cards. It worked and it felt wrong — an always-open
@@ -104,6 +96,9 @@ fun CheckInScreen(
     onNext: () -> Unit,
     onBack: () -> Unit,
     onFinish: () -> Unit,
+    onEdit: (Int) -> Unit,
+    onReturnToSummary: () -> Unit,
+    onConfirm: () -> Unit,
     onLeave: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -121,37 +116,59 @@ fun CheckInScreen(
     ) {
         SegmentedProgress(
             total = state.questions.size,
-            current = state.index,
+            // No current segment on the summary: there is no question in hand, so the bar reads
+            // purely as answered-versus-skipped, which is what it is worth on that page.
+            current = if (state.onSummary) -1 else state.index,
             answered = state.answeredIndices,
         )
 
         CheckInHeader(state, onLeave)
 
-        QuestionCard(
-            question = question,
-            modifier = Modifier.weight(1f),
-            onBool = onBool,
-            onNumber = onNumber,
-            onTime = onTime,
-            onScale = onScale,
-            onSelectOne = onSelectOne,
-            onToggle = onToggle,
-            onNote = onNote,
-            onDefer = onDefer,
-            onSelectNone = onSelectNone,
-        )
-
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedButton(
-                onClick = onBack,
-                enabled = !state.isFirst,
+        if (state.onSummary) {
+            CheckInSummary(
+                state = state,
+                onEdit = onEdit,
                 modifier = Modifier.weight(1f),
-            ) { Text("Back") }
+            )
+        } else {
+            QuestionCard(
+                question = question,
+                modifier = Modifier.weight(1f),
+                onBool = onBool,
+                onNumber = onNumber,
+                onTime = onTime,
+                onScale = onScale,
+                onSelectOne = onSelectOne,
+                onToggle = onToggle,
+                onNote = onNote,
+                onDefer = onDefer,
+                onSelectNone = onSelectNone,
+            )
+        }
 
-            Button(
-                onClick = if (state.isLast) onFinish else onNext,
-                modifier = Modifier.weight(2f),
-            ) { Text(if (state.isLast) "Done" else "Next") }
+        when {
+            state.onSummary ->
+                Button(onClick = onConfirm, modifier = Modifier.fillMaxWidth()) { Text("Confirm") }
+
+            // Entry decides exit. A question opened from the summary gets one unambiguous way out
+            // rather than Back and Next quietly meaning something else than they did a screen ago.
+            state.fromSummary ->
+                Button(onClick = onReturnToSummary, modifier = Modifier.fillMaxWidth()) {
+                    Text("Back to summary")
+                }
+
+            else -> Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedButton(
+                    onClick = onBack,
+                    enabled = !state.isFirst,
+                    modifier = Modifier.weight(1f),
+                ) { Text("Back") }
+
+                Button(
+                    onClick = if (state.isLast) onFinish else onNext,
+                    modifier = Modifier.weight(2f),
+                ) { Text(if (state.isLast) "Done" else "Next") }
+            }
         }
     }
 }
@@ -382,18 +399,33 @@ private fun NoteDialog(
         onDismissRequest = onDone,
         title = { Text("Notes") },
         text = {
-            OutlinedTextField(
-                value = question.draft.note,
-                onValueChange = { onNote(question, it) },
-                modifier = Modifier.fillMaxWidth().focusRequester(focus),
-                placeholder = { Text("Anything worth remembering") },
-                minLines = 3,
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = { onDone() }),
-            )
+            Column {
+                OutlinedTextField(
+                    value = question.draft.note,
+                    onValueChange = { onNote(question, it) },
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                    placeholder = { Text("Anything worth remembering") },
+                    minLines = 3,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences,
+                        imeAction = ImeAction.Done,
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { onDone() }),
+                )
+
+                // A note rides along with an answer; on its own it is not stored, because the row it
+                // would create is indistinguishable from a real answer of "none of these" on a
+                // select item. Said here rather than left to be discovered: the previous behaviour
+                // took the note, showed it back, and dropped it (defect 4).
+                if (!question.draft.isAnswered && !question.draft.deferred) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Answer the question to keep this note.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
         confirmButton = { TextButton(onClick = onDone) { Text("Done") } },
     )

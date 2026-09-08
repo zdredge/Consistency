@@ -13,9 +13,12 @@ import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.time.DayResolver
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -101,12 +104,21 @@ data class CheckInUiState(
     /** Which question is on screen. One question at a time (M4.5). */
     val index: Int = 0,
     /**
-     * The screen is done with and the caller should navigate away. Set by both [CheckInViewModel.finish]
-     * and [CheckInViewModel.close], because **either way the question on screen must be committed
-     * first** — leaving through Close used to drop it, so an answer given and then closed was simply
-     * lost. Found by reading the database rather than by looking at the screen.
+     * The summary is showing: the questions are done with and the user is looking at what they gave.
+     *
+     * It is a **page of this screen, not a screen of its own**. It needs the same state holder, the
+     * same header and the same progress bar, and routing it through `MainActivity` would have put it
+     * behind the exit signal — which was defect 1, now fixed by making that signal an event rather
+     * than a field. The reasoning held up: the summary still has no business being a screen.
      */
-    val exit: Boolean = false,
+    val onSummary: Boolean = false,
+    /**
+     * The question on screen was opened *from* the summary, so leaving it returns there rather than
+     * advancing. Entry decides exit: the same question is reached two ways and has to leave the way
+     * it came, or correcting one answer would dump the user back into the middle of a set they had
+     * already finished.
+     */
+    val fromSummary: Boolean = false,
 ) {
     val current: QuestionUi? get() = questions.getOrNull(index)
     val isFirst: Boolean get() = index == 0
@@ -142,6 +154,18 @@ class CheckInViewModel(
     val state: StateFlow<CheckInUiState> = _state.asStateFlow()
 
     /**
+     * "This check-in is done with" — delivered **once**, to whoever is navigating.
+     *
+     * It was a `Boolean` on the state, and that was defect 1. A field outlives the screen that set
+     * it: `MainActivity` navigates on seeing it true, `load()` cleared it in a coroutine, and
+     * re-entering the screen raced the two — so every *first* reopen after a close bounced straight
+     * back to the home screen and only the second worked. An event cannot be observed twice, so the
+     * race has nowhere to live rather than being timed more carefully.
+     */
+    private val _exit = Channel<Unit>(Channel.BUFFERED)
+    val exit: Flow<Unit> = _exit.receiveAsFlow()
+
+    /**
      * Loads a check-in, or does nothing if it is already loaded.
      *
      * The guard matters: the screen calls this from a `LaunchedEffect`, which re-runs when the
@@ -150,11 +174,10 @@ class CheckInViewModel(
      */
     fun load(day: LocalDate, slot: Slot) {
         val current = _state.value
-        // Reload after an exit: the flag has to clear, or reopening the same check-in would navigate
-        // straight back out again.
-        if (!current.loading && !current.exit &&
-            current.checkInDay == day && current.slot == slot
-        ) {
+        // Rotation re-runs the screen's LaunchedEffect, and reloading there would send the user back
+        // to the first question mid-check-in. Leaving resets the state to `loading`, so re-entering
+        // fails this guard and rebuilds — no flag involved.
+        if (!current.loading && current.checkInDay == day && current.slot == slot) {
             return
         }
 
@@ -218,15 +241,17 @@ class CheckInViewModel(
 
     fun back() = moveTo(_state.value.index - 1)
 
-    /** Jumps straight to a question. Used by the summary in Phase 5. */
-    fun goTo(index: Int) = moveTo(index)
-
     /**
-     * Ends the set: commits the last question and **marks the check-in answered**.
+     * Ends the set: commits the last question, **marks the check-in answered**, and shows the summary.
      *
-     * This is the only thing that marks it, and it is the single most consequential action in the
-     * app — response rate, the primary metric, counts check-ins in this state. Answering questions
-     * does not do it; reaching the end does.
+     * Marking here is the single most consequential action in the app — response rate, the primary
+     * metric, counts check-ins in this state. Answering questions does not do it; reaching the end
+     * does.
+     *
+     * **The summary is a review of a completed check-in, not a gate before one.** Confirming does not
+     * mark anything, so a user who reads the summary and closes instead is already counted. That is a
+     * deliberate cost: it keeps the question set, rather than the ceremony after it, as the thing
+     * that completes.
      */
     fun finish() {
         val current = _state.value
@@ -236,7 +261,43 @@ class CheckInViewModel(
         viewModelScope.launch {
             commitCurrent()
             repository.markCheckInAnswered(day, slot, dayResolver.now())
-            _state.update { it.copy(exit = true) }
+            _state.update { it.copy(onSummary = true, fromSummary = false) }
+        }
+    }
+
+    /**
+     * Leaves the summary. Nothing is written and nothing is marked — [finish] already did both.
+     *
+     * It exists because the user asked for "some indication of completing the question set", and a
+     * set that ends by the screen simply vanishing does not give one.
+     */
+    fun confirm() {
+        viewModelScope.launch {
+            commitCurrent()
+            leave()
+        }
+    }
+
+    /**
+     * Opens one question from the summary, to correct it.
+     *
+     * Deliberately **not** routed through [moveTo]: that returns early when the target is already the
+     * current index and nothing is dirty, which is exactly the case here — the summary is reached
+     * from the last question, so tapping the last question's row would be a no-op and the summary
+     * flag would never clear. There is nothing to commit on the way out of a summary anyway.
+     */
+    fun editFromSummary(index: Int) {
+        val questions = _state.value.questions
+        if (questions.isEmpty()) return
+        val target = index.coerceIn(0, questions.lastIndex)
+        _state.update { it.copy(index = target, onSummary = false, fromSummary = true) }
+    }
+
+    /** Returns to the summary from a question opened out of it, committing the correction. */
+    fun returnToSummary() {
+        viewModelScope.launch {
+            commitCurrent()
+            _state.update { it.copy(onSummary = true, fromSummary = false) }
         }
     }
 
@@ -250,8 +311,20 @@ class CheckInViewModel(
     fun close() {
         viewModelScope.launch {
             commitCurrent()
-            _state.update { it.copy(exit = true) }
+            leave()
         }
+    }
+
+    /**
+     * Announces the exit and clears the session.
+     *
+     * The reset is what makes re-entry work: [load]'s guard skips a check-in that is already loaded,
+     * so without it, reopening the check-in just closed would show it exactly as it was left —
+     * sitting on its summary, or halfway down a set the user thought they had finished.
+     */
+    private suspend fun leave() {
+        _exit.send(Unit)
+        _state.value = CheckInUiState()
     }
 
     private fun moveTo(target: Int) {
@@ -265,14 +338,40 @@ class CheckInViewModel(
         }
     }
 
-    /** Writes the question on screen, if it has anything to say and has changed since it was last written. */
+    /**
+     * Writes the question on screen, if it has changed since it was last written.
+     *
+     * **An emptied draft deletes rather than skipping.** Returning early on "nothing to write" was
+     * defect 2: `recordAnswer` is the only write path and there was no delete, so clearing an answer
+     * that had already been stored left the old row in place — the screen said it was gone and
+     * reopening showed it back. It has to be a delete and not a blanking: a row that exists with
+     * nothing in it is the real answer *"none of these"* for a select item, so blanking would turn a
+     * retraction into a met goal (`DirectionEvaluator`, scoring-cases 1.13).
+     */
     private suspend fun commitCurrent() {
         val current = _state.value
         val question = current.current ?: return
         val day = current.checkInDay ?: return
         val slot = current.slot ?: return
 
-        if (question.readOnly || !question.dirty || !question.draft.hasContent) return
+        if (question.readOnly || !question.dirty) return
+
+        if (!question.draft.hasContent) {
+            // The day the answer belongs to, which for a sleep item is not the check-in's own day,
+            // and for a carry-over is the night it was deferred from.
+            repository.deleteAnswer(
+                question.entry.item.id,
+                question.entry.carriedOverFrom ?: AnswerDay.forCheckIn(day, slot),
+            )
+            _state.update { state ->
+                state.copy(
+                    questions = state.questions.map {
+                        if (it.entry.item.id == question.entry.item.id) it.copy(dirty = false) else it
+                    },
+                )
+            }
+            return
+        }
 
         repository.recordAnswer(question.toAnswer(day, slot), day, slot)
         _state.update { state ->

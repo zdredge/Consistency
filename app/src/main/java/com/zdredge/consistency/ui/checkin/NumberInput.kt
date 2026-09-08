@@ -58,14 +58,14 @@ fun NumberInput(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         offered.forEach { candidate ->
             AnswerOption(
-                label = candidate.label(),
+                label = candidate.asAnswer(),
                 selected = value == candidate,
                 onClick = { onNumber(question, if (value == candidate) null else candidate) },
             )
         }
 
         extra?.let {
-            AnswerOption(label = it.label(), selected = true, onClick = { onNumber(question, null) })
+            AnswerOption(label = it.asAnswer(), selected = true, onClick = { onNumber(question, null) })
         }
 
         // "…" said nothing at this size. A full-width row needs words.
@@ -83,10 +83,6 @@ fun NumberInput(
         )
     }
 }
-
-/** `2.0` reads as "2"; a half from the keypad reads as "1.5". A trailing `.0` is noise. */
-private fun Double.label(): String =
-    if (this % 1.0 == 0.0) "%.0f".format(this) else this.toString()
 
 /**
  * The overflow path: an app-drawn keypad, not the system keyboard.

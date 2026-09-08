@@ -7,6 +7,7 @@ import com.zdredge.consistency.data.mapper.originEntities
 import com.zdredge.consistency.data.mapper.selectionEntities
 import com.zdredge.consistency.data.mapper.toDomain
 import com.zdredge.consistency.data.mapper.toEntity
+import com.zdredge.consistency.domain.checkin.AnswerRevision
 import com.zdredge.consistency.domain.checkin.CheckInContent
 import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.checkin.CheckInPlanner
@@ -299,8 +300,35 @@ class ConsistencyRepository(
     suspend fun recordAnswer(answer: Answer, viaCheckInId: String? = null) {
         val existing = db.answerDao().forItemOnDay(answer.itemId.value, answer.day.toString())
         val id = existing?.answer?.id ?: newId()
-        val row = answer.toEntity(id, viaCheckInId ?: existing?.answer?.submittedViaCheckinId)
-        db.answerDao().replace(row, answer.selectionEntities(id))
+
+        // Preserves how and when the answer was FIRST given, and decides whether this counts as an
+        // edit. Without it the replace below restamps `submitted_at` and re-resolves `capture`,
+        // which is the silent overwrite spec §3.2 forbids. The rule and its deferral exceptions live
+        // in `:domain` with tests -- it is not something to re-derive here.
+        val resolved = AnswerRevision.resolve(
+            existing = existing?.toDomain(),
+            incoming = answer,
+            // Corrections made while giving a check-in are part of that answering. Null on either
+            // side means we cannot claim they are the same sitting, so it is treated as an edit.
+            sameCheckIn = viaCheckInId != null &&
+                viaCheckInId == existing?.answer?.submittedViaCheckinId,
+            now = dayResolver.now(),
+        )
+
+        val row = resolved.toEntity(id, viaCheckInId ?: existing?.answer?.submittedViaCheckinId)
+        db.answerDao().replace(row, resolved.selectionEntities(id))
+    }
+
+    /**
+     * Removes the answer for an item and day, if there is one.
+     *
+     * This is what "the user cleared it" means at the storage boundary, and it is a delete rather
+     * than a blanking on purpose — see [com.zdredge.consistency.data.db.dao.AnswerDao.deleteForItemOnDay].
+     * Recorded as defect 2 of M4.5: before this there was no delete path at all, so clearing an
+     * answer left the old row in place, the screen reported it gone, and reopening showed it back.
+     */
+    suspend fun deleteAnswer(itemId: ItemId, day: LocalDate) {
+        db.answerDao().deleteForItemOnDay(itemId.value, day.toString())
     }
 
     // ---- Measured values ---------------------------------------------------------------------

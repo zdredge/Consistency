@@ -15,6 +15,8 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -368,6 +370,85 @@ class CheckInLoopRepositoryTest {
             CheckInState.ANSWERED,
             today.checkIns(installDay).single { it.slot == Slot.NIGHT }.state,
         )
+    }
+
+    /**
+     * Defect 2. There was no delete path at all, so clearing an answer left the stored row behind:
+     * the screen reported it gone and reopening the check-in showed it back.
+     *
+     * It must be a delete and not a blanking. A row that exists with nothing in it is the real
+     * answer "none of these" for a select item, which *satisfies* a must-not-include target where
+     * silence is excluded — so blanking would quietly turn a retraction into a met goal.
+     */
+    @Test
+    fun clearingAnAnswerRemovesTheRowRatherThanEmptyingIt() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+
+        repo.deleteAnswer(ItemId("meals"), installDay)
+
+        assertNull(
+            "a cleared answer is gone, not stored empty",
+            repo.answer(ItemId("meals"), installDay),
+        )
+    }
+
+    /**
+     * Defect 3. Storage replaces the row wholesale, so without `AnswerRevision` a correction
+     * restamped `submitted_at` and re-resolved `capture` — losing when and how the answer was first
+     * given, which spec §3.2 forbids.
+     *
+     * Corrections made while still giving the check-in are not edits. The summary invites them.
+     */
+    @Test
+    fun correctingWithinTheSameCheckInPreservesTheFirstGivingAndSetsNoEditFlag() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+
+        repo.recordAnswer(
+            mealsAnswer(Capture.IN_WINDOW).copy(
+                valueNumber = 4.0,
+                submittedAt = Instant.parse("2026-09-02T02:00:00Z"),
+            ),
+            installDay,
+            Slot.NIGHT,
+        )
+
+        val stored = repo.answer(ItemId("meals"), installDay)!!
+        assertEquals(4.0, stored.valueNumber!!, 0.0)
+        assertEquals(
+            "still the moment it was first given",
+            Instant.parse("2026-09-02T01:30:00Z"),
+            stored.submittedAt,
+        )
+        assertNull("fixing it in the same sitting is not a later correction", stored.editedAt)
+    }
+
+    /**
+     * The other half of defect 3: a change arriving through a *different* check-in is an edit, and
+     * an edit never re-captures (scoring-cases 3.4).
+     */
+    @Test
+    fun changingAnAnswerThroughALaterCheckInSetsEditedAtAndLeavesCaptureAlone() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+
+        // The next day's check-in, correcting yesterday's answer.
+        val later = repoAt("2026-09-02T21:30")
+        later.ensureCheckInsExist(installDay.plusDays(1))
+        later.recordAnswer(
+            mealsAnswer(Capture.LATE).copy(valueNumber = 4.0),
+            installDay.plusDays(1),
+            Slot.NIGHT,
+        )
+
+        val stored = repo.answer(ItemId("meals"), installDay)!!
+        assertEquals(4.0, stored.valueNumber!!, 0.0)
+        assertEquals("an edit never re-captures", Capture.IN_WINDOW, stored.capture)
+        assertNotNull("changed through a later check-in, so it is an edit", stored.editedAt)
     }
 
     private fun mealsAnswer(capture: Capture) = Answer(
