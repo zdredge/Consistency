@@ -7,6 +7,7 @@ import com.zdredge.consistency.data.db.dao.AnswerDao
 import com.zdredge.consistency.data.db.dao.CheckInDao
 import com.zdredge.consistency.data.db.dao.ItemDao
 import com.zdredge.consistency.data.db.dao.MeasuredDao
+import com.zdredge.consistency.data.db.dao.RolloverDao
 import com.zdredge.consistency.data.db.dao.TargetDao
 import com.zdredge.consistency.data.db.entity.AnswerEntity
 import com.zdredge.consistency.data.db.entity.AnswerSelectionEntity
@@ -17,6 +18,7 @@ import com.zdredge.consistency.data.db.entity.ItemVersionEntity
 import com.zdredge.consistency.data.db.entity.MeasuredOriginEntity
 import com.zdredge.consistency.data.db.entity.MeasuredValueEntity
 import com.zdredge.consistency.data.db.entity.RollUpSpecEntity
+import com.zdredge.consistency.data.db.entity.RolloverRunEntity
 import com.zdredge.consistency.data.db.entity.SelectOptionEntity
 import com.zdredge.consistency.data.db.entity.TargetEntity
 
@@ -25,6 +27,9 @@ import com.zdredge.consistency.data.db.entity.TargetEntity
  *
  * **v2 (M4)** added `items.ordinal`. See `Migrations.kt` for why it is an ALTER rather than a
  * rebuild, and `SchemaVersionPinTest` for the pins that make a version bump deliberate.
+ *
+ * **v3 (M5)** added `rollover_runs`, the job's record of its own executions. A new table with no
+ * foreign keys, so the migration is a plain CREATE and nothing existing is touched.
  *
  * `exportSchema` is left at its default of true and the JSON lands in `data/schemas/`, committed.
  * That export is not documentation: a Room migration test rebuilds the *old* schema from it, so
@@ -44,8 +49,9 @@ import com.zdredge.consistency.data.db.entity.TargetEntity
         AnswerSelectionEntity::class,
         MeasuredValueEntity::class,
         MeasuredOriginEntity::class,
+        RolloverRunEntity::class,
     ],
-    version = 2,
+    version = 3,
 )
 @TypeConverters(Converters::class)
 abstract class ConsistencyDatabase : RoomDatabase() {
@@ -58,4 +64,6 @@ abstract class ConsistencyDatabase : RoomDatabase() {
     abstract fun answerDao(): AnswerDao
 
     abstract fun measuredDao(): MeasuredDao
+
+    abstract fun rolloverDao(): RolloverDao
 }

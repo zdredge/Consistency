@@ -40,9 +40,10 @@ sealed interface Screen {
 
 class MainActivity : ComponentActivity() {
 
-    // Lazy, not a field initialiser: field initialisers run before the base context is attached,
-    // so applicationContext would be null and the database could not be built.
-    private val container by lazy { AppContainer(applicationContext) }
+    // The process-wide graph, from ConsistencyApp. It used to be built here, which was fine while
+    // every write started with a tap; the rollover job runs with no Activity alive and needs the
+    // same repository, so the container moved up rather than being built twice.
+    private val container by lazy { applicationContext.container }
 
     private val homeViewModel by lazy {
         ViewModelProvider(this, container.viewModelFactory)[HomeViewModel::class.java]

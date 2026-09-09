@@ -127,6 +127,7 @@ fun MeasuredValueWithOrigins.toDomain() = MeasuredValue(
     day = value.dayDate,
     value = value.valueNumber,
     state = value.state,
+    lastSyncedAt = value.lastSyncedAt,
     origins = origins.map { MeasuredOrigin(it.originPackage, it.valueNumber) },
 )
 
@@ -226,6 +227,7 @@ fun MeasuredValue.toEntity(id: String) = MeasuredValueEntity(
     dayDate = day,
     valueNumber = value,
     state = state,
+    lastSyncedAt = lastSyncedAt,
 )
 
 fun MeasuredValue.originEntities(measuredValueId: String) = origins.map {

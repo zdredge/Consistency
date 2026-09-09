@@ -3,6 +3,7 @@ package com.zdredge.consistency.data
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.data.db.LOCAL_USER_ID
 import com.zdredge.consistency.data.db.entity.CheckInEntity
+import com.zdredge.consistency.data.db.entity.RolloverRunEntity
 import com.zdredge.consistency.data.mapper.originEntities
 import com.zdredge.consistency.data.mapper.selectionEntities
 import com.zdredge.consistency.data.mapper.toDomain
@@ -12,6 +13,8 @@ import com.zdredge.consistency.domain.checkin.CheckInContent
 import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.checkin.CheckInPlanner
 import com.zdredge.consistency.domain.checkin.CheckInTimes
+import com.zdredge.consistency.domain.checkin.Grace
+import com.zdredge.consistency.domain.checkin.RolloverPlanner
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.CheckIn
@@ -20,6 +23,7 @@ import com.zdredge.consistency.domain.model.ContainerSize
 import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.ItemVersion
+import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.MeasuredValue
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpSpec
@@ -30,6 +34,18 @@ import com.zdredge.consistency.domain.time.DayResolver
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+
+/** What one rollover changed. Returned to the worker, and written to `rollover_runs`. */
+data class RolloverOutcome(
+    val forDay: LocalDate,
+    val checkInsCreated: Int = 0,
+    val checkInsMissed: Int = 0,
+    val valuesFrozen: Int = 0,
+)
+
+/** Stored in `rollover_runs.outcome`. Plain strings: the set is not a domain concept. */
+const val ROLLOVER_SUCCEEDED = "SUCCEEDED"
+const val ROLLOVER_FAILED = "FAILED"
 
 /**
  * The one way in and out of storage.
@@ -206,7 +222,9 @@ class ConsistencyRepository(
      */
     suspend fun outstandingCheckIns(today: LocalDate): List<CheckIn> =
         db.checkInDao().outstanding(
-            from = today.minusDays(1).toString(),
+            // The same boundary the rollover marks MISSED from. Restating "yesterday" here would
+            // let the two drift, and a check-in in the gap would be neither offered nor missed.
+            from = Grace.oldestAnswerableDay(today).toString(),
             to = today.toString(),
             now = dayResolver.now().toEpochMilli(),
         ).map { it.toDomain() }
@@ -230,6 +248,108 @@ class ConsistencyRepository(
     /** Unresolved "not yet" answers, for carry-over into the next morning. */
     suspend fun deferrals(): List<Answer> =
         db.answerDao().withCapture(Capture.PENDING.name).map { it.toDomain() }
+
+    // ---- Rollover ----------------------------------------------------------------------------
+
+    /**
+     * The 04:00 job, in one call. `RolloverWorker` is the wrapper; this is the work.
+     *
+     * Three steps, and only the middle one is new to M5:
+     *
+     * 1. **Generate the check-ins that should exist** — [ensureCheckInsExist], the same function the
+     *    home screen calls. One implementation of the response-rate denominator, two callers.
+     * 2. **Close what has run out of grace** — the rule is `RolloverPlanner`'s; this writes its
+     *    answer. Nothing in this app had ever set `MISSED` before.
+     * 3. **Freeze measured values past their provisional window** (spec O4). Inert until Health
+     *    Connect lands in M7 and something populates `last_synced_at`.
+     *
+     * **Only candidates are read**, not the whole history: `PENDING` check-ins and `PROVISIONAL`
+     * values are the only rows either rule can act on, and both sets stay small because this job is
+     * what drains them.
+     *
+     * Safe to run twice, and safe to run late. Both rules compare stored state against [today]
+     * rather than assuming they run once per day, so a run after the device was off for three days
+     * resolves all three at once — see `RolloverPlanner`.
+     */
+    suspend fun runRollover(today: LocalDate = dayResolver.today()): RolloverOutcome {
+        val created = ensureCheckInsExist(today)
+
+        val plan = RolloverPlanner.plan(
+            today = today,
+            checkIns = db.checkInDao().inState(CheckInState.PENDING.name).map { it.toDomain() },
+            measuredValues = db.measuredDao().inState(MeasuredState.PROVISIONAL.name)
+                .map { it.toDomain() },
+            now = dayResolver.now(),
+        )
+
+        plan.checkInsToMiss.forEach {
+            db.checkInDao().setState(it.day.toString(), it.slot.name, CheckInState.MISSED.name)
+        }
+        plan.valuesToFreeze.forEach {
+            db.measuredDao()
+                .setState(it.itemId.value, it.day.toString(), MeasuredState.FROZEN.name)
+        }
+
+        return RolloverOutcome(
+            forDay = today,
+            checkInsCreated = created,
+            checkInsMissed = plan.checkInsToMiss.size,
+            valuesFrozen = plan.valuesToFreeze.size,
+        ).also { recordRolloverRun(it) }
+    }
+
+    private suspend fun recordRolloverRun(outcome: RolloverOutcome) {
+        db.rolloverDao().insert(
+            RolloverRunEntity(
+                id = newId(),
+                userId = LOCAL_USER_ID,
+                ranAt = dayResolver.now(),
+                forDay = outcome.forDay,
+                outcome = ROLLOVER_SUCCEEDED,
+                checkInsCreated = outcome.checkInsCreated,
+                checkInsMissed = outcome.checkInsMissed,
+                valuesFrozen = outcome.valuesFrozen,
+            ),
+        )
+    }
+
+    /**
+     * Records a run that threw.
+     *
+     * A table holding only successes cannot tell "it failed every night" from "it never ran", and
+     * those need different fixes. Architecture §8 rates this job's silent failure as high-impact and
+     * invisible; a failure row is what makes it visible.
+     */
+    suspend fun recordRolloverFailure(today: LocalDate, error: String) {
+        db.rolloverDao().insert(
+            RolloverRunEntity(
+                id = newId(),
+                userId = LOCAL_USER_ID,
+                ranAt = dayResolver.now(),
+                forDay = today,
+                outcome = ROLLOVER_FAILED,
+                error = error.take(500),
+            ),
+        )
+    }
+
+    /** When the job last completed. Null means it never has — ordinary on a fresh install. */
+    suspend fun lastSuccessfulRollover(): Instant? =
+        db.rolloverDao().lastSuccessful(ROLLOVER_SUCCEEDED)?.ranAt
+
+    /**
+     * The oldest check-in on record. Null on an empty database.
+     *
+     * Exists to date the install, so "the rollover has never run" can be told from "the app was
+     * installed this morning". A job broken since day one otherwise looks exactly like one that has
+     * not been due yet.
+     */
+    suspend fun earliestCheckInDay(): LocalDate? =
+        db.checkInDao().earliestDay()?.let(LocalDate::parse)
+
+    /** Recent runs, failures included, newest first. */
+    suspend fun recentRolloverRuns(limit: Int = 20): List<RolloverRunEntity> =
+        db.rolloverDao().recent(limit)
 
     /**
      * Marks a check-in answered. Note it does not touch the answers: a check-in answered "not yet"

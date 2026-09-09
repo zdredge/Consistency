@@ -17,6 +17,14 @@ data class HomeUiState(
     /** Check-ins that are due, unanswered and still inside the backfill grace (spec §3.2). */
     val outstanding: List<CheckIn> = emptyList(),
     val itemCount: Int = 0,
+    /**
+     * The 04:00 job has not run in too long, so every figure derived from check-ins is drifting.
+     *
+     * Architecture §8 rates a silently failing rollover "High — invisible" and asks for staleness to
+     * be surfaced **in the app rather than only in logs**. This is that surface: nothing else in the
+     * product would ever tell the user, because the failure mode is that everything still looks fine.
+     */
+    val rolloverOverdue: Boolean = false,
 )
 
 /**
@@ -30,6 +38,8 @@ data class HomeUiState(
  *    (architecture §5). M5 moves this to a scheduled worker so it happens without the app being
  *    opened at all; until then, opening is the only trigger there is.
  */
+private const val OverdueAfterDays = 2L
+
 class HomeViewModel(
     private val repository: ConsistencyRepository,
     private val dayResolver: DayResolver,
@@ -37,6 +47,24 @@ class HomeViewModel(
 
     private val _state = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = _state.asStateFlow()
+
+    /**
+     * Whether the daily job has been silent for longer than it should be.
+     *
+     * Two cases, and the second is the one worth the extra query. A job that **ran and then stopped**
+     * is caught by the timestamp. A job that has **never run at all** leaves no timestamp, and on a
+     * fresh install that is correct and unremarkable — so the oldest check-in dates the install, and
+     * only an install old enough to have had a rollover due counts as overdue. Without that, a job
+     * broken since day one would look exactly like one that simply is not due yet, which is the
+     * invisible failure this is here to make visible.
+     */
+    private suspend fun isRolloverOverdue(today: LocalDate): Boolean {
+        val installedOn = repository.earliestCheckInDay() ?: return false
+        if (!installedOn.isBefore(today.minusDays(OverdueAfterDays))) return false
+
+        val lastRun = repository.lastSuccessfulRollover() ?: return true
+        return dayResolver.dayFor(lastRun).isBefore(today.minusDays(OverdueAfterDays))
+    }
 
     fun refresh() {
         viewModelScope.launch {
@@ -49,6 +77,7 @@ class HomeViewModel(
                 today = today,
                 outstanding = repository.outstandingCheckIns(today),
                 itemCount = repository.items().size,
+                rolloverOverdue = isRolloverOverdue(today),
             )
         }
     }

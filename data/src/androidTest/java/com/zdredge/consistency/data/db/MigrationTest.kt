@@ -109,7 +109,64 @@ class MigrationTest {
         }
     }
 
+    /**
+     * v2 → v3 adds `rollover_runs`, the 04:00 job's record of its own executions.
+     *
+     * A new table with no foreign keys, so the risk here is not data loss but drift: the hand-written
+     * CREATE must match the compiled entity exactly, including nullability and the index, or Room's
+     * post-migration validation refuses to open the database on a real device holding real history.
+     * `runMigrationsAndValidate` is what catches that, and it is the only reason this test is worth
+     * more than reading the SQL.
+     */
+    @Test
+    fun migrating2To3AddsTheRolloverRunsTable() {
+        helper.createDatabase(TEST_DB_2_3, 2).close()
+
+        helper.runMigrationsAndValidate(TEST_DB_2_3, 3, true, MIGRATION_2_3).use { db ->
+            val columns = mutableListOf<String>()
+            db.query("PRAGMA table_info(`rollover_runs`)").use { cursor ->
+                while (cursor.moveToNext()) columns += cursor.getString(1)
+            }
+
+            assertEquals(
+                listOf(
+                    "id", "user_id", "ran_at", "for_day", "outcome",
+                    "checkins_created", "checkins_missed", "values_frozen", "error",
+                ),
+                columns,
+            )
+        }
+    }
+
+    /**
+     * An existing install's history is untouched by v3. The whole migration is one CREATE, and this
+     * is the assertion that says so rather than assuming it.
+     */
+    @Test
+    fun migrating2To3PreservesExistingRows() {
+        helper.createDatabase(TEST_DB_2_3_DATA, 2).use { db ->
+            db.execSQL(
+                "INSERT INTO items (id, user_id, kind, created_at, retired_at, ordinal) " +
+                    "VALUES ('meals', 'local', 'ASKED', 111, NULL, 3)",
+            )
+        }
+
+        helper.runMigrationsAndValidate(TEST_DB_2_3_DATA, 3, true, MIGRATION_2_3).use { db ->
+            db.query("SELECT id, ordinal FROM items").use { cursor ->
+                assertTrue("the item must survive", cursor.moveToNext())
+                assertEquals("meals", cursor.getString(0))
+                assertEquals(3, cursor.getInt(1))
+            }
+            db.query("SELECT COUNT(*) FROM rollover_runs").use { cursor ->
+                cursor.moveToNext()
+                assertEquals("a new table starts empty", 0, cursor.getInt(0))
+            }
+        }
+    }
+
     private companion object {
         const val TEST_DB = "migration-1-2-test.db"
+        const val TEST_DB_2_3 = "migration-2-3-test.db"
+        const val TEST_DB_2_3_DATA = "migration-2-3-data-test.db"
     }
 }
