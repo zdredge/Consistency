@@ -64,6 +64,16 @@ data class MeasuredValue(
     val day: LocalDate,
     val value: Double,
     val state: MeasuredState,
+    /**
+     * When the read that produced this value happened.
+     *
+     * The anchor for spec O4: a value is provisional for 24 hours after its read and then frozen, so
+     * the clock runs from the sync rather than from the day being measured — a value re-synced late
+     * is still young, which is the whole point of tolerating late syncing. `RolloverPlanner` reads
+     * it; nothing populates it until Health Connect arrives in M7, and until then a null here means
+     * nothing freezes rather than something freezing on a guess.
+     */
+    val lastSyncedAt: Instant? = null,
     val origins: List<MeasuredOrigin> = emptyList(),
 )
 

@@ -39,6 +39,13 @@ interface MeasuredDao {
     @Query("SELECT * FROM measured_values ORDER BY day_date, item_id")
     suspend fun all(): List<MeasuredValueWithOrigins>
 
+    /**
+     * Freezes or unfreezes one day's measured value. The O4 window is `RolloverPlanner`'s to apply;
+     * this writes the result.
+     */
+    @Query("UPDATE measured_values SET state = :state WHERE item_id = :itemId AND day_date = :day")
+    suspend fun setState(itemId: String, day: String, state: String)
+
     @Insert suspend fun insertValue(value: MeasuredValueEntity)
 
     @Insert suspend fun insertOrigins(origins: List<MeasuredOriginEntity>)

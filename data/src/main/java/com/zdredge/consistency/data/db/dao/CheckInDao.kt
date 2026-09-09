@@ -45,6 +45,16 @@ interface CheckInDao {
     suspend fun latestDay(): String?
 
     /**
+     * The oldest check-in on record, or null on an empty database.
+     *
+     * Used to tell "the rollover has never run" from "the app was installed this morning". Without
+     * it, a job that has failed since day one looks identical to one that has simply not been due
+     * yet, and the failure architecture 8 calls invisible stays invisible.
+     */
+    @Query("SELECT MIN(day_date) FROM checkins")
+    suspend fun earliestDay(): String?
+
+    /**
      * Check-ins still answerable: not yet answered, and within the grace window. `:domain` decides
      * which capture that earns; this only decides what is still offered.
      */
@@ -63,6 +73,16 @@ interface CheckInDao {
         now: Long,
         answered: String = CheckInState.ANSWERED.name,
     ): List<CheckInEntity>
+
+    /**
+     * Moves one check-in's state.
+     *
+     * **Which check-ins deserve this is not decided here.** `RolloverPlanner` applies the grace rule
+     * and hands over a list; this only writes it. A `WHERE day_date < ...` in SQL would be a second
+     * home for the rule that decides the primary metric, and the two would drift.
+     */
+    @Query("UPDATE checkins SET state = :state WHERE day_date = :day AND slot = :slot")
+    suspend fun setState(day: String, slot: String, state: String)
 
     @Insert suspend fun insert(checkIns: List<CheckInEntity>)
 

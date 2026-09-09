@@ -80,7 +80,7 @@ class SchemaVersionPinTest {
         assertEquals(
             "a new exported schema means a new database version; it needs a migration and a " +
                 "migration test, then this list updated",
-            listOf("1.json", "2.json"),
+            listOf("1.json", "2.json", "3.json"),
             exported,
         )
     }
@@ -98,10 +98,14 @@ class SchemaVersionPinTest {
          *
          * v1 — M3, the original eleven tables.
          * v2 — M4, added `items.ordinal` so check-in question order is data rather than a guess.
+         * v3 — M5, added `rollover_runs` so a silently failing rollover leaves a trail.
          */
         val PINNED_HASHES = mapOf(
             1 to "f80d6929ba81b4a2c4d2382989fd4b57",
             2 to "683ac7e67cbb9fc0fe1907a369aa50cf",
+            // v3 (M5): rollover_runs. Added after MIGRATION_2_3 existed and its test passed, which
+            // is the order this pin is here to enforce.
+            3 to "e9f6b5986bf3314f7a9d0f34b90cb194",
         )
     }
 }

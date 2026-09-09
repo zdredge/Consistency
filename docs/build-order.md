@@ -1,7 +1,7 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0 through M4.5 are complete**, and the four defects M4.5
-found are fixed. **M5 (the rollover job) is next.**
+**Status:** agreed and in progress. **M0 through M5 are complete**, including the four defects M4.5
+found. **M6 (notifications, alarms, boot reschedule) is next.**
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -72,7 +72,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M3 | `:data` persistence layer + seed library | TDD (instrumented) | M1, M2 | — |
 | M4 | Check-in loop (capture, backfill, pending) | TDD in `:domain`; UI manual | M2, M3 | — |
 | M4.5 | Check-in UI — one question per screen, summary | Hand-verified; `:app` has no tests | M4 | — |
-| M5 | Rollover job (day close, expected check-ins, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
+| M5 | Rollover job (expected check-ins, missed, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
 | M8 | Item detail views and charts, **plus item configuration (spec §5.7)** | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
@@ -539,30 +539,73 @@ the obvious approach.
 
 ---
 
-## M5 — The rollover job
+## M5 — The rollover job — **BUILT 2026-09-09**
 
 **Decided-by-docs.** Architecture §6 calls this "the only thing that writes without the user" and
 warns that if it silently fails "the app looks fine and every number is subtly wrong". It is
 separated from M4 because it is the process-not-running case in concentrated form.
 
-**Deliverables.**
-- A `WorkManager` job near 04:00 that: closes the previous day, generates the next day's **expected
-  check-in rows** (the denominator for response rate — without them the primary metric is
-  unmeasurable), converts unresolved pending answers to missed goals (scoring-cases A2), and freezes
-  provisional step values (spec O4: provisional 24h, then frozen).
-- Last-successful-rollover recorded and surfaced in-app, not only in logs (architecture §8 risk row).
+**Outcome: 205 `:domain` tests (up 14), 3 JVM, 93 instrumented (up 9), all green.** Schema v3.
 
-**TDD.** The worker is split in two:
-- **A pure "rollover plan" function** — given the current stored state and a date, return the list
-  of rows to write and states to change. This is fully testable in JVM: assert the expected
-  check-ins generated, the pending→missed conversions, the freeze transitions. This is where the
-  behaviour lives and where the tests are.
-- **A thin `WorkManager` wrapper** that runs the plan and persists it. Almost nothing in it to test;
-  what remains is hand-verified.
+**Three deliverables, not four — one was already built.** The planned list included *"converts
+unresolved pending answers to missed goals (scoring-cases A2)"*, and M2 had already done it:
+`GoalScorer.score` returns `MISSED` for a `PENDING` answer at read time. Writing it again at rollover
+would have duplicated a tested rule and **persisted a derived value**, which `CLAUDE.md` forbids. An
+unresolved deferral is self-limiting anyway — `CheckInContent` carries it into exactly one morning
+check-in and it scores missed from then on. The deliverable is struck rather than silently dropped,
+because a later reader would otherwise find the gap and "fix" it.
 
-**Exit criteria.** The rollover plan is green under JVM tests including the A2 pending conversion and
-the O4 freeze timing; the worker runs on-device and records its last success; staleness is visible
-in the app.
+**Delivered.**
+- **`Grace`** — the backfill boundary, in `:domain`, read by both `outstandingCheckIns` and the
+  rollover.
+- **`RolloverPlanner`** — pure: what to mark `MISSED`, what to freeze. No generation (that is
+  `ensureCheckInsExist`, unchanged), no A2 conversion.
+- **Schema v3, `rollover_runs`** — every run recorded, failures included.
+- **`ConsistencyApp`, `RolloverWorker`, `RolloverScheduler`** — daily periodic work at 04:15.
+- **A staleness line on Home** when the job has been silent too long.
+
+**Decisions.**
+- **A check-in becomes `MISSED` when its grace closes, not when its notifications stop.** Spec §2's
+  "repeat twice, then mark missed" is the notification sequence ending; §3.2 gives the window as the
+  end of the next day. The rollover owns the transition, and M6 must not add a second one.
+- **`Grace` is one function, not a restated boundary.** `outstandingCheckIns` chooses what the banner
+  still offers and the rollover chooses what to close; if those drifted, a check-in would fall in
+  between — no longer offered and never missed — and response rate would be wrong with nothing on
+  screen to show it.
+- **A table rather than a timestamp** for run history. Architecture §4 puts records in Room and
+  preferences in DataStore; a run is a record, and a single "last success" field cannot tell "it
+  failed every night" from "it never ran".
+- **Catch-up is the ordinary case.** Both rules compare stored state against today rather than
+  assuming one run per day, so a device off at 04:00 costs nothing and a late run resolves every day
+  it slept through. No document had addressed this.
+- **The O4 freeze rule ships inert.** Nothing populates `last_synced_at` until Health Connect arrives
+  in M7, and a null anchor freezes nothing rather than guessing. M7 turns on a proven rule instead of
+  writing one under pressure.
+
+**What M5 caught.**
+- **Nothing had ever written `CheckInState.MISSED`.** The only MISSED rows in the repo were
+  hand-inserted test fixtures, so an unanswered check-in stayed `PENDING` for ever and **response
+  rate could not fall.** The build plan listed this in one clause; it was the substance of the
+  milestone.
+- **`AppContainer` was unreachable from outside an Activity.** It was built in `MainActivity`, which
+  was fine while every write started with a tap. The first thing that runs with no Activity alive
+  cannot use it, so the graph moved to `ConsistencyApp`.
+- **`MeasuredValue` had no `lastSyncedAt`.** The column exists on the entity and both mappers dropped
+  it, so the O4 rule had no anchor to read. Added and carried through.
+
+**Verified on the device.** The worker ran through WorkManager with the app killed —
+`rollover for 2026-09-11: 0 created, 4 missed, 0 frozen` — and the database showed exactly the two
+days past grace moved to `MISSED`, yesterday and today untouched, answered days untouched, and a
+`rollover_runs` row. The staleness line was confirmed by advancing the clock past the last run.
+
+**Not verified on the device: running twice in one day.** WorkManager will not repeat periodic work
+inside its period, so the second run could not be provoked without faking time in a way that would
+prove nothing. Idempotency is covered by an instrumented test against real SQLite and by
+`RolloverPlannerTest`.
+
+**What M6 inherits.** The scheduler pattern, and one boundary: **M6 must not mark check-ins missed.**
+Its escalation sequence stops notifying; the rollover decides the state. Two writers for one
+transition is how A1.2 gets quietly broken.
 
 ---
 

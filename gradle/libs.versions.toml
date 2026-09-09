@@ -13,6 +13,9 @@ junitJupiter = "5.11.4"
 # and 2.3.3 moved off the deprecated compilerOptions KGP API, so this is comfortably clear of both.
 ksp = "2.3.9"
 room = "2.8.4"
+# M5 rollover. The only scheduler that survives a reboot and retries on failure; architecture 4
+# picks it over AlarmManager for this job because nothing here depends on the minute.
+work = "2.11.2"
 androidxTestRunner = "1.6.2"
 androidxTestRules = "1.6.1"
 
@@ -37,6 +40,7 @@ junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
+androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidxTestRules" }
 

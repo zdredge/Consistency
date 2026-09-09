@@ -52,6 +52,18 @@ fun HomeScreen(
             return@Column
         }
 
+        if (state.rolloverOverdue) {
+            // The one failure the product cannot otherwise report on itself. If the 04:00 job stops,
+            // nothing crashes and nothing looks wrong -- check-ins simply stop being expected, and
+            // every figure built on them drifts. Architecture §8 asks for it surfaced here rather
+            // than only in logs, so this is stated plainly and not dressed up as an error.
+            Text(
+                "The daily update hasn't run recently. Figures may be out of date.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+
         if (state.outstanding.isEmpty()) {
             Text("Nothing outstanding.", style = MaterialTheme.typography.bodyMedium)
         } else {

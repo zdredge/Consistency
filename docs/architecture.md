@@ -1,7 +1,7 @@
 # Habit Accountability App — Architecture
 
 **Status:** approved and in build. §2 platform findings were verified on the device in M0;
-§§4–5 record what M1, M2, M3, M4 and M4.5 actually built, in the "As built" notes.
+§§4–5 record what M1, M2, M3, M4, M4.5 and M5 actually built, in the "As built" notes.
 **Intended repo path:** `docs/architecture.md`
 **Companion document:** `docs/product-spec.md`, which is the authority on behaviour. Where this
 document and the spec disagree, the spec wins and this document is wrong.
@@ -244,6 +244,24 @@ which is unacceptable for a 21:00 accountability prompt.
 background work entirely. Rejected because provisional step values would never freeze until the app
 was opened, and expected-check-in rows would not exist to be missed, which quietly breaks the
 primary metric.
+
+**As built (M5).** `androidx.work` **2.11.2**. `RolloverScheduler` enqueues unique periodic work at
+**04:15** — past the 04:00 boundary, so the day it closes is genuinely over — with `KEEP`, because it
+is called from `Application.onCreate` and therefore also runs in the process WorkManager itself
+starts to execute the job. `RolloverWorker` is a `CoroutineWorker` thin enough to hand-verify:
+it calls `ConsistencyRepository.runRollover`, logs, and returns `retry()` on failure.
+
+**Inexactness turned out to cost nothing, for a reason worth recording.** Both rollover rules compare
+stored state against *today* rather than assuming one run per day, so a run at 04:07, a run at 11:00,
+and a first run after three days off all do the same work. That is what makes the "cheaper" lazy
+alternative above genuinely rejectable rather than merely unfashionable: the objection to it was
+never precision, it was that nothing would run at all.
+
+**Verified on the device** with the app process killed — the job fired through WorkManager, marked
+two days' check-ins missed and wrote its run row. Note that forcing periodic work early with
+`cmd jobscheduler run` does **not** work: WorkManager sees the request as before schedule and defers
+it. Provoking a run means changing the schedule, which is worth knowing before spending an hour on
+it again.
 
 ### NotificationManager and channels — delivery
 **Why:** there is no alternative mechanism. The real decision is channel importance.
@@ -684,7 +702,7 @@ of mind.
 | Risk | Severity | Mitigation |
 |---|---|---|
 | Battery optimisation delays alarms even with the exact-alarm permission held | **Downgraded High → Medium by M0.** | M0 measured it rather than assuming: in confirmed deep Doze (`deviceidle get deep` = IDLE) with battery optimisation unexempted, an exact alarm fired with a **0.6 s slip**. What one forced 15-minute run cannot show is maintenance windows, thermal throttling and adaptive-battery learning over time — so still watch real firings across the first several days of M6, and request a battery-optimisation exemption during setup as cheap insurance. |
-| Rollover job silently fails; all figures quietly wrong | High — invisible | Log every run, record last-successful-rollover, surface staleness in the app rather than only in logs |
+| Rollover job silently fails; all figures quietly wrong | High — invisible | Log every run, record last-successful-rollover, surface staleness in the app rather than only in logs. **Built in M5:** the `rollover_runs` table records every run including failures, and Home says so plainly when the last success is more than two days old. A history rather than one timestamp, so "it failed every night" can be told from "it never ran" — and the oldest check-in dates the install, so a job broken since day one is not mistaken for one not yet due. |
 | Step double-counting once a second source appears | Medium, and **dormant rather than hypothetical** | M0 confirmed exactly one step origin today (`com.android.healthconnect.phone.jf9fc...`, the on-device synthetic package). But **Samsung Health and Google Health are both already installed** on the device and simply are not writing steps — so a second origin needs no new hardware, just one of them starting to sync. A mislaid Galaxy Watch would add a third. Any of these could appear with no warning from Health Connect, and step counts would quietly inflate. Because the dashboard only shows a 14-day window, this would read as improvement rather than as a bug. Mitigation is the day-one origin grouping guard in §5, not a filtering system. Note also the synthetic-package-name change from June 2026 when identifying origins. |
 | Health Connect alpha APIs shift under the build | Medium | Pin versions; isolate all Health Connect calls behind one interface in `:data` |
 | Keystore loss | Medium | Off-machine backup before the first release-signed build |

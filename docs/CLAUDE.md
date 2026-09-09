@@ -14,10 +14,15 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M4.5 are complete, and the four defects M4.5 found are fixed. M5 (the rollover job) is
-next.** Do not begin a later milestone than the one in progress.
+**M0 through M5 are complete. M6 (notifications, alarms, boot reschedule) is next.** Do not begin a
+later milestone than the one in progress.
 
-Two rules those fixes settled, both worth knowing before touching answers:
+Two ordering facts behind that sequence: `:domain` can be proven correct without a device, and the
+dashboard cannot be evaluated without substantial seeded history, so scoring belongs early and the
+dashboard late. The dashboard is also gated on the seed-data fixture (spec O7; designed as
+build-order M9) and the goal-completion formula (spec O1).
+
+Two rules the M4.5 defect fixes settled, both worth knowing before touching answers:
 
 - **No value, no row.** Clearing an answer deletes it, and a note on its own is not stored. A row
   that exists with nothing in it is the real answer *"none of these"* for a select item, so blanking
@@ -25,10 +30,7 @@ Two rules those fixes settled, both worth knowing before touching answers:
 - **An edit is a change made through a different check-in** than the one that first recorded the
   answer. Corrections while giving a check-in — including from its summary — are part of that
   answering. `AnswerRevision` in `:domain` owns this; do not set `submitted_at`, `capture` or
-  `edited_at` from a caller. Two ordering facts behind it: `:domain` can be proven correct
-without a device, and the dashboard cannot be evaluated without substantial seeded history, so scoring
-belongs early and the dashboard late. The dashboard is also gated on the seed-data fixture (spec O7;
-designed as build-order M9) and the goal-completion formula (spec O1).
+  `edited_at` from a caller.
 
 **Precedence:** where the spec and the architecture document disagree, the spec wins and the
 architecture document is wrong. Say so rather than picking one silently.
@@ -85,6 +87,14 @@ likely to be broken by well-intentioned code:
   being answered**, never the day the answer is dated to — a sleep item answered this morning is
   dated yesterday but is in its own proper window, and confusing the two makes every morning check-in
   read as a backfill. Spec §3.2, `CaptureResolver`.
+- **The rollover marks a check-in `MISSED`, and nothing else does.** It happens when the backfill
+  window closes (`Grace`), not when notifications stop. Spec §2's "repeat twice, then mark missed"
+  describes the escalation sequence ending; §3.2 gives the window as the end of the next day. **M6
+  must not add a second writer** — two of them is how a late answer quietly repairs a missed
+  check-in, which A1.2 forbids.
+- **`Grace` is the one backfill boundary.** Both the outstanding-check-in banner and the rollover
+  read it. Restating "yesterday" in either place lets a check-in fall between them: no longer
+  offered, never missed, and response rate wrong with nothing on screen to show it.
 - **A check-in that would ask nothing is never expected.** No row, so it cannot be missed. Covers
   install day (the morning check-in covers yesterday, when no item existed) and a fully retired
   library. Found in M4 by installing the app and looking at it.
