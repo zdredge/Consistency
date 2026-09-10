@@ -948,7 +948,27 @@ and rendered by nothing. I had read the model and assumed the screen used it. `u
 carried and never shown is worth knowing; M8 owns whether that changes.
 
 **Day 0 was 2026-09-10.** Full `pm clear` — there is no in-app reset and deliberately no
-`fallbackToDestructiveMigration` — with three independent copies taken first.
+`fallbackToDestructiveMigration` — with three independent copies taken first. Verified from the
+database: 16 items, 16 versions, 14 targets, 4 roll-up specs, **one check-in** (that night, 21:00),
+and zero answers, step values and rollover runs. Three alarms armed, rollover anchored at 04:15.
+
+### The defect day 0 exposed immediately
+
+**Two permission dialogs cannot be raised at once, and the second is simply lost.** `onCreate` called
+`askForNotificationsOnce()` and `askForStepsOnce()` on consecutive lines, so on the first real
+install the Health Connect request was launched behind the notifications dialog and never reached the
+user. The permission flags are what gave it away rather than any symptom in the app: notifications
+carried `USER_SET`, steps carried **neither `USER_SET` nor `USER_FIXED`** — not a denial, no choice
+offered at all.
+
+The consequence was the whole of M7 silently not happening: steps hidden from the night check-in,
+nothing collected, and nothing on screen to say why. Steps are now asked for from the notifications
+*result*, never beside it.
+
+**This has no test.** It lives in `MainActivity`, in `:app`, which has none — the same untestable
+wiring architecture T3 is about, and the third real defect to turn up there. It was caught only
+because day 0 was verified by reading the permission flags rather than trusting that a first launch
+had gone to plan.
 
 ---
 

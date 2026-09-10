@@ -94,6 +94,9 @@ class MainActivity : ComponentActivity() {
     private val requestNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+            // Only now, with the first dialog gone. Asking for both at once is how the steps
+            // request was lost on the first real install.
+            askForStepsOnce()
         }
 
     /**
@@ -121,8 +124,9 @@ class MainActivity : ComponentActivity() {
         )
 
         Notifications.ensureChannel(this)
+        // Steps are asked for *after* notifications resolves, never alongside it -- see
+        // askForNotificationsOnce for what happens otherwise.
         askForNotificationsOnce()
-        askForStepsOnce()
         // A notification tap arrives as the launch Intent on a cold start, and through onNewIntent
         // when the app is already alive.
         screen = screenFor(intent) ?: Screen.Home
@@ -246,7 +250,12 @@ class MainActivity : ComponentActivity() {
         ) == PackageManager.PERMISSION_GRANTED
 
         notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
-        if (!granted) requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+
+        // **One permission dialog at a time.** Firing both on first launch loses the second: the
+        // steps request was launched behind the notifications dialog and never reached the user,
+        // who was recorded as having made no choice at all -- no USER_SET flag, not a denial. On the
+        // real day-0 install that meant steps silently never collected, which is the whole of M7.
+        if (granted) askForStepsOnce() else requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /**
