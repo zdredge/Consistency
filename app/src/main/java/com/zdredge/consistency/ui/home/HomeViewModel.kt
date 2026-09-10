@@ -66,19 +66,31 @@ class HomeViewModel(
         return dayResolver.dayFor(lastRun).isBefore(today.minusDays(OverdueAfterDays))
     }
 
-    fun refresh() {
-        viewModelScope.launch {
-            val today = dayResolver.today()
-            repository.seedLibraryIfEmpty(today)
-            repository.ensureCheckInsExist(today)
+    /**
+     * Suspends rather than launching into `viewModelScope`, so the caller can do something *after*
+     * it.
+     *
+     * That mattered as soon as alarms existed: this created today's check-in rows, and the alarm
+     * scheduler had nothing to schedule until it had. Launching meant the scheduler ran first and set
+     * nothing, so on the first open of a day no prompt was armed until something else happened to
+     * trigger a reschedule. Found on the device, by opening the app once instead of twice.
+     *
+     * **That fix was too narrow, and the same bug was found twice more.** The scheduler now
+     * guarantees the rows itself (`checkInsForAlarms`), so no caller depends on this ordering any
+     * more. It stays suspending because the screen's state should still be read after the write that
+     * produces it, not because anything else is waiting.
+     */
+    suspend fun refresh() {
+        val today = dayResolver.today()
+        repository.seedLibraryIfEmpty(today)
+        repository.ensureCheckInsExist(today)
 
-            _state.value = HomeUiState(
-                loading = false,
-                today = today,
-                outstanding = repository.outstandingCheckIns(today),
-                itemCount = repository.items().size,
-                rolloverOverdue = isRolloverOverdue(today),
-            )
-        }
+        _state.value = HomeUiState(
+            loading = false,
+            today = today,
+            outstanding = repository.outstandingCheckIns(today),
+            itemCount = repository.items().size,
+            rolloverOverdue = isRolloverOverdue(today),
+        )
     }
 }

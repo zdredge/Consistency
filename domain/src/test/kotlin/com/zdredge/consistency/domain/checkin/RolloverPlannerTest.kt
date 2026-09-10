@@ -60,6 +60,18 @@ class RolloverPlannerTest {
     }
 
     @Test
+    @DisplayName("a check-in that is not due yet is not missed either")
+    fun tomorrowIsNotMissed() {
+        // The third state, and the only one with no name in the docs: not offered, not missed, not
+        // yet due. Nothing generates tomorrow today, so this cannot happen now -- it is pinned here
+        // because the alarm horizon is bounded by the generation horizon, and if that ever moves,
+        // the first thing to check is that the rollover does not mark the extra day missed the
+        // moment it appears. Grace reads "before yesterday", so a future day is safe by
+        // construction rather than by a guard someone remembered to write.
+        assertTrue(plan(checkIn(today.plusDays(1))).checkInsToMiss.isEmpty())
+    }
+
+    @Test
     @DisplayName("the boundary agrees with what the banner still offers")
     fun boundaryMatchesTheOutstandingWindow() {
         // Both sides read Grace. If they ever disagreed, a check-in would fall into the gap --

@@ -163,6 +163,22 @@ class ConsistencyRepository(
         db.checkInDao().onDay(day.toString()).map { it.toDomain() }
 
     /**
+     * One check-in, or null if it was never expected.
+     *
+     * Added for M6. An alarm firing knows only a day and a slot — the process that set it is long
+     * gone — and it has to ask whether that one check-in is still unanswered before posting. Filtering
+     * `outstandingCheckIns` would answer a different question: that list is grace-bounded and returns
+     * `MISSED` rows too, so it cannot say whether *this* check-in still wants prompting.
+     */
+    suspend fun checkIn(day: LocalDate, slot: Slot): CheckIn? =
+        db.checkInDao().onDayInSlot(day.toString(), slot.name)?.toDomain()
+
+    /** Records that a notification fired for a check-in. See `CheckInDao.recordNotification`. */
+    suspend fun recordNotification(day: LocalDate, slot: Slot) {
+        db.checkInDao().recordNotification(day.toString(), slot.name)
+    }
+
+    /**
      * Creates any check-in rows that should exist and do not, up to and including [today].
      *
      * Called on app open. Without it a day the user never opened the app on has no row, and a day
@@ -188,16 +204,13 @@ class ConsistencyRepository(
             .planRange(from, today, times, items(), versions())
         if (planned.isEmpty()) return 0
 
-        // Only the genuinely missing ones. The unique index on (day_date, slot) would reject a
-        // duplicate anyway, but relying on a constraint violation as control flow would make a real
-        // bug indistinguishable from ordinary re-entry.
-        val existing = db.checkInDao().between(from.toString(), today.toString())
-            .map { it.dayDate to it.slot }
-            .toSet()
-
-        val rows = planned
-            .filterNot { (it.day to it.slot) in existing }
-            .map {
+        // Only the genuinely missing ones, decided and written in one transaction -- see
+        // CheckInDao.insertMissing for why the two halves must not be separable now that every
+        // process start generates.
+        return db.checkInDao().insertMissing(
+            from = from.toString(),
+            to = today.toString(),
+            candidates = planned.map {
                 CheckInEntity(
                     id = newId(),
                     userId = LOCAL_USER_ID,
@@ -206,10 +219,37 @@ class ConsistencyRepository(
                     scheduledAt = it.scheduledAt,
                     state = CheckInState.PENDING,
                 )
-            }
+            },
+        )
+    }
 
-        db.checkInDao().insert(rows)
-        return rows.size
+    /**
+     * The check-ins the alarm scheduler plans from, with the day's rows guaranteed to exist.
+     *
+     * **This exists so that the ordering cannot be got wrong.** Arming an alarm requires a row to
+     * arm it from, and until this was one call it was five callers' job to generate first and
+     * schedule second. Three of them did not: the rollover created the day's rows and never armed
+     * anything, and `ConsistencyApp.onCreate` raced its own worker, arming from rows that did not
+     * exist yet. The result was that on a day nobody opened the app, **no prompt was armed at all**
+     * -- and the 08:00 morning prompt, whose row is created after it is already too late to arm,
+     * had never once fired.
+     *
+     * M6 fixed the same mistake in `HomeViewModel` by making `refresh()` suspend so the caller could
+     * sequence it. That fixed one instance and left the class of bug alive in two more places, which
+     * is why this is a precondition here rather than a rule callers are asked to remember.
+     *
+     * It also moves the ordering somewhere it can be tested. Architecture T3's complaint is that
+     * alarm wiring lives in `:app`, which has no tests; this much of it now lives in `:data` and is
+     * covered against real SQLite.
+     *
+     * The window reaches back one day because a check-in stays answerable until the end of the next
+     * day (`Grace`), and forward no further than today because [ensureCheckInsExist] generates no
+     * further than today -- an alarm horizon past the generation horizon reaches rows that cannot
+     * exist. The two move together or not at all.
+     */
+    suspend fun checkInsForAlarms(today: LocalDate): List<CheckIn> {
+        ensureCheckInsExist(today)
+        return checkIns(today.minusDays(1), today)
     }
 
     /**

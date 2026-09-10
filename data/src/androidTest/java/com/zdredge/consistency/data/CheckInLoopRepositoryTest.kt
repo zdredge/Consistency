@@ -451,6 +451,131 @@ class CheckInLoopRepositoryTest {
         assertNotNull("changed through a later check-in, so it is an edit", stored.editedAt)
     }
 
+    // ---- What the notification path reads and writes (M6) --------------------------------------
+
+    /**
+     * `scheduled_at` was written since v1 and dropped by the mapper, so nothing above the DAO knew
+     * when a check-in was due. `AlarmPlanner` schedules the prompt from it, so the round trip matters.
+     */
+    @Test
+    fun aCheckInCarriesTheTimeItWasDue() = runBlocking {
+        val repo = repoAt("2026-09-01T10:00")
+        repo.ensureCheckInsExist(installDay)
+
+        val night = repo.checkIn(installDay, Slot.NIGHT)!!
+
+        // 21:00 local on install day, resolved through the 04:00 boundary when it was planned.
+        assertEquals(
+            LocalDateTime.parse("2026-09-01T21:00").atZone(zone).toInstant(),
+            night.scheduledAt,
+        )
+    }
+
+    /**
+     * An alarm firing knows only a day and a slot -- the process that set it is long gone -- and has
+     * to ask whether that one check-in still wants prompting.
+     */
+    @Test
+    fun oneCheckInCanBeLookedUpByDayAndSlot() = runBlocking {
+        val repo = repoAt("2026-09-01T10:00")
+        repo.ensureCheckInsExist(installDay)
+
+        assertEquals(Slot.MORNING, repo.checkIn(installDay, Slot.MORNING)?.slot)
+        assertNull("a check-in never expected has no row", repo.checkIn(installDay.minusDays(5), Slot.NIGHT))
+    }
+
+    /**
+     * `notify_attempts` had existed since v1 with nothing reading or writing it. It is the only
+     * record of whether the escalation actually fired -- a prompt that never arrives is otherwise
+     * indistinguishable from one that was never due.
+     */
+    @Test
+    fun eachNotificationIsCounted() = runBlocking {
+        val repo = repoAt("2026-09-01T21:00")
+        repo.ensureCheckInsExist(installDay)
+
+        repeat(3) { repo.recordNotification(installDay, Slot.NIGHT) }
+
+        val row = db.checkInDao().onDayInSlot(installDay.toString(), Slot.NIGHT.name)!!
+        assertEquals(3, row.notifyAttempts)
+        assertEquals(
+            "the other slot is untouched",
+            0,
+            db.checkInDao().onDayInSlot(installDay.toString(), Slot.MORNING.name)!!.notifyAttempts,
+        )
+    }
+
+    // ---- What the alarm scheduler plans from ---------------------------------------------------
+
+    /**
+     * **The regression test for the defect this was all found through.**
+     *
+     * On a day nobody opened the app, no prompt was ever armed. The rows for the day were created by
+     * the rollover, the alarms were set by whatever process happened to start, and nothing made the
+     * first happen before the second -- so the scheduler read an empty window and set nothing. The
+     * 08:00 morning prompt could never fire at all, because by the time a row existed its alarm time
+     * had passed.
+     *
+     * Asking for the window on a database with no rows for today must therefore return today's rows,
+     * not an empty list. Against the old code this fails, which is the point: the previous fix for
+     * this same mistake, in `HomeViewModel`, left the ordering as something each caller had to
+     * remember, and two callers did not.
+     */
+    @Test
+    fun theAlarmWindowContainsTodayEvenWhenNothingHasGeneratedYet() = runBlocking {
+        val repo = repoAt("2026-09-01T10:00")
+        assertTrue("nothing generated yet", db.checkInDao().all().isEmpty())
+
+        val window = repo.checkInsForAlarms(installDay)
+
+        assertEquals(
+            "today's check-ins exist and are in the window",
+            listOf(Slot.MORNING, Slot.NIGHT),
+            window.filter { it.day == installDay }.map { it.slot },
+        )
+    }
+
+    /**
+     * The scheduler runs on every process start -- app open, boot, each firing, the rollover -- so
+     * it must be safe to call repeatedly. A second call that created rows again would corrupt the
+     * response-rate denominator rather than merely waste work.
+     */
+    @Test
+    fun askingForTheAlarmWindowRepeatedlyChangesNothing() = runBlocking {
+        val repo = repoAt("2026-09-02T10:00")
+
+        val first = repo.checkInsForAlarms(installDay.plusDays(1))
+        val second = repo.checkInsForAlarms(installDay.plusDays(1))
+
+        assertEquals(first.map { it.day to it.slot }, second.map { it.day to it.slot })
+        assertEquals(
+            "no duplicates were written",
+            first.size,
+            db.checkInDao().all().size,
+        )
+    }
+
+    /**
+     * The alarm horizon is bounded by the generation horizon.
+     *
+     * The scheduler used to look a day further ahead than anything could ever generate, so the extra
+     * day was dead weight that read as deliberate slack. If generation ever extends, this is the
+     * test that should fail and force the two to move together.
+     */
+    @Test
+    fun theAlarmWindowReachesNoFurtherThanToday() = runBlocking {
+        val today = installDay.plusDays(3)
+        // Yesterday has to be generated first. A fresh install owes no history, so going straight to
+        // `today` would leave yesterday empty and the second assertion would pass for the wrong
+        // reason -- finding nothing beyond today because there is nothing at all.
+        repoAt("2026-09-03T10:00").ensureCheckInsExist(today.minusDays(1))
+
+        val window = repoAt("2026-09-04T10:00").checkInsForAlarms(today)
+
+        assertTrue("nothing beyond today", window.none { it.day.isAfter(today) })
+        assertTrue("yesterday is still in range", window.any { it.day == today.minusDays(1) })
+    }
+
     private fun mealsAnswer(capture: Capture) = Answer(
         itemId = ItemId("meals"),
         itemVersionId = ItemVersionId("meals.v1"),

@@ -1,7 +1,7 @@
 # Habit Accountability App — Architecture
 
 **Status:** approved and in build. §2 platform findings were verified on the device in M0;
-§§4–5 record what M1, M2, M3, M4, M4.5 and M5 actually built, in the "As built" notes.
+§§4–5 record what M1 through M6 actually built, in the "As built" notes.
 **Intended repo path:** `docs/architecture.md`
 **Companion document:** `docs/product-spec.md`, which is the authority on behaviour. Where this
 document and the spec disagree, the spec wins and this document is wrong.
@@ -236,6 +236,21 @@ adding a column and watching all sixty-one instrumented tests pass, which is why
 **Alternative:** WorkManager with a delay. Simpler, but inexact by design; the system can shift it,
 which is unacceptable for a 21:00 accountability prompt.
 
+**As built (M6).** `CheckInAlarmScheduler` sets exact `RTC_WAKEUP` alarms with
+`setExactAndAllowWhileIdle` — the pair M0 measured. Which alarms should exist is `AlarmPlanner`'s, in
+`:domain` with tests; this only sets and cancels the list.
+
+**It re-sets the whole window every run rather than chaining.** A design where each firing arms the
+next is one missed firing away from silence for ever — and silence here is indistinguishable from
+nothing being due, so nobody would notice. Every trigger (app start, boot, each firing, leaving a
+check-in) recomputes.
+
+**Two things that had to be learned by running it.** Not re-setting an alarm does not unset it, so
+answering a check-in left its repeats armed until explicit cancellation was added; and the scheduler
+ran before the check-in rows it schedules from existed, so on the first open of a day nothing was
+armed. Both were invisible in the code and obvious on the device — which is the argument for this
+milestone's hand-verification being real work rather than a formality.
+
 ### WorkManager — the 04:00 rollover job
 **Why:** work that must happen reliably but not to the second. Survives reboots, retries on failure.
 **Pro:** exactly matches "once a day, near 04:00, don't lose it, retry if it fails".
@@ -251,11 +266,47 @@ is called from `Application.onCreate` and therefore also runs in the process Wor
 starts to execute the job. `RolloverWorker` is a `CoroutineWorker` thin enough to hand-verify:
 it calls `ConsistencyRepository.runRollover`, logs, and returns `retry()` on failure.
 
-**Inexactness turned out to cost nothing, for a reason worth recording.** Both rollover rules compare
-stored state against *today* rather than assuming one run per day, so a run at 04:07, a run at 11:00,
-and a first run after three days off all do the same work. That is what makes the "cheaper" lazy
-alternative above genuinely rejectable rather than merely unfashionable: the objection to it was
-never precision, it was that nothing would run at all.
+**Inexactness cost nothing in M5, and that stopped being true in M6 without anyone noticing.** Both
+rollover rules compare stored state against *today* rather than assuming one run per day, so a run at
+04:07, a run at 11:00, and a first run after three days off all do the same work. That is what makes
+the "cheaper" lazy alternative above genuinely rejectable rather than merely unfashionable: the
+objection to it was never precision, it was that nothing would run at all.
+
+**But M6 gave the timing a job.** This is where the day's check-in rows are created, and an 08:00
+prompt can only be armed from a row that already exists — so a run at 11:00 now silently costs that
+day's morning prompt. The claim above survived into M6 unchanged, and the assumption it rested on had
+already expired. **When a milestone adds a dependency on something another milestone documented as
+not mattering, the old note is the thing most likely to be wrong.**
+
+**As re-built (post-M6).** A periodic request re-anchors its period to whenever it last executed, so
+`setInitialDelay` governs only the first run and the schedule drifts — on the real device it had
+walked out to **09:47**, past 08:00, which is why the morning prompt could never fire. Each run now
+re-anchors the next to 04:15 with `setNextScheduleTimeOverride`, paired with `UPDATE`, which is the
+documented combination and is safe from inside a running worker: it applies to the next run only,
+where `REPLACE` would cancel the running worker and discard its result. `KEEP` stays at
+`Application.onCreate`, because at 04:15 the job itself starts that process and `UPDATE` there would
+cancel the job that just started it. The work stays **periodic** deliberately — a one-time request
+that re-enqueues itself is the "each firing arms the next" shape rejected for alarms below, and
+keeping it periodic leaves WorkManager's own recurrence underneath the anchor.
+
+This removes drift; it does not *guarantee* landing before 08:00, since an unconstrained job can
+still be deferred. **Measured twice, and the second measurement is the one that matters.** A run
+forced two minutes out was dispatched **2m30s late**, with every constraint already satisfied —
+Android 15's `FLEXIBILITY` constraint batches jobs rather than firing them on the minute. But the
+first real overnight run, on 2026-09-10, was due at 04:15 and ran at **06:16 — two hours and one
+minute late**, on an idle phone.
+
+It still worked, because the margin to 08:00 is three and three-quarter hours and two of them were
+spent. **That is thinner than it looks on paper**, and it is the number to watch: another hour and
+three-quarters of deferral and the morning prompt is lost again, with the same silent signature as
+the original defect.
+
+The anchoring earned its place on that same run: the next run was set to **04:15**, not to
+06:16 + 24h. Under the periodic behaviour it replaced, a two-hour deferral would have become the new
+baseline and compounded nightly — which is exactly how the job reached 09:47 in the first place.
+
+The mitigation is on the alarm side anyway: the scheduler generates the rows it needs rather than
+assuming the rollover got there first.
 
 **Verified on the device** with the app process killed — the job fired through WorkManager, marked
 two days' check-ins missed and wrote its run row. Note that forcing periodic work early with
@@ -273,13 +324,18 @@ relying on notifications escalating.
 **Alternative:** a full-screen intent, which is what alarm clocks use. Maximally intrusive,
 permission-restricted, and more than the spec asks for.
 
-### BOOT_COMPLETED receiver — rescheduling after restart
+### BOOT_COMPLETED and MY_PACKAGE_REPLACED receiver — putting the schedule back
 **Why:** pending alarms are wiped on reboot. Without this, one restart silently ends all future
 notifications, with nothing in the logs and no visible failure.
 **Pro:** a few lines that remove an entire class of mystery bug.
 **Con:** needs its own permission and may not fire until after first unlock.
 **Alternative:** reschedule on every app open. Works until you stop opening the app because it
 stopped notifying you.
+
+**As built (M6).** `ScheduleRestoreReceiver` on `BOOT_COMPLETED` and `MY_PACKAGE_REPLACED`, not `LOCKED_BOOT_COMPLETED`: the database is
+credential-encrypted and unreadable before first unlock, and the schedule is computed from it. Nothing
+is lost by waiting, since the earliest prompt is 08:00. The rollover needs no equivalent — WorkManager
+persists its own work across reboots — and that asymmetry is the price of exact alarms.
 
 ### Health Connect — steps
 **Decided: Health Connect is the sole step source. There is no second implementation and no
@@ -613,7 +669,7 @@ flowchart TB
 
     subgraph APP["App process — alive only when woken or opened"]
         AR["AlarmReceiver"]
-        BR["BootReceiver"]
+        BR["ScheduleRestoreReceiver"]
         RW["RolloverWorker"]
         SCH["Scheduler"]
         UI["Compose UI<br/>check-in · dashboard · item detail · library · settings"]
@@ -667,15 +723,19 @@ mistake produces a wrong answer instead of a crash, which is why it is isolated 
 most heavily tested.
 
 **The rollover job is the only thing that writes without the user.** Once a day it closes the
-previous day, generates the next day's expected check-ins, freezes the provisional step count from
-two days prior, and re-reads yesterday's. If it never runs, the app looks fine and every number is
+previous day, generates any expected check-ins that do not yet exist **through today** — not the next
+day's; nothing generates ahead, and this line claimed otherwise for two milestones — arms that day's
+prompts, freezes the provisional step count from two days prior, and re-reads yesterday's. If it never runs, the app looks fine and every number is
 subtly wrong. It should be the first thing logged and the first thing checked when something looks
 off.
 
-**The Scheduler has two callers**, which is easy to miss: the boot receiver, because alarms do not
-survive a restart, and the settings screen, because changing the night check-in time must cancel and
-re-set real alarms rather than only updating a stored preference. Nothing else may change when
-notifications fire.
+**The Scheduler has five callers**, which is easy to miss and was: app start, the restore receiver
+(alarms survive neither a reboot nor an app update), each firing, leaving a check-in, and the rollover.
+Each one used to be responsible for generating the day's rows *before* arming, and three did not —
+so on a day nobody opened the app, nothing was armed at all. The scheduler now guarantees the rows
+itself, so there is no ordering left for a caller to get wrong. A settings screen (M8) will be the
+sixth, because changing the night check-in time must cancel and re-set real alarms rather than only
+updating a stored preference.
 
 ---
 
@@ -701,7 +761,7 @@ of mind.
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Battery optimisation delays alarms even with the exact-alarm permission held | **Downgraded High → Medium by M0.** | M0 measured it rather than assuming: in confirmed deep Doze (`deviceidle get deep` = IDLE) with battery optimisation unexempted, an exact alarm fired with a **0.6 s slip**. What one forced 15-minute run cannot show is maintenance windows, thermal throttling and adaptive-battery learning over time — so still watch real firings across the first several days of M6, and request a battery-optimisation exemption during setup as cheap insurance. |
+| Battery optimisation delays alarms even with the exact-alarm permission held | **Downgraded High → Medium by M0.** | M0 measured it rather than assuming: in confirmed deep Doze (`deviceidle get deep` = IDLE) with battery optimisation unexempted, an exact alarm fired with a **0.6 s slip**. What one forced 15-minute run cannot show is maintenance windows, thermal throttling and adaptive-battery learning over time — so still watch real firings across the first several days of M6, and request a battery-optimisation exemption during setup as cheap insurance. **Night one (2026-09-09): the 21:00 prompt and both repeats arrived on time**, unexempted, in standby bucket 20 — the repeats being the stronger signal, as they fire deeper into the idle window. **Day two (2026-09-10): the 08:00 morning prompt and both repeats arrived on time on a day nobody opened the app** — the condition this row was actually asking about. Alarms are not the exposure. **The rollover is:** it was due at 04:15 and ran at 06:16, spending two of its three and three-quarter hours of margin. Exact alarms fire when told; the inexact job that decides *what* to tell them is the part that drifts. If the exemption is ever requested, this is the reason, and the trigger to watch for is a rollover run after roughly 06:30. |
 | Rollover job silently fails; all figures quietly wrong | High — invisible | Log every run, record last-successful-rollover, surface staleness in the app rather than only in logs. **Built in M5:** the `rollover_runs` table records every run including failures, and Home says so plainly when the last success is more than two days old. A history rather than one timestamp, so "it failed every night" can be told from "it never ran" — and the oldest check-in dates the install, so a job broken since day one is not mistaken for one not yet due. |
 | Step double-counting once a second source appears | Medium, and **dormant rather than hypothetical** | M0 confirmed exactly one step origin today (`com.android.healthconnect.phone.jf9fc...`, the on-device synthetic package). But **Samsung Health and Google Health are both already installed** on the device and simply are not writing steps — so a second origin needs no new hardware, just one of them starting to sync. A mislaid Galaxy Watch would add a third. Any of these could appear with no warning from Health Connect, and step counts would quietly inflate. Because the dashboard only shows a 14-day window, this would read as improvement rather than as a bug. Mitigation is the day-one origin grouping guard in §5, not a filtering system. Note also the synthetic-package-name change from June 2026 when identifying origins. |
 | Health Connect alpha APIs shift under the build | Medium | Pin versions; isolate all Health Connect calls behind one interface in `:data` |
@@ -717,6 +777,6 @@ of mind.
 |---|---|
 | ~~T1~~ | **Closed by M0.** Health Connect: framework-provided, on-device counting confirmed, origin package observed. Exact alarms: `USE_EXACT_ALARM` install-granted with no prompt, and a 0.6 s slip in confirmed deep Doze — no fallback path needed. Ongoing multi-day observation of real firings lives in §8 as a risk mitigation, not an open question. See §2. |
 | ~~T2~~ | **Closed by M3.** Typed nullable columns were kept and the mapping did not get ugly: `EntityMappers.kt` is a flat set of one-line conversions with no branching on answer type, because the domain `Answer` carries the same typed nullable fields the table does. A blob would have added a serialiser on both sides and made every numeric query a parse. Revisit only if a new answer type cannot be expressed as a column. |
-| T3 | How to test alarm scheduling and the boot receiver without relying on manual device verification. |
+| T3 | How to test alarm scheduling and the restore receiver without relying on manual device verification. **Narrowed twice, still open:** which alarms should exist is a pure tested function (`AlarmPlanner`), and *that the rows exist before anything is armed* is now a `:data` instrumented test (`checkInsForAlarms`) rather than a device observation — it was moved there precisely because the untested version of it was wrong for a whole milestone. What is left untestable is only *that a set alarm fires* and *that alarms return after a reboot or an update*. Each has been observed on a real device, but by hand, and nothing guards them against regression. The residue is not theoretical: **three real defects have now lived exactly there**, in the wiring between the tested rule and the platform. |
 | T4 | Whether the rollover job should also pre-compute and cache dashboard figures, or whether scoring on read is fast enough at a few thousand rows. Probably fast enough; worth measuring rather than assuming. |
 | T5 | Compose navigation approach across the five screens — deliberately not decided here. **Evidence from M4.5, still open:** two screens are a sealed `Screen` and a `when`, and the check-in summary was made a *page inside* the check-in rather than a third screen — routing it through `MainActivity` would have put it behind the `exit` flag, which is a live defect (build-order M4.5, defect 1). That defect is itself the argument: navigation currently depends on a state field that outlives the screen setting it, and a one-shot event or a real back stack both fix it. Decide when the item detail view and dashboard make five screens real. |

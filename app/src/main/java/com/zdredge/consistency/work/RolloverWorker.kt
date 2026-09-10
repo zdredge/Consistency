@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.zdredge.consistency.container
+import com.zdredge.consistency.notify.CheckInAlarmScheduler
 
 /**
  * The 04:00 job.
@@ -46,6 +47,19 @@ class RolloverWorker(
                 "rollover for $today: ${outcome.checkInsCreated} created, " +
                     "${outcome.checkInsMissed} missed, ${outcome.valuesFrozen} frozen",
             )
+
+            // **The day's prompts are set here.** Creating the rows and arming the alarms used to be
+            // separate concerns owned by nobody together, so the rows appeared at 04:15 and nothing
+            // armed anything until the app was next opened -- by which time 08:00 had passed and the
+            // morning prompt could no longer be set at all. Running before 08:00 was always for this.
+            CheckInAlarmScheduler.reschedule(applicationContext)
+
+            // Anchor tomorrow's run at 04:15, so the schedule cannot walk away from the window it
+            // has to land in. Failing to anchor costs a day of drift and self-corrects on the next
+            // successful run, so it must not turn a good rollover into a recorded failure.
+            runCatching { RolloverScheduler.anchorNextRun(applicationContext) }
+                .onFailure { Log.e(TAG, "could not anchor the next rollover", it) }
+
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "rollover for $today failed", e)
@@ -54,6 +68,9 @@ class RolloverWorker(
             runCatching {
                 repository.recordRolloverFailure(today, e.toString())
             }
+            // Deliberately does not anchor. A retry keeps WorkManager's own backoff, which clears the
+            // override; writing a new one here would take priority over that backoff and push the
+            // retry to tomorrow's 04:15 instead, losing the day this run was for.
             Result.retry()
         }
     }

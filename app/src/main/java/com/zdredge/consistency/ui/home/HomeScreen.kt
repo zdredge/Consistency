@@ -34,6 +34,7 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 @Composable
 fun HomeScreen(
     state: HomeUiState,
+    notificationsEnabled: Boolean,
     onOpenCheckIn: (LocalDate, Slot) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -50,6 +51,18 @@ fun HomeScreen(
         if (state.loading) {
             Text("Loading…", style = MaterialTheme.typography.bodyMedium)
             return@Column
+        }
+
+        if (!notificationsEnabled) {
+            // Muting cannot be engineered around and the app must not nag about it (spec §2,
+            // architecture §4). So it is stated once, plainly, where the user will see it -- the
+            // same posture as the stale-rollover line below. Without this, an accountability app
+            // that has silently stopped asking looks identical to one with nothing to ask.
+            Text(
+                "Notifications are off. Check-ins won't prompt you.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
 
         if (state.rolloverOverdue) {

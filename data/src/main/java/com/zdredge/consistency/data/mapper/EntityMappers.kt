@@ -105,6 +105,9 @@ fun CheckInEntity.toDomain() = CheckIn(
     slot = slot,
     state = state,
     answeredAt = answeredAt,
+    // Carried up for M6: AlarmPlanner schedules the prompt and its repeats from this. It was dropped
+    // here until then, so nothing above the DAO knew when a check-in was actually due.
+    scheduledAt = scheduledAt,
 )
 
 fun AnswerWithSelections.toDomain() = Answer(

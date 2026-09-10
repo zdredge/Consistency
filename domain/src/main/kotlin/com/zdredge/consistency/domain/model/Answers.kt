@@ -50,6 +50,17 @@ data class CheckIn(
     val slot: Slot,
     val state: CheckInState,
     val answeredAt: Instant? = null,
+    /**
+     * When this check-in was due, resolved through the 04:00 boundary when it was planned.
+     *
+     * Stored rather than recomputed, and surfaced here rather than left in the row, because
+     * `AlarmPlanner` schedules against it. Deriving the time again from `CheckInTimes` would be a
+     * second source that agrees only until the times become configurable — at which point every
+     * already-generated check-in would start claiming a due time it was never given.
+     *
+     * Defaulted so the scoring calculators, which have never needed it, keep their fixtures.
+     */
+    val scheduledAt: Instant = Instant.EPOCH,
 )
 
 /**

@@ -4,60 +4,115 @@ import android.content.Context
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import java.time.Duration
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.util.concurrent.TimeUnit
 
 /**
- * Puts the rollover on the calendar, once.
+ * Puts the rollover on the calendar, and keeps it there.
  *
- * **Inexact on purpose.** Periodic work can drift — architecture §4 accepts 04:07 and notes nothing
- * user-facing depends on the minute, which is why this job uses WorkManager while the 21:00 check-in
- * prompt will need an exact alarm in M6. What matters here is that it survives a reboot and retries
- * on failure, and that it eventually runs; the day boundary is `DayResolver`'s, not the scheduler's,
- * so a run at 04:07 and a run at 05:30 do the same work.
+ * **Inexact, but no longer indifferent to when it runs.** Architecture §4 chose WorkManager because
+ * the job must survive reboots and retry on failure, and originally justified the inexactness with
+ * "nothing user-facing depends on the minute". **M6 made that false and nobody noticed**: this job
+ * creates the day's check-in rows, and an 08:00 prompt can only be armed from a row that already
+ * exists. A run at 04:15 and a run at 11:00 no longer do the same work — the second one silently
+ * costs that day's morning prompt.
  *
- * **A missed run is not a lost day.** If the device is off at 04:00 the job runs when it can, and
- * both rollover rules compare stored state against today rather than assuming one run per day, so a
- * single late run resolves everything it slept through. That property is what makes an inexact
- * scheduler acceptable for the one thing that writes without the user.
+ * **A periodic request drifts, which is what went wrong.** `setInitialDelay` governs only the first
+ * run; afterwards WorkManager re-anchors the period to whenever the job actually executed. On the
+ * real device that walked the 04:15 job out to 09:47, and the morning prompt could never fire again.
+ *
+ * So each run re-anchors the next one to the next 04:15 via `setNextScheduleTimeOverride`, an API
+ * added for exactly this and documented with exactly this example. Drift cannot accumulate, because
+ * the anchor is recomputed from the wall clock every night however late a given run was.
+ *
+ * **Still periodic, deliberately.** A one-time request that re-enqueues itself is the "each firing
+ * arms the next" shape this project already rejected for `CheckInAlarmScheduler` — one missed link
+ * and it is silent for ever. Keeping the request periodic leaves WorkManager's own recurrence
+ * underneath the anchor as the safety net.
  */
 object RolloverScheduler {
 
     /** Just after the 04:00 day boundary, so the day it closes is genuinely over. */
     private val RunAt: LocalTime = LocalTime.of(4, 15)
 
-    private const val WORK_NAME = "rollover"
+    private const val WORK_NAME = "rollover-daily"
+
+    /**
+     * The pre-anchor schedule, left drifted at 09:47 on the device this was found on.
+     *
+     * Unique names are one namespace, so simply enqueuing under a new name would leave the old work
+     * running for ever beside it. Cancelling is a no-op on any device that never had it, so this
+     * costs nothing and can go once no install predates the fix.
+     */
+    private const val DRIFTED_WORK_NAME = "rollover"
 
     /**
      * Schedules the daily job if it is not already scheduled.
      *
-     * `KEEP` rather than `UPDATE`: called from `Application.onCreate`, so it runs on every process
-     * start, including the one WorkManager itself creates to execute the job. `UPDATE` would
-     * reschedule the work each time and could push the next run past its slot indefinitely.
+     * `KEEP`, and **not** `UPDATE`, for a reason that is easy to get backwards: at 04:15 it is the
+     * job itself that starts this process, so `Application.onCreate` runs *before* the worker is
+     * handed over. `UPDATE` at that moment would find the work not yet in-flight and cancel the very
+     * JobScheduler job that started the process. `KEEP` cannot disturb a run that is starting or
+     * retrying, and it heals the case that matters here: if the work is ever missing, the next
+     * process start puts it back.
+     *
+     * **The cost of `KEEP`, found by trying it:** changing [RunAt] in code has no effect on a device
+     * that already has this work enqueued -- `KEEP` keeps the old anchor, and only a run or an
+     * explicit `UPDATE` moves it. When M8 makes check-in times configurable, changing the time must
+     * re-anchor deliberately rather than assume this function will notice.
      */
     fun schedule(context: Context) {
-        val request = PeriodicWorkRequestBuilder<RolloverWorker>(1, TimeUnit.DAYS)
-            .setInitialDelay(untilNextRun().toMillis(), TimeUnit.MILLISECONDS)
-            .build()
-
-        WorkManager.getInstance(context)
-            .enqueueUniquePeriodicWork(WORK_NAME, ExistingPeriodicWorkPolicy.KEEP, request)
+        val workManager = WorkManager.getInstance(context)
+        workManager.cancelUniqueWork(DRIFTED_WORK_NAME)
+        workManager.enqueueUniquePeriodicWork(
+            WORK_NAME,
+            ExistingPeriodicWorkPolicy.KEEP,
+            request(),
+        )
     }
 
     /**
-     * How long until the next [RunAt].
+     * Re-anchors the next run at the next 04:15, called from the run that has just finished.
      *
-     * Uses the system clock rather than the injected one: this schedules against wall-clock time the
-     * OS will wake us at, and a test clock would produce a delay measured from a date that is not
-     * today. The work itself takes its date from `DayResolver`, which is where the 04:00 boundary and
-     * any test clock belong.
+     * `UPDATE` is the documented partner of `setNextScheduleTimeOverride` and is safe from inside a
+     * running worker: because the work is in-flight, the update applies to the next run only and
+     * neither cancels the current one nor reschedules its job. It bumps the override's generation
+     * counter, which is what stops the tidy-up that follows a periodic run from clearing the anchor
+     * that was just written.
+     *
+     * `REPLACE` would be the obvious choice and is the wrong one — it cancels every unfinished
+     * request under the name, and a running worker is unfinished, so the run would cancel itself and
+     * its result would be discarded.
      */
-    private fun untilNextRun(): Duration {
+    suspend fun anchorNextRun(context: Context) {
+        val operation = WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            WORK_NAME,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            request(),
+        )
+        // Waited on, so the run does not end before the anchor is committed. `Operation.await()`
+        // would read better but is inline over a runtime-only dependency and does not compile here.
+        withContext(Dispatchers.IO) { operation.result.get() }
+    }
+
+    /** One builder for both callers: `UPDATE` replaces the whole spec, so they must not disagree. */
+    private fun request() = PeriodicWorkRequestBuilder<RolloverWorker>(1, TimeUnit.DAYS)
+        .setNextScheduleTimeOverride(nextRunAt().toInstant().toEpochMilli())
+        .build()
+
+    /**
+     * The next [RunAt] by the wall clock.
+     *
+     * Uses the system clock rather than the injected one: this schedules against the time the OS
+     * will wake us at, and a test clock would anchor to a date that is not today. The work itself
+     * takes its date from `DayResolver`, which is where the 04:00 boundary and any test clock belong.
+     */
+    private fun nextRunAt(): ZonedDateTime {
         val now = ZonedDateTime.now()
         val todaysRun = now.with(RunAt)
-        val next = if (todaysRun.isAfter(now)) todaysRun else todaysRun.plusDays(1)
-        return Duration.between(now, next)
+        return if (todaysRun.isAfter(now)) todaysRun else todaysRun.plusDays(1)
     }
 }
