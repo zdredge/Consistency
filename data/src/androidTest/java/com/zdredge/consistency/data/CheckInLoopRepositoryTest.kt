@@ -47,6 +47,8 @@ class CheckInLoopRepositoryTest {
 
     private val installDay = LocalDate.of(2026, 9, 1)
 
+    private val at: Instant = Instant.parse("2026-09-02T02:30:00Z")
+
     /** The M0 origin: the device-specific synthetic package, verified on the Pixel 9 Pro. */
     private val PHONE = "com.android.healthconnect.phone.jf9fc11088d6938c28480cb1ae667b25e"
     private val WATCH = "com.samsung.health"
@@ -582,6 +584,76 @@ class CheckInLoopRepositoryTest {
 
         assertTrue("nothing beyond today", window.none { it.day.isAfter(today) })
         assertTrue("yesterday is still in range", window.any { it.day == today.minusDays(1) })
+    }
+
+    // ---- What counts as having answered a check-in ---------------------------------------------
+
+    /**
+     * **An untouched check-in stays pending.**
+     *
+     * Response rate is the primary metric and counts check-ins in the ANSWERED state, so a check-in
+     * opened and closed without a single answer was inflating the one number the product exists to
+     * report. Found on the real device: a check-in screen left open and later dismissed marked its
+     * row answered with zero answers behind it.
+     */
+    @Test
+    fun aCheckInWithNothingAnsweredIsNotMarkedAnswered() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+
+        val marked = repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+
+        assertFalse("nothing was answered", marked)
+        assertEquals(
+            CheckInState.PENDING,
+            repo.checkIn(installDay, Slot.NIGHT)!!.state,
+        )
+    }
+
+    /**
+     * The other half, and it matters as much: the fix must not break ordinary use. One answer is
+     * enough -- completing a check-in has never required answering everything.
+     */
+    @Test
+    fun oneAnswerIsEnoughToMarkACheckInAnswered() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+
+        val marked = repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+
+        assertTrue(marked)
+        assertEquals(CheckInState.ANSWERED, repo.checkIn(installDay, Slot.NIGHT)!!.state)
+    }
+
+    /**
+     * A2.2 - "not yet" is a response, not silence. The app offers the deferral deliberately, and a
+     * check-in answered that way stays ANSWERED even if the deferral is never resolved.
+     */
+    @Test
+    fun aDeferralCountsAsHavingAnswered() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.PENDING), installDay, Slot.NIGHT)
+
+        assertTrue(repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at))
+    }
+
+    /**
+     * Steps are read, not given (spec §3.3). A night check-in where the user looked at their step
+     * count and answered nothing is not a check-in they answered.
+     */
+    @Test
+    fun aStepValueAloneDoesNotCountAsAnswering() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        steps.record(installDay, MeasuredOrigin(PHONE, 11_240.0))
+        repo.syncSteps(installDay)
+
+        assertFalse(
+            "a measured value is not an answer",
+            repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at),
+        )
     }
 
     // ---- Steps: the declined branch and the origin guard ---------------------------------------

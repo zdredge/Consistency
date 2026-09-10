@@ -288,6 +288,9 @@ class CheckInViewModel(
      * mark anything, so a user who reads the summary and closes instead is already counted. That is a
      * deliberate cost: it keeps the question set, rather than the ceremony after it, as the thing
      * that completes.
+     *
+     * **What reaching the end no longer does is count a set nothing was answered in.** The rule lives
+     * in the repository, where it can be tested; see `markCheckInAnsweredIfAnswered`.
      */
     fun finish() {
         val current = _state.value
@@ -296,7 +299,7 @@ class CheckInViewModel(
 
         viewModelScope.launch {
             commitCurrent()
-            repository.markCheckInAnswered(day, slot, dayResolver.now())
+            repository.markCheckInAnsweredIfAnswered(day, slot, dayResolver.now())
             _state.update { it.copy(onSummary = true, fromSummary = false) }
         }
     }

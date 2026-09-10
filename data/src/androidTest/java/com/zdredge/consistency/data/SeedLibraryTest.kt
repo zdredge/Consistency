@@ -175,7 +175,36 @@ class SeedLibraryTest {
             assertEquals(id, Direction.AT_LEAST, repo.targets(ItemId(id), Period.WEEK).single().direction)
         }
         assertEquals(3.0, repo.targets(ItemId("worked_out"), Period.WEEK).single().valueNumber!!, 0.0)
-        assertEquals(4.0, repo.targets(ItemId("stretched"), Period.WEEK).single().valueNumber!!, 0.0)
+        // Six rather than seven: the aim is daily, but a target only a perfect week can meet reads as
+        // missed more often than it reads as true.
+        assertEquals(6.0, repo.targets(ItemId("stretched"), Period.WEEK).single().valueNumber!!, 0.0)
+    }
+
+    /**
+     * The two step targets, and the relationship between them.
+     *
+     * Spec §3.4 keeps daily and weekly independent and reports them separately, so seven times the
+     * day is a **choice** rather than arithmetic the code enforces. It is pinned here because the
+     * alternative is the failure it was chosen to avoid: a weekly target quietly stricter than the
+     * daily one, where a week of days that each met their target still scores as a missed week.
+     * Nothing in the app would flag that, and it would read as a bug in the scoring rather than a
+     * mismatch in the seed.
+     */
+    @Test
+    fun theStepTargetsAgreeWithEachOther() = runBlocking {
+        val daily = repo.targets(ItemId("steps"), Period.DAY).single()
+        val weekly = repo.targets(ItemId("steps"), Period.WEEK).single()
+
+        assertEquals(Direction.AT_LEAST, daily.direction)
+        assertEquals(Direction.AT_LEAST, weekly.direction)
+        assertEquals(8_000.0, daily.valueNumber!!, 0.0)
+        assertEquals(56_000.0, weekly.valueNumber!!, 0.0)
+        assertEquals(
+            "a perfect week of daily targets must exactly meet the weekly one",
+            weekly.valueNumber!!,
+            daily.valueNumber!! * 7,
+            0.0,
+        )
     }
 
     /** Roll-ups are explicit, not inferred: nothing guesses count-of-yes versus sum. */

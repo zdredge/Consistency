@@ -895,6 +895,63 @@ first two can occur today.
 
 ---
 
+### Day 0 — clearing the decks, done inside M7
+
+**Why here and not as its own milestone.** M7 was the last thing standing between the app and real
+use: with steps collecting, every part of the daily loop worked. The natural next step was to start
+collecting — and the moment that was true, the development residue in the database and the absence of
+any way to get data *out* stopped being deferred work and became blocking work. Doing it as M7's last
+act rather than M8's first keeps the boundary honest: **M8 is the first milestone whose work happens
+while real data is accumulating**, and nothing in it should be the reason the first week is lost.
+
+**An export, because there was no way to get data out at all.** The whole record lived in one file on
+one phone, and the discovery that made this urgent is worth keeping:
+
+| Source | check-ins | steps | rollovers | latest day |
+|---|---|---|---|---|
+| `consistency.db` alone | 5 | 0 | 0 | 2026-09-08 |
+| `consistency.db` + `-wal` | **9** | **1** | **2** | **2026-09-10** |
+
+Room runs in WAL mode and auto-checkpoints around 4 MB — a size this database will not reach for
+years — so the main file had not absorbed a write since 09-09 11:05. **Any copy of `consistency.db`
+was silently two days stale, and the days it lost were the most recent ones.** `DatabaseSnapshot`
+therefore runs `wal_checkpoint(TRUNCATE)` before copying. Removing that line does not merely lose
+rows: the exported file loses the `checkins` **table**, because the schema was in the log too.
+
+Written to Downloads via `MediaStore`, timestamped rather than overwriting, and **called a copy
+rather than a backup** — nothing reads these files back yet, and until a restore has been performed
+an export is a file that is only *believed* to be restorable.
+
+**Auto-backup turned off.** `allowBackup` was `true` with both rule files left as untouched IDE
+templates, so the database was eligible for cloud backup and device transfer under default rules —
+with nothing having verified a backup ever ran, and WAL making a captured copy plausibly stale. A
+restore of that is worse than no restore, because it presents old data as current.
+
+**An empty check-in no longer counts as answered.** `finish()` marked the check-in regardless of
+content, so opening one and closing it inflated response rate — the primary metric. Found because it
+happened: a check-in screen left open on a locked phone during the M7 device pass was later dismissed
+and marked its row answered with zero answers behind it. The rule now lives in the repository where
+it is tested: a deferral counts ("not yet" is a response, A2.2), a step value does not (steps are
+read, not given).
+
+**The library was reviewed before seeding**, because items cannot be edited from the UI until M8 and
+whatever is seeded is what gets collected against for weeks. Changed: stretching 4 → **6** per week,
+steps **8,000** daily and **56,000** weekly, and the mindset scale gained a direction — *"How positive
+was your mindset today? (1 - Very Negative, 5 - Very Positive)"*, since 1 could otherwise read as
+either end. The step targets are now pinned by a test asserting the week is exactly seven times the
+day, which is a choice rather than arithmetic: §3.4 keeps them independent, but a weekly target
+quietly stricter than the daily one would score a perfect week as a miss.
+
+**One claim I got wrong and the user caught:** I reported that "bottles" appeared twice on the water
+question, once in the prompt and once as a unit. It does not — `unitLabel` is exposed on `QuestionUi`
+and rendered by nothing. I had read the model and assumed the screen used it. `unitLabel` being
+carried and never shown is worth knowing; M8 owns whether that changes.
+
+**Day 0 was 2026-09-10.** Full `pm clear` — there is no in-app reset and deliberately no
+`fallbackToDestructiveMigration` — with three independent copies taken first.
+
+---
+
 ## M8 — Item detail views and charts
 
 **Proposed.** With real answers accumulating, the per-item view becomes meaningful. Dashboard still

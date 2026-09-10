@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.export.ExportToDownloads
 import com.zdredge.consistency.data.health.StepPermissions
 import com.zdredge.consistency.data.health.StepSourceStatus
 import com.zdredge.consistency.notify.CheckInAlarmScheduler
@@ -72,6 +73,16 @@ class MainActivity : ComponentActivity() {
 
     /** Whether notifications can actually be delivered. Re-read on resume, since it changes in system settings. */
     private var notificationsEnabled by mutableStateOf(true)
+
+    /**
+     * What the last export did, or null before one has been asked for.
+     *
+     * Held here rather than in `HomeViewModel` because writing the file needs a `Context` and a
+     * `ContentResolver`, and pushing those into the ViewModel would put Android in the one place the
+     * architecture keeps it out of. The counts come back from the snapshot itself, so the line the
+     * user reads is evidence of what was written rather than a hopeful "Done".
+     */
+    private var exportStatus by mutableStateOf<String?>(null)
 
     /**
      * Asked once, and never nagged about again.
@@ -136,6 +147,17 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 state = state,
                                 notificationsEnabled = notificationsEnabled,
+                                exportStatus = exportStatus,
+                                onExport = {
+                                    exportStatus = "Exporting…"
+                                    lifecycleScope.launch {
+                                        val summary = ExportToDownloads.run(this@MainActivity)
+                                        exportStatus = summary?.let {
+                                            "Saved to Downloads — ${it.checkIns} check-ins, " +
+                                                "${it.answers} answers, ${it.measuredValues} step days"
+                                        } ?: "Export failed. Nothing was saved."
+                                    }
+                                },
                                 onOpenCheckIn = { day, slot -> screen = Screen.CheckIn(day, slot) },
                                 modifier = Modifier.padding(padding),
                             )
