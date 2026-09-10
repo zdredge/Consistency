@@ -438,7 +438,14 @@ private fun NoteDialog(
 @Composable
 private fun ReadOnlyValue(question: QuestionUi) {
     Text(
-        question.draft.valueNumber?.let { "%,.0f".format(it) } ?: "Not available yet",
+        // Three states, not two. "Not available yet" means the read found nothing; the conflict
+        // message means it found too much and will not guess. Collapsing them would hide the one
+        // failure the origin guard exists to make visible (architecture §5).
+        when {
+            question.measuredConflicted -> "More than one source reported today. Not counted."
+            question.draft.valueNumber != null -> "%,.0f".format(question.draft.valueNumber)
+            else -> "Not available yet"
+        },
         style = MaterialTheme.typography.headlineSmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

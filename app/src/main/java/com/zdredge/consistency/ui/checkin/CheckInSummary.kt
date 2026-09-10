@@ -140,7 +140,10 @@ private fun SummaryRow(question: QuestionUi, onClick: () -> Unit) {
  * unanswered case has already returned above.
  */
 private fun QuestionUi.summaryValue(): String? = when {
-    // Measured, never asked (spec §3.3). Steps has no value until Health Connect arrives in M7.
+    // Measured, never asked (spec §3.3). The conflict case is stated rather than shown as a number,
+    // for the same reason it is on the question screen: a total the app does not believe must not
+    // appear as a step count anywhere.
+    measuredConflicted -> "More than one source. Not counted."
     readOnly -> draft.valueNumber?.let { "%,.0f".format(it) } ?: "Not available yet"
     draft.deferred -> "Not yet"
     !draft.isAnswered -> null

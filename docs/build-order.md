@@ -1,8 +1,9 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0 through M6 are complete**, including the four defects M4.5
-found, and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
-cancelling the alarms — **both fixed 2026-09-09**. **M7 (Health Connect steps) is next.**
+**Status:** agreed and in progress. **M0 through M7 are complete**, including the four defects M4.5
+found and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
+cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts, plus item
+configuration and check-in times) is next.**
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -814,6 +815,83 @@ hand-verified (it already was, in M0).
 
 **Exit criteria.** Steps appear read-only in the night check-in and score against their targets; the
 multi-origin case is flagged in a test and surfaced in the app; the declined branch hides steps.
+
+**Outcome: 232 `:domain` tests (up 14), 3 JVM, 108 instrumented (up 9), all green.** Less new
+construction than expected — `measured_values`, `measured_origins`, `ItemKind.MEASURED`, the seeded
+steps item with both targets, the read-only night slot and the O4 freeze rule were all built in
+earlier milestones and had simply never been fed. **No migration:** both tables have existed since
+schema v1.
+
+### Scoring a measured day
+
+`MeasuredScorer` is separate from `GoalScorer` rather than a branch inside it. A measured value has
+no `capture`, no selections and no no-opportunity option, and it has a state those cannot have — a
+day the app refuses to count. Routing it through the answer path would have meant fabricating an
+`Answer` to carry it, which is exactly what makes a measured day indistinguishable from a typed one
+(spec §2).
+
+Three rules worth keeping:
+
+- **A day with no data is excluded, never missed.** No record read is not zero steps.
+- **A conflicted day is excluded, not missed.** The user walked whatever they walked; a source
+  misconfiguration must not break a run.
+- **`PROVISIONAL` scores exactly like `FROZEN`.** O4 makes a value *revisable*, not unusable —
+  withholding a score until it froze would leave today and yesterday permanently blank, which is a
+  worse lie than a figure that may improve.
+
+Attainment is produced here, unlike `GoalScorer.scoreValue`: a roll-up withholds it because its
+denominator may be missing days, but a single measured day has no such doubt, and "8,400 of 10,000"
+is the figure spec §5.4 wants beside hit rate. **Nothing consumes any of this yet** — the scoring
+package remains tested-but-unwired until M8.
+
+### What the spike would have got wrong if copied
+
+The M0 spike is working code and was reused for the call shape, but three of its details were wrong
+for production and each would have failed quietly:
+
+- **It read the calendar day.** `LocalDate.now().atStartOfDay()` files every step walked between
+  midnight and 04:00 under the wrong day — in an app whose entire premise is that the day ends when
+  you go to bed. `DayResolver.startOfDay` / `endOfDayExclusive` are exactly the half-open range
+  `TimeRangeFilter.between` wants.
+- **Its permission rationale declaration was incomplete.** Android 14+ wants an `activity-alias`
+  guarded by `START_VIEW_PERMISSION_USAGE`; the spike put a bare intent-filter on `MainActivity`, so
+  any app could have launched it. Its own comment said to verify this before reuse, and that was
+  right.
+- **It pinned `1.1.0-alpha10`.** A stable **1.1.0** has since shipped, which retires the architecture
+  §8 risk "Health Connect alpha APIs shift under the build" rather than merely isolating it.
+
+### The write that would have thrown on day two
+
+`measured_origins` is keyed on `(measured_value_id, origin_package)` and `insertOrigins` was a plain
+`@Insert` with nothing deleting prior rows — so the **second** read of any day aborted on the primary
+key. That is not an edge case: O4 keeps a value provisional for 24 hours *precisely* so it can be
+re-read, and the night check-in reads today's steps every time it opens. Now a `@Transaction`
+delete-then-insert (`replaceOrigins`), and reverting it fails
+`readingTheSameDayTwiceReplacesTheOriginsInsteadOfThrowing`.
+
+### The synthetic package name is not stable — do not filter on it
+
+M0 recorded the on-device origin as `com.android.healthconnect.phone.jf9fc11088d6938c28480cb1ae667b25e`.
+M7, on **the same phone days later**, read
+`com.android.healthconnect.phone.j94257314766b3142a71ff5cce8f3ca59`.
+
+Architecture §2 already warned the synthetic name changed in June 2026; this shows it changes more
+often than that implies. The guard is unaffected, because it groups whatever a single day's read
+returns rather than matching against a known name — but **any future "ignore this known-good origin"
+filter would silently break**, and would break in the direction of hiding a real second source.
+
+**Verified on the device.** Steps for 2026-09-09 read as **4,762** from a single origin, written
+`PROVISIONAL` with `last_synced_at` populated — **the first time that column has ever held a value**,
+which means the O4 freeze rule can finally fire. Revoking the permission and reopening the check-in
+wrote nothing and left the timestamp untouched, so the declined branch holds. The update path was
+re-tested properly this time: the install cancelled all three armed alarms and
+`ScheduleRestoreReceiver` put them back with no app open (`set 3 check-in alarms, cancelled 0`) —
+the half of M6's second defect that could not be shown the night it was fixed.
+
+**Not yet seen: the number on screen.** The device pass ran with the phone locked, so the read-only
+row was exercised (the sync happened through `CheckInViewModel.load`) but never looked at. The
+rendering is three states — a value, "Not available yet", and the conflict message — and only the
+first two can occur today.
 
 ---
 

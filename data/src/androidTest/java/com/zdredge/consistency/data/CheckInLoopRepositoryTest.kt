@@ -7,7 +7,11 @@ import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.CheckInState
+import com.zdredge.consistency.data.health.FakeStepSource
+import com.zdredge.consistency.data.health.StepSourceStatus
 import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.model.MeasuredOrigin
+import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.ItemVersionId
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.time.DayResolver
@@ -42,6 +46,10 @@ class CheckInLoopRepositoryTest {
     private lateinit var db: ConsistencyDatabase
 
     private val installDay = LocalDate.of(2026, 9, 1)
+
+    /** The M0 origin: the device-specific synthetic package, verified on the Pixel 9 Pro. */
+    private val PHONE = "com.android.healthconnect.phone.jf9fc11088d6938c28480cb1ae667b25e"
+    private val WATCH = "com.samsung.health"
 
     /**
      * The library is seeded a week before the test's "install day" so every check-in in range has
@@ -576,6 +584,111 @@ class CheckInLoopRepositoryTest {
         assertTrue("yesterday is still in range", window.any { it.day == today.minusDays(1) })
     }
 
+    // ---- Steps: the declined branch and the origin guard ---------------------------------------
+
+    /**
+     * **Spec §3.3: declining health permission hides steps.**
+     *
+     * Not shown empty, and never downgraded to manual entry -- manual step entry is permanently out
+     * of scope (spec §2), and a row reading "Not available yet" for ever is a standing invitation to
+     * add it.
+     */
+    @Test
+    fun stepsDisappearFromTheNightCheckInWhenThePermissionIsMissing() = runBlocking {
+        steps.status = StepSourceStatus.PermissionMissing
+
+        val ids = repoAt("2026-09-01T21:30").checkInQuestions(installDay, Slot.NIGHT)
+            .map { it.item.id.value }
+
+        assertFalse("steps is hidden, not blank", ids.contains("steps"))
+        assertTrue("the asked questions are untouched", ids.contains("meals"))
+    }
+
+    /**
+     * The permission is a setting the user can change at any time, so the answer is re-read rather
+     * than remembered. Granting it later must bring steps back with no reinstall.
+     */
+    @Test
+    fun stepsReturnWhenThePermissionIsGrantedAgain() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        steps.status = StepSourceStatus.PermissionMissing
+        assertFalse(repo.checkInQuestions(installDay, Slot.NIGHT).any { it.item.id.value == "steps" })
+
+        steps.status = StepSourceStatus.Available
+
+        assertTrue(repo.checkInQuestions(installDay, Slot.NIGHT).any { it.item.id.value == "steps" })
+    }
+
+    @Test
+    fun aSyncedDayIsStoredWithItsOriginAndItsReadTime() = runBlocking {
+        steps.record(installDay, MeasuredOrigin(PHONE, 11_240.0))
+
+        val value = repoAt("2026-09-01T21:30").syncSteps(installDay)!!
+
+        assertEquals(11_240.0, value.value, 0.0)
+        assertEquals(MeasuredState.PROVISIONAL, value.state)
+        // The O4 anchor, populated for the first time in the project's history.
+        assertNotNull("last_synced_at must be set or nothing ever freezes", value.lastSyncedAt)
+        assertEquals(listOf(PHONE), value.origins.map { it.originPackage })
+    }
+
+    /**
+     * **The write that used to throw.**
+     *
+     * `measured_origins` is keyed on `(measured_value_id, origin_package)` and the insert was a plain
+     * one, so a second read of the same day aborted on the primary key. That is not an edge case: O4
+     * keeps a value provisional for 24 hours *precisely* so it can be re-read, and the night check-in
+     * reads today's steps every time it opens.
+     */
+    @Test
+    fun readingTheSameDayTwiceReplacesTheOriginsInsteadOfThrowing() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        steps.record(installDay, MeasuredOrigin(PHONE, 8_000.0))
+        repo.syncSteps(installDay)
+
+        steps.record(installDay, MeasuredOrigin(PHONE, 11_240.0))
+        val second = repo.syncSteps(installDay)!!
+
+        assertEquals("the later read wins", 11_240.0, second.value, 0.0)
+        assertEquals(
+            "and does not accumulate origin rows",
+            listOf(PHONE to 11_240.0),
+            repo.measuredValue(ItemId("steps"), installDay)!!.origins
+                .map { it.originPackage to it.value },
+        )
+    }
+
+    /**
+     * The dormant risk in architecture §8, as storage sees it. Samsung Health and Google Health are
+     * both installed on the real device and simply are not writing steps yet.
+     */
+    @Test
+    fun aDayWithTwoOriginsIsFlaggedRatherThanSummed() = runBlocking {
+        steps.record(installDay, MeasuredOrigin(PHONE, 11_240.0), MeasuredOrigin(WATCH, 9_980.0))
+
+        val value = repoAt("2026-09-01T21:30").syncSteps(installDay)!!
+
+        assertEquals(MeasuredState.CONFLICTED, value.state)
+        assertEquals("both origins are kept for investigation", 2, value.origins.size)
+    }
+
+    @Test
+    fun nothingRecordedWritesNoRowAtAll() = runBlocking {
+        // "Did not walk" and "has not synced" are indistinguishable, and a zero would score a miss
+        // the user cannot have earned.
+        assertNull(repoAt("2026-09-01T21:30").syncSteps(installDay))
+        assertNull(repoAt("2026-09-01T21:30").measuredValue(ItemId("steps"), installDay))
+    }
+
+    @Test
+    fun aMissingPermissionReadsNothingRatherThanFailing() = runBlocking {
+        steps.status = StepSourceStatus.PermissionMissing
+        steps.record(installDay, MeasuredOrigin(PHONE, 11_240.0))
+
+        assertNull(repoAt("2026-09-01T21:30").syncSteps(installDay))
+        assertEquals("the source is never even read", 0, steps.reads)
+    }
+
     private fun mealsAnswer(capture: Capture) = Answer(
         itemId = ItemId("meals"),
         itemVersionId = ItemVersionId("meals.v1"),
@@ -585,8 +698,15 @@ class CheckInLoopRepositoryTest {
         valueNumber = if (capture == Capture.PENDING) null else 3.0,
     )
 
+    /**
+     * The step source these tests run with. Available by default, because that is the ordinary state
+     * of a device where the permission was granted; the declined branch gets its own tests below.
+     */
+    private val steps = FakeStepSource()
+
     private fun repoAt(local: String) = ConsistencyRepository(
         db,
         DayResolver(Clock.fixed(LocalDateTime.parse(local).atZone(zone).toInstant(), zone)),
+        stepSource = steps,
     )
 }

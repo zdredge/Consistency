@@ -9,6 +9,7 @@ import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
@@ -83,6 +84,14 @@ data class QuestionUi(
      * was.
      */
     val dirty: Boolean = false,
+    /**
+     * A measured day more than one source reported, so it is deliberately not counted.
+     *
+     * Distinct from "no value yet", because the two need different words on screen: one is waiting
+     * for data, the other has too much of it and cannot tell which is true. Showing a number here
+     * would be the double-count the origin guard exists to prevent (architecture §5, §8).
+     */
+    val measuredConflicted: Boolean = false,
 ) {
     val prompt: String get() = entry.version.prompt
     val answerType: AnswerType get() = entry.version.answerType
@@ -183,6 +192,13 @@ class CheckInViewModel(
 
         viewModelScope.launch {
             val entries = repository.checkInQuestions(day, slot)
+
+            // Read steps before building the drafts, not after. Spec §3.3 wants today's figure
+            // visible "in the moment", and at 21:00 the number read at 04:15 is most of a day stale.
+            // Skipped entirely when nothing measured is on this check-in, so a morning check-in
+            // never touches Health Connect.
+            if (entries.any { it.readOnly }) repository.syncSteps(day)
+
             val questions = entries.map { entry ->
                 QuestionUi(
                     entry = entry,
@@ -192,6 +208,7 @@ class CheckInViewModel(
                         emptyList()
                     },
                     draft = existingDraft(entry, day, slot),
+                    measuredConflicted = entry.readOnly && isConflicted(entry, day, slot),
                 )
             }
 
@@ -215,6 +232,19 @@ class CheckInViewModel(
         slot: Slot,
     ): AnswerDraft {
         val answersDay = entry.carriedOverFrom ?: AnswerDay.forCheckIn(day, slot)
+
+        // A measured item has no answer row and never will -- it is read, not given. Looking it up
+        // in `answers` is why the screen showed "Not available yet" even with a value stored.
+        if (entry.readOnly) {
+            val measured = repository.measuredValue(entry.item.id, answersDay)
+            return AnswerDraft(
+                // A conflicted day carries a total, but it is diagnostic, not a step count. Handing
+                // it to the screen would display the sum the guard refused to make.
+                valueNumber = measured?.value
+                    ?.takeIf { measured.state != MeasuredState.CONFLICTED },
+            )
+        }
+
         val existing = repository.answer(entry.item.id, answersDay) ?: return AnswerDraft()
         return AnswerDraft(
             valueBool = existing.valueBool,
@@ -232,6 +262,12 @@ class CheckInViewModel(
                 existing.selections.isEmpty() &&
                 existing.capture != Capture.PENDING,
         )
+    }
+
+    private suspend fun isConflicted(entry: CheckInEntry, day: LocalDate, slot: Slot): Boolean {
+        val answersDay = entry.carriedOverFrom ?: AnswerDay.forCheckIn(day, slot)
+        return repository.measuredValue(entry.item.id, answersDay)?.state ==
+            MeasuredState.CONFLICTED
     }
 
     // ---- Navigation --------------------------------------------------------------------------

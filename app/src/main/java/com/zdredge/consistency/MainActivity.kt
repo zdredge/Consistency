@@ -25,6 +25,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.data.health.StepPermissions
+import com.zdredge.consistency.data.health.StepSourceStatus
 import com.zdredge.consistency.notify.CheckInAlarmScheduler
 import com.zdredge.consistency.notify.Notifications
 import com.zdredge.consistency.ui.checkin.CheckInScreen
@@ -83,6 +85,20 @@ class MainActivity : ComponentActivity() {
             notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
         }
 
+    /**
+     * Health Connect's own permission flow, which is not the ordinary runtime one.
+     *
+     * Nothing is stored from the result. Whether steps can be read is asked of `StepSource` at the
+     * moment it matters, because the user can revoke this in system settings without the app being
+     * told — the same reason M6 re-reads the notification setting on every resume rather than
+     * remembering an answer. A declined result simply means the night check-in has no steps row
+     * (spec §3.3); it is never downgraded to manual entry, which is permanently out of scope.
+     */
+    private val requestHealth =
+        registerForActivityResult(StepPermissions.requestContract()) {
+            // Deliberately empty. See above: the answer is re-read, never cached.
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Forced dark, not system-following. The app has one scheme (M4.5), so letting the
@@ -95,6 +111,7 @@ class MainActivity : ComponentActivity() {
 
         Notifications.ensureChannel(this)
         askForNotificationsOnce()
+        askForStepsOnce()
         // A notification tap arrives as the launch Intent on a cold start, and through onNewIntent
         // when the app is already alive.
         screen = screenFor(intent) ?: Screen.Home
@@ -208,5 +225,20 @@ class MainActivity : ComponentActivity() {
 
         notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
         if (!granted) requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    /**
+     * Asks for step access on first launch, and only when it could actually be granted.
+     *
+     * Asked once rather than on every open, matching notifications: a permission dialog that returns
+     * every time the app starts is the friction spec §1 says ends the product. Declining is a real
+     * answer and the app takes it — steps disappears from the check-in and nothing nags.
+     */
+    private fun askForStepsOnce() {
+        lifecycleScope.launch {
+            if (container.stepSource.status() == StepSourceStatus.PermissionMissing) {
+                requestHealth.launch(StepPermissions.required)
+            }
+        }
     }
 }

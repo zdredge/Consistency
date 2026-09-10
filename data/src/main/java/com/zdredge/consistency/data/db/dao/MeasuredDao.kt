@@ -51,4 +51,25 @@ interface MeasuredDao {
     @Insert suspend fun insertOrigins(origins: List<MeasuredOriginEntity>)
 
     @Upsert suspend fun upsertValue(value: MeasuredValueEntity)
+
+    @Query("DELETE FROM measured_origins WHERE measured_value_id = :measuredValueId")
+    suspend fun clearOrigins(measuredValueId: String)
+
+    /**
+     * Replaces one value's origins wholesale.
+     *
+     * **A plain insert cannot be used here, and that is not a style preference.** The primary key is
+     * `(measured_value_id, origin_package)`, so re-recording a day whose origin has not changed
+     * aborts -- and M7 re-reads the same day repeatedly, because O4 keeps a value provisional for 24
+     * hours precisely so a late sync can correct it. The second read of any day would throw.
+     *
+     * Delete-then-insert rather than an upsert, because an origin can *disappear* between reads. An
+     * upsert would leave the stale row behind, and a day that had quietly stopped being conflicted
+     * would go on looking conflicted for ever.
+     */
+    @Transaction
+    suspend fun replaceOrigins(measuredValueId: String, origins: List<MeasuredOriginEntity>) {
+        clearOrigins(measuredValueId)
+        if (origins.isNotEmpty()) insertOrigins(origins)
+    }
 }

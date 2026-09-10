@@ -57,7 +57,15 @@ object SeedLibrary {
     private const val TOOK_TIME = "took_time"
     private const val MINDSET = "mindset"
 
-    private const val STEPS = "steps"
+    /**
+     * The one measured item (spec §3.3), and the only id outside this file that anything needs.
+     *
+     * Public because `ConsistencyRepository.syncSteps` has to know which item a Health Connect read
+     * belongs to. The alternative -- looking up "whichever item is MEASURED" -- reads as more general
+     * but is not: `StepSource` reads `StepsRecord` specifically, so a second measured item would need
+     * its own source anyway, and the lookup would silently write step counts into it.
+     */
+    const val STEPS = "steps"
 
     private const val SAW_FRIENDS = "saw_friends"
     private const val DID_SOMETHING_FUN = "did_something_fun"

@@ -75,7 +75,13 @@ data class GoalResult(
  * exclusion looks alike, which is why this enum exists rather than a bare flag.
  */
 enum class ExclusionReason {
-    /** No answer at all -- silence (scoring-cases 1.13). Separately costs the check-in. */
+    /**
+     * Nothing was recorded at all.
+     *
+     * For an asked item this is silence (scoring-cases 1.13), and it separately costs the check-in.
+     * For a measured item it is a day no step record was read -- which is **not** zero steps, and
+     * costs no check-in, because measured items have none.
+     */
     NO_ANSWER,
 
     /** The user chose the designated no-opportunity option (10.3). Costs nothing. */
@@ -86,6 +92,15 @@ enum class ExclusionReason {
 
     /** An answer exists but carries no value this direction can compare. */
     NOT_SCORABLE,
+
+    /**
+     * More than one source reported this measured day, so it is not scored (architecture 5).
+     *
+     * Excluded rather than missed: the user walked whatever they walked, and a day the app cannot
+     * count is the app's problem, not a failure to charge them for. Summing instead would inflate the
+     * figure, and on a 14-day window an inflated step count reads as improvement rather than as a bug.
+     */
+    SOURCE_CONFLICT,
 
     /**
      * The period has not closed yet, so there is nothing to judge. Spec 5.3: a week is only marked

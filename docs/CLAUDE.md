@@ -14,13 +14,13 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M6 are complete. M7 (Health Connect steps) is next.** Do not begin a later milestone
+**M0 through M7 are complete. M8 (item detail views, charts, item configuration and check-in times) is next.** Do not begin a later milestone
 than the one in progress.
 
 The two defects M6 left were fixed on 2026-09-09; see *Defects found after M6* in `build-order.md`.
 Confirmed on 2026-09-10: the first morning prompt the app has ever sent arrived at 08:00 on a day
-nobody opened the app. **What to watch now is the rollover's lateness, not the alarms** — it was due
-at 04:15 and ran at 06:16, and it is the only thing standing between an idle phone and a silent day.
+nobody opened the app. **What to watch is the rollover's lateness, not the alarms** — it was due at
+04:15 and ran at 06:16, and it is the only thing standing between an idle phone and a silent day.
 
 Two ordering facts behind that sequence: `:domain` can be proven correct without a device, and the
 dashboard cannot be evaluated without substantial seeded history, so scoring belongs early and the
@@ -111,6 +111,18 @@ likely to be broken by well-intentioned code:
   armed from. Architecture §4 once said nothing depended on its timing; M6 made that false without
   updating it, and the job silently drifted to 09:47. A periodic request re-anchors to its last run,
   so each run re-anchors the next explicitly.
+- **Steps are grouped by origin and never summed across them.** One origin is trusted; two make the
+  day `CONFLICTED` and unscored. The double-count risk is dormant, not hypothetical — Samsung Health
+  and Google Health are installed on the device and simply are not writing steps yet — and on a
+  14-day window an inflated count reads as *improvement*. **Never filter on the synthetic package
+  name**: the same phone reported two different ones days apart, so a "known-good origin" allowlist
+  would hide exactly the second source the guard exists to catch.
+- **No step records means no row, not a zero.** "Did not walk" and "has not synced" are
+  indistinguishable, and a zero scores a miss the user could not have earned.
+- **`:app` must not import Health Connect.** Everything, including the permission contract, goes
+  through `:data` (`StepSource`, `StepPermissions`) so an API change lands in one module. The
+  interface has **one** implementation on purpose — it is for version pinning, not provider
+  abstraction. Do not add a second.
 - **`Grace` is the one backfill boundary.** Both the outstanding-check-in banner and the rollover
   read it. Restating "yesterday" in either place lets a check-in fall between them: no longer
   offered, never missed, and response rate wrong with nothing on screen to show it.

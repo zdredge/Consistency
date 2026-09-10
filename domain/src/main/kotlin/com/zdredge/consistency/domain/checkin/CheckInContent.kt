@@ -64,6 +64,14 @@ object CheckInContent {
         items: List<Item>,
         versions: List<ItemVersion>,
         deferrals: List<Answer> = emptyList(),
+        /**
+         * Whether measured data can be read at all.
+         *
+         * Spec §3.3: when health permission is declined, steps is **hidden** — not shown empty, and
+         * never downgraded to manual entry, which is permanently out of scope (spec §2). Defaults to
+         * true so every caller that has nothing measured is unaffected.
+         */
+        measuredAvailable: Boolean = true,
     ): List<CheckInEntry> {
         val answersDay = AnswerDay.forCheckIn(checkInDay, slot)
         val byItem = items.associateBy { it.id }
@@ -77,8 +85,10 @@ object CheckInContent {
                 CheckInEntry(item, version, canDefer = canDefer(version, slot))
             }
 
-        // Measured items are shown, never asked, and only alongside the day they measure.
-        val measured = if (slot == Slot.NIGHT) {
+        // Measured items are shown, never asked, and only alongside the day they measure. When the
+        // source cannot be read they are absent rather than blank: a row reading "Not available yet"
+        // for ever is a standing invitation to add manual entry, which the spec rules out.
+        val measured = if (slot == Slot.NIGHT && measuredAvailable) {
             items
                 .filter { it.kind == ItemKind.MEASURED && ItemLifecycle.isActiveOn(it, answersDay) }
                 .mapNotNull { item ->

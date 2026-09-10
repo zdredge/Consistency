@@ -190,6 +190,18 @@ class RolloverPlannerTest {
     }
 
     @Test
+    @DisplayName("a conflicted day never freezes, however old")
+    fun conflictedNeverFreezes() {
+        // Freezing would make a figure the app does not believe permanent. A conflicted day is
+        // waiting for a read that finds one origin again, and that can arrive at any time -- so it
+        // stays open rather than being sealed at 24 hours like an ordinary provisional value.
+        val conflicted =
+            measured(state = MeasuredState.CONFLICTED, syncedAt = now.minusSeconds(72 * 3600))
+
+        assertTrue(freeze(conflicted).isEmpty())
+    }
+
+    @Test
     @DisplayName("a rollover with nothing to do reports so")
     fun emptyPlan() {
         assertTrue(plan(checkIn(today), checkIn(today.minusDays(1))).isEmpty)

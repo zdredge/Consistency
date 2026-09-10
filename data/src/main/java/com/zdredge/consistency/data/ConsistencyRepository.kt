@@ -12,7 +12,11 @@ import com.zdredge.consistency.domain.checkin.AnswerRevision
 import com.zdredge.consistency.domain.checkin.CheckInContent
 import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.checkin.CheckInPlanner
+import com.zdredge.consistency.data.health.StepSource
+import com.zdredge.consistency.data.health.StepSourceStatus
+import com.zdredge.consistency.data.health.UnavailableStepSource
 import com.zdredge.consistency.domain.checkin.CheckInTimes
+import com.zdredge.consistency.domain.checkin.StepMapper
 import com.zdredge.consistency.domain.checkin.Grace
 import com.zdredge.consistency.domain.checkin.RolloverPlanner
 import com.zdredge.consistency.domain.model.Answer
@@ -66,6 +70,12 @@ class ConsistencyRepository(
     private val db: ConsistencyDatabase,
     private val dayResolver: DayResolver,
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    /**
+     * Where steps come from. Defaults to unavailable so a repository built without one -- every JVM
+     * and instrumented test -- behaves like a device whose permission was declined, rather than
+     * pretending a source exists and reading nothing from it.
+     */
+    private val stepSource: StepSource = UnavailableStepSource,
 ) {
 
     // ---- First run ---------------------------------------------------------------------------
@@ -283,6 +293,12 @@ class ConsistencyRepository(
             items = items(),
             versions = versions(),
             deferrals = deferrals(),
+            // Spec §3.3: if health permission is declined, steps is **hidden**, not downgraded to
+            // manual entry -- manual step entry is permanently out of scope (spec §2). Asked here
+            // rather than in the ViewModel so the rule stays in the layer that has tests, and asked
+            // every time rather than remembered, because the permission can be revoked in system
+            // settings without the app being told.
+            measuredAvailable = stepSource.status() == StepSourceStatus.Available,
         )
 
     /** Unresolved "not yet" answers, for carry-over into the next morning. */
@@ -300,8 +316,16 @@ class ConsistencyRepository(
      *    home screen calls. One implementation of the response-rate denominator, two callers.
      * 2. **Close what has run out of grace** — the rule is `RolloverPlanner`'s; this writes its
      *    answer. Nothing in this app had ever set `MISSED` before.
-     * 3. **Freeze measured values past their provisional window** (spec O4). Inert until Health
-     *    Connect lands in M7 and something populates `last_synced_at`.
+     * 3. **Read the steps for the day that just closed** (M7), which is what finally populates
+     *    `last_synced_at`.
+     * 4. **Freeze measured values past their provisional window** (spec O4).
+     *
+     * **Steps are read before the freeze is planned, and only for the day that just closed.** Both
+     * halves matter. Reading first means the day just read is 24 hours from freezing rather than
+     * frozen on the spot; reading *only* that day means every older value keeps the anchor it already
+     * has, so it freezes on schedule. Re-reading the whole history each night would reset every
+     * anchor and nothing would ever freeze — the rule would look present and never fire, which is the
+     * failure mode M5 built `rollover_runs` to make visible.
      *
      * **Only candidates are read**, not the whole history: `PENDING` check-ins and `PROVISIONAL`
      * values are the only rows either rule can act on, and both sets stay small because this job is
@@ -313,6 +337,10 @@ class ConsistencyRepository(
      */
     suspend fun runRollover(today: LocalDate = dayResolver.today()): RolloverOutcome {
         val created = ensureCheckInsExist(today)
+
+        // The day that just closed. At 04:15 on day D that is D-1, and it is the last chance to read
+        // it before the 24-hour provisional window starts running against it.
+        syncSteps(today.minusDays(1))
 
         val plan = RolloverPlanner.plan(
             today = today,
@@ -504,10 +532,37 @@ class ConsistencyRepository(
      * is only one, because the guard is the *comparison* between days: a second origin appearing is
      * only detectable if the single-origin days recorded theirs too (architecture section 5).
      */
+    /**
+     * Reads [day]'s steps and records them, returning what was written or null if there was nothing.
+     *
+     * **One entry point for both triggers**, so they cannot drift: the 04:15 rollover calls it for
+     * the day that just closed, and opening the night check-in calls it for today. Spec §3.3 wants a
+     * current number in the moment; O4 wants the day re-readable for 24 hours after its last read.
+     * Those are the same operation at different times, and writing it twice is how they would come
+     * to disagree.
+     *
+     * Re-reading a day deliberately resets its `lastSyncedAt`, which restarts the O4 window. That is
+     * the rule working, not a bug: a value re-read late is young again, which is what lets a late
+     * sync correct a day instead of being locked out by a freeze.
+     */
+    suspend fun syncSteps(day: LocalDate): MeasuredValue? {
+        if (stepSource.status() != StepSourceStatus.Available) return null
+
+        val value = StepMapper.map(
+            itemId = ItemId(SeedLibrary.STEPS),
+            day = day,
+            origins = stepSource.readDay(day),
+            now = dayResolver.now(),
+        ) ?: return null
+
+        recordMeasuredValue(value)
+        return value
+    }
+
     suspend fun recordMeasuredValue(value: MeasuredValue) {
         val existing = db.measuredDao().forItemOnDay(value.itemId.value, value.day.toString())
         val id = existing?.value?.id ?: newId()
         db.measuredDao().upsertValue(value.toEntity(id))
-        db.measuredDao().insertOrigins(value.originEntities(id))
+        db.measuredDao().replaceOrigins(id, value.originEntities(id))
     }
 }
