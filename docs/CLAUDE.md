@@ -14,8 +14,13 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M5 are complete. M6 (notifications, alarms, boot reschedule) is next.** Do not begin a
-later milestone than the one in progress.
+**M0 through M6 are complete. M7 (Health Connect steps) is next.** Do not begin a later milestone
+than the one in progress.
+
+The two defects M6 left were fixed on 2026-09-09; see *Defects found after M6* in `build-order.md`.
+Confirmed on 2026-09-10: the first morning prompt the app has ever sent arrived at 08:00 on a day
+nobody opened the app. **What to watch now is the rollover's lateness, not the alarms** — it was due
+at 04:15 and ran at 06:16, and it is the only thing standing between an idle phone and a silent day.
 
 Two ordering facts behind that sequence: `:domain` can be proven correct without a device, and the
 dashboard cannot be evaluated without substantial seeded history, so scoring belongs early and the
@@ -87,11 +92,25 @@ likely to be broken by well-intentioned code:
   being answered**, never the day the answer is dated to — a sleep item answered this morning is
   dated yesterday but is in its own proper window, and confusing the two makes every morning check-in
   read as a backfill. Spec §3.2, `CaptureResolver`.
+- **Alarms are re-set as a whole window, never chained.** Each firing arming the next is one missed
+  firing away from permanent silence, and a prompt that never arrives looks exactly like one that was
+  never due. Every trigger recomputes the whole list — and **not re-setting an alarm does not unset
+  it**, so anything dropped from the plan must be cancelled explicitly (`CheckInAlarmScheduler`).
 - **The rollover marks a check-in `MISSED`, and nothing else does.** It happens when the backfill
   window closes (`Grace`), not when notifications stop. Spec §2's "repeat twice, then mark missed"
   describes the escalation sequence ending; §3.2 gives the window as the end of the next day. **M6
   must not add a second writer** — two of them is how a late answer quietly repairs a missed
   check-in, which A1.2 forbids.
+- **Nothing arms an alarm without first making sure the rows exist.** `checkInsForAlarms` does both
+  in one call, and every caller uses it — app start, the restore receiver, each firing, leaving a
+  check-in, and the rollover. **Do not add a caller that reads check-ins and schedules separately.**
+  When it was the caller's job to sequence the two, three of five callers got it wrong and the app
+  could not prompt at all on a day nobody opened it. M6 fixed one instance of this in `HomeViewModel`
+  and left two alive: **fixing an instance is not fixing the class — go and look for the siblings.**
+- **The rollover must land between 04:00 and 08:00**, because it creates the rows the 08:00 prompt is
+  armed from. Architecture §4 once said nothing depended on its timing; M6 made that false without
+  updating it, and the job silently drifted to 09:47. A periodic request re-anchors to its last run,
+  so each run re-anchors the next explicitly.
 - **`Grace` is the one backfill boundary.** Both the outstanding-check-in banner and the rollover
   read it. Restating "yesterday" in either place lets a check-in fall between them: no longer
   offered, never missed, and response rate wrong with nothing on screen to show it.
@@ -191,7 +210,7 @@ build-order section.
 - **Before trusting a test that guards something important, make it fail.** M3 produced two tests
   that could not: one asserted a drift the build makes impossible, and one read a stale packaged
   asset. Both looked green and guarded nothing. Mutating the code under a new guard costs one run.
-- Alarm scheduling and the boot receiver are currently expected to be verified by hand on the device.
+- Alarm firing and the restore receiver are verified by hand on the device. The ordering between generating rows and arming alarms is **not** — that is a `:data` instrumented test, because the untested version of it was wrong for a whole milestone.
   If you see a better approach, propose it — this is open question T3 and the user is a QA analyst
   who is not satisfied with the current answer.
 

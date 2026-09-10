@@ -2,6 +2,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+      Exact alarms: install-granted, no runtime prompt, because this app is sideloaded to one
+      personal device and never goes through Play review. Verified in M0 - canScheduleExactAlarms()
+      returned true with no prompt ever shown. Publishing would invalidate this and require the
+      inexact fallback the architecture deliberately does not build (architecture 2).
+    -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- Runtime-requested on first launch; denial is reported on Home rather than nagged about. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Alarms are wiped by a restart. Without this one reboot silently ends every prompt. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:name=".ConsistencyApp"
         android:allowBackup="true"
@@ -15,6 +29,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:label="@string/app_name"
             android:theme="@style/Theme.Consistency"
             android:windowSoftInputMode="adjustResize">
@@ -24,6 +39,28 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          Not exported: only this app's own alarms may trigger a check-in prompt. The PendingIntent
+          holds the component explicitly, so nothing external needs to reach it.
+        -->
+        <receiver
+            android:name=".notify.CheckInAlarmReceiver"
+            android:exported="false" />
+
+        <!--
+          Exported by necessity: the system delivers both of these from outside the app. A reboot
+          wipes pending alarms, and so does replacing the package - without the second action every
+          install silently ended all prompting until the app was next opened by hand.
+        -->
+        <receiver
+            android:name=".notify.ScheduleRestoreReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

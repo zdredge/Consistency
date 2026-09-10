@@ -1,7 +1,8 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0 through M5 are complete**, including the four defects M4.5
-found. **M6 (notifications, alarms, boot reschedule) is next.**
+**Status:** agreed and in progress. **M0 through M6 are complete**, including the four defects M4.5
+found, and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
+cancelling the alarms — **both fixed 2026-09-09**. **M7 (Health Connect steps) is next.**
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -75,7 +76,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M5 | Rollover job (expected check-ins, missed, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
-| M8 | Item detail views and charts, **plus item configuration (spec §5.7)** | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
+| M8 | Item detail views and charts, **plus item configuration (spec §5.7) and check-in times** — note that changing a time must re-anchor the rollover *and* re-arm alarms explicitly; `RolloverScheduler.schedule`'s `KEEP` will not notice a changed constant | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
 | M9 | Seed-data fixture (spec O7) | N/A — it *is* test scaffolding | M3 | M4–M8 |
 | M10 | Dashboard | ViewModel TDD against seeded data | M9 | — |
 | M11 | Export | TDD the serialiser; hand-verify the picker | M3 | M10 |
@@ -609,33 +610,183 @@ transition is how A1.2 gets quietly broken.
 
 ---
 
-## M6 — Notifications, alarms, boot reschedule
+## M6 — Notifications, alarms, boot reschedule — **BUILT 2026-09-09**
 
-**Gate: M0 exact-alarm spike must have passed.** Decided-by-docs that this is a hand-verified
-milestone (architecture T3) — but the plan deliberately shrinks what "hand-verified" covers.
+**Gate: M0 exact-alarm spike must have passed.** It did — `USE_EXACT_ALARM` install-granted with no
+prompt, and a 0.6 s slip in confirmed deep Doze.
 
-**Deliverables.**
-- `AlarmManager` exact alarms for the two daily slots plus the escalation repeats — fire, repeat
-  twice at ~20 min, then mark missed (spec §2). No escalation *beyond* that; louder-after-misses is
-  permanently out of scope (spec §2; `CLAUDE.md`).
-- High-importance notification channel (architecture §4). The channel can be silenced by the user
-  and that cannot be engineered around — which is *why* confrontation lives at app-open, not in
-  louder notifications. Nothing in this milestone tries to defeat muting.
-- `BOOT_COMPLETED` receiver that reschedules every alarm (architecture §4, §6): a reboot otherwise
-  silently ends all notifications.
-- The `Scheduler`, with its **two callers** noted in architecture §6: the boot receiver, and the
-  settings screen when the night check-in time changes (which must cancel and re-set real alarms,
-  not merely store a preference).
+**Outcome: 217 `:domain` tests (up 12), 3 JVM, 96 instrumented (up 3), all green.** No schema change,
+no new dependency.
 
-**TDD.** Same split as M5. "Given these settings and this now, which alarms should exist?" is a pure
-function returning a list of alarm specs — tested. The `Scheduler` then sets and cancels exactly
-that list. What is left to hand-verify on the Pixel: that a set alarm actually fires on time, and
-that alarms actually return after a reboot. Those two facts, and only those, are the untestable
-residue T3 is about.
+**Until now the app never asked for anything.** Spec §1 says the nudge is not "go do the thing" but
+*"come and answer"*, and that the first habit **is** answering — and check-ins appeared silently,
+findable only by opening the app.
 
-**Exit criteria.** The alarm-spec function is green under tests; on the device, both daily check-ins
-fire on time, escalation repeats behave, a missed check-in is marked missed, and alarms survive a
-reboot. Settings-time-change re-sets alarms (verified).
+**Two corrections to the written plan.**
+- **The exit criterion "a missed check-in is marked missed" is withdrawn.** M5 settled that the
+  rollover owns that transition when grace closes, and spec §3.2 had already reconciled the wording:
+  §2's *"then mark missed"* describes the **notification sequence stopping**. Building it here would
+  have been a second writer for one transition, which is how A1.2 gets quietly broken. The third
+  alarm simply stops notifying.
+- **The Scheduler has one caller, not two.** The second was the settings screen, which no milestone
+  owned and which `CheckInTimes` had no persistence for. **Settings is assigned to M8**, beside item
+  configuration; the exit criterion about a time change goes with it.
+
+**Delivered.**
+- **`AlarmPlanner`** (`:domain`) — the prompt plus two repeats 20 minutes apart, nothing for an
+  answered or missed check-in, nothing in the past, and a derived request code.
+- **`CheckInAlarmScheduler`** — exact `RTC_WAKEUP` alarms via `setExactAndAllowWhileIdle`.
+- **`CheckInAlarmReceiver`** — re-checks state, posts, counts the attempt, reschedules.
+- **`ScheduleRestoreReceiver`** — alarms survive neither a restart nor an app update.
+- **A tap lands on the check-in it names**, via `singleTop` and intent extras.
+- **`POST_NOTIFICATIONS` requested once**, and Home says so plainly if it is denied.
+
+**Decisions.**
+- **Set the whole window every run; never chain.** A chain where each firing arms the next is one
+  missed firing away from silence for ever, and silence is indistinguishable from nothing being due.
+- **The request code is derived from `(day, slot, attempt)`, never stored.** An alarm whose intent
+  cannot be rebuilt cannot be cancelled. A collision would be invisible, so uniqueness is a test.
+- **The receiver re-checks before posting.** Cancellation is the mechanism; the re-check is the
+  safety net, and correctness rests on the net.
+- **`notify_attempts` is finally written.** It had existed since v1 with nothing touching it. It is
+  the only record that the escalation actually fired — the same reasoning as M5's `rollover_runs`.
+- **Nothing tries to defeat muting** (spec §2, architecture §4). Home states it and stops.
+- **No battery-optimisation exemption**, pending several days of real firings — see below.
+
+**What M6 caught.** Both found by running it, not by reading it.
+- **Not re-setting an alarm does not unset it.** After answering, the scheduler logged "set 0" and an
+  alarm was still armed: a plan that omits something says nothing about what is already scheduled.
+  The firing would have been harmless — the receiver re-checks — but the safety net was doing the
+  mechanism's job. `CheckInAlarmScheduler` now cancels explicitly, and logs how many.
+- **The scheduler ran before the check-ins existed.** `HomeViewModel.refresh` creates today's rows and
+  was launching into `viewModelScope`, so `onResume`'s reschedule raced it and set nothing. On the
+  first open of a day **no prompt was armed at all** until something else happened to trigger a
+  reschedule. `refresh` is now `suspend` so the caller can sequence it. Found by opening the app once
+  instead of twice.
+
+**Verified on the device.** A real alarm fired at its exact minute; the notification posted with the
+copy *"Nightly check-in / Wednesday 9 September"*; `notify_attempts` reached 2 across the prompt and
+its repeat; the intent landed on that check-in rather than Home; answering cancelled the three
+remaining alarms (`cancelled 3`, confirmed as `alarm_cancelled` in `dumpsys alarm`); a later alarm
+that fired anyway logged *"no longer pending; not prompting"* and posted nothing; and denying the
+permission put the line on Home.
+
+**Verified across a real reboot.** The phone was restarted and left alone. Two hours later the three
+alarms for that night were armed at 21:00, 21:20 and 21:40, as exact `RTC_WAKEUP` broadcasts to
+`CheckInAlarmReceiver`, with `origWhen` byte-identical to the `scheduled_at` on the stored row — so
+they were built from the check-in, not recomputed. `usagestats` put the app's last foreground moment
+*before* the restart and its process was not running, which leaves the restore receiver as the only path
+that could have set them. This is one of the two facts architecture T3 says cannot be tested any
+other way.
+
+The direct log line was gone: the device's ring buffers are 256 KiB and do not reach back two hours,
+so `logcat -s CheckInAlarms` was empty. Worth knowing for next time — **the evidence for a boot test
+is perishable, and the state has to be read soon after the restart or reconstructed from elsewhere.**
+
+**Night one of real firings: all three arrived, on time.** 2026-09-09's 21:00 prompt and both
+repeats fired at 21:00, 21:20 and 21:40 after the phone had been idle since mid-afternoon, in standby
+bucket 20 and with no battery-optimisation exemption. That is the first evidence that the exact-alarm
+choice holds outside a forced run — and notably the repeats survived too, which matters more than the
+first, since they fire deeper into an idle window.
+
+**Still outstanding: the rest of the days.** Architecture §8 asked for several, not one, because a
+single evening cannot show adaptive-battery learning — the bucket demotes with disuse, and this app
+had been opened repeatedly that day for the M6 device pass. The exemption question stays open until
+prompts have arrived on a day nobody touched the app.
+
+### Defects found after M6 — **both fixed 2026-09-09**
+
+**1. On a day nobody opens the app, no prompt is armed at all.** Found on 2026-09-09 by asking why
+`rollover_runs` was empty. Three facts combine, none of them wrong on its own:
+
+- `ensureCheckInsExist(today)` plans `from..today` and **never beyond today**, so tomorrow's rows do
+  not exist in advance. `CheckInAlarmScheduler.DAYS_AHEAD = 1` is therefore dead code — the window
+  reaches a day whose check-ins can never have been created yet. (Its comment also says "Two days",
+  which the value has never matched.)
+- `RolloverWorker` **does not re-arm alarms**. It creates the day's rows and stops.
+- `ConsistencyApp.onCreate` fires `CheckInAlarmScheduler.reschedule` into a detached coroutine, and
+  `doWork()` runs on its own. At 04:15 the process starts, arms alarms from rows that do not exist
+  yet, and only then creates them. The two are genuinely racing, so **the morning prompt may arm on
+  some days and not others** — worse than failing outright.
+
+So the only things that can arm a day's alarms are an app open or a reboot, both of which happen
+after the row exists by luck rather than design. **The 08:00 morning prompt is the most exposed**:
+even a deliberate app open does not save it, because a typical open is after 08:00 and the alarm is
+then already in the past. `notify_attempts` is `0` on every morning row on the device, and 09-09's
+night prompts fired only because the phone happened to reboot at 12:24, after the 11:07 app open had
+created the rows.
+
+This is the **same root cause as the M6 defect fixed in `HomeViewModel`** — something arms alarms
+before the rows that justify them exist. That instance was fixed by making `refresh()` suspend; the
+siblings in `ConsistencyApp` and `RolloverWorker` were not looked for. Fixing one instance of a class
+of bug is not fixing the class.
+
+**Fixed by removing the ordering rather than getting it right.** `ConsistencyRepository.checkInsForAlarms`
+generates the day's rows and returns the window in one call, so no caller has an order to get wrong;
+`RolloverWorker` arms alarms after `runRollover`, making 04:15 the moment the day's prompts are set,
+which is what running before 08:00 was always for; and the alarm horizon now ends at today, where
+generation ends, instead of reaching a day that could never exist.
+
+Three consequences worth keeping:
+
+- **The rollover's drift became a correctness bug.** A periodic request re-anchors to when it last
+  ran, so 04:15 had walked out to **09:47** — past 08:00. Each run now re-anchors the next with
+  `setNextScheduleTimeOverride` + `UPDATE`. See architecture §4 for why `REPLACE` and a one-time
+  self-chain are both wrong here.
+- **Generation had to become atomic.** Every process start now generates, so at 04:15 the rollover's
+  own process start and its `doWork` generate concurrently; the read-then-insert became
+  `CheckInDao.insertMissing` under `@Transaction`, or the unique index would abort one of them on the
+  one path nobody watches. One cosmetic consequence, recorded so it does not mislead later: if the
+  concurrent scheduler wins that race, `rollover_runs.checkins_created` reads `0` for a day whose rows
+  *were* created — by the other caller, moments earlier. The rows are what matter; the attribution is
+  diagnostic only.
+- **The ordering moved somewhere it can be tested.** It lived in `:app`, which has no tests — the
+  reason it was wrong for a whole milestone. `theAlarmWindowContainsTodayEvenWhenNothingHasGeneratedYet`
+  is a `:data` instrumented test, and reverting the ordering makes it fail.
+
+**2. An app update silently ends all notifications.** The receiver listened for `BOOT_COMPLETED` only,
+and nothing in the app handled `ACTION_MY_PACKAGE_REPLACED`. Android cancels a package's pending
+alarms when the package is replaced, so every install wipes the whole window and nothing re-arms it
+until the app is next opened by hand.
+
+This is the same failure that receiver exists to prevent, reached through a door left open beside
+it. Architecture §4's argument against rescheduling on app-open applies unchanged — *it works until
+you stop opening the app because it stopped notifying you* — and on a personal app under active
+development an update is **more** frequent than a reboot, not less.
+
+Found by reasoning about what would destroy the pending 21:00 alarm, not by observing it — which was
+the awkward part, because confirming it costs the alarm: installing anything is the test.
+
+Deliberately **not** fixed on M6's last evening, because the fix cannot be verified without an install
+and an install would have destroyed the first natural 21:00 firing — the one observation architecture
+§8 asks for and the only one that cannot be repeated on demand. That firing happened first; the fix
+went in after it.
+
+**Fixed** by widening the filter to `MY_PACKAGE_REPLACED` and renaming the receiver to
+`ScheduleRestoreReceiver`, since "boot" had stopped describing it. Confirmed on the device: installing
+over the app logged *"check-in alarms restored after app update"* with no app open. The other half —
+that an update cancels armed alarms — could not be shown that evening, because everything due had
+already fired and there was nothing left to cancel.
+
+**Verified on the device.** The old drifted `rollover` work shows `CANCELLED` and the new
+`rollover-daily` is `ENQUEUED` with a minimum latency of **+5h39m03s** from 22:35:56 — exactly 04:15.
+The database was byte-identical across the install: 7 check-in rows, 11 answers, `notify_attempts`
+still 3 on the night that fired.
+
+**Observed 2026-09-10: the first morning prompt the app has ever sent.** `notify_attempts` had been
+`0` on every morning row ever created; it read **3** on 09-10's, all three arriving at 08:00, 08:20
+and 08:40 on a day nobody opened the app. The whole unattended chain ran for the first time: the
+rollover created the day's two rows, marked 09-08 missed, armed the prompts, and re-anchored itself.
+
+**One number to keep watching.** The rollover was due at 04:15 and ran at **06:16** — two hours late,
+spending most of its margin to 08:00. It worked, and it would not have with another hour and
+three-quarters of deferral. The anchoring proved itself on the same run by setting the next one to
+04:15 rather than to 06:16 + 24h, which is how the old schedule reached 09:47. See architecture §4
+and the §8 risk row: **the alarms are not the fragile part; the job that feeds them is.**
+
+**What M7 inherits.** Nothing structural. The `notify/` package mirrors `work/`, and the two
+schedulers stay separate on purpose: exact alarms where the minute matters, WorkManager where it does
+not.
 
 ---
 
@@ -684,6 +835,12 @@ waits (it needs history and O1); the detail view does not.
   was chosen must be legible, so leaning on it is visible rather than hidden.
 - Notes surfaced per data point (spec §5.4).
 - Charts: Compose Canvas for the heatmap, Vico for line charts (architecture §4; `CLAUDE.md`).
+- **Check-in times**, assigned here as of M6. Spec §1 says the night time is user-set and nothing
+  implements it: `CheckInTimes` is a Kotlin default that both the check-in generator and the alarm
+  scheduler read. Whatever stores them must stay the single source for both, or the row's
+  `scheduled_at` and the alarm that fires would disagree. Architecture §6 names this screen as the
+  Scheduler's second caller — changing a time must cancel and re-set real alarms, not merely store a
+  preference.
 - **Item configuration (spec §5.7)**, assigned here as of M4.5. It had no milestone at all and was
   flagged four times across M3, M4 and M4.5 without landing anywhere. It belongs beside the detail
   view because that is the surface already devoted to a single item, and editing an item's setup is
