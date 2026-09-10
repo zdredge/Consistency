@@ -56,6 +56,16 @@ dependencies {
     implementation(libs.room.runtime)
     ksp(libs.room.compiler)
 
+    // Every Health Connect call sits behind StepSource in this module, with exactly one
+    // implementation -- architecture 5. The interface is for pinning against API churn, not for
+    // abstracting over providers; there is no second source and the raw-sensor hatch stays unbuilt.
+    implementation(libs.androidx.health.connect)
+
+    // For StepPermissions' ActivityResultContract only. :app must not import Health Connect itself
+    // -- the whole point of the interface is that an API change lands in one module (architecture 5),
+    // and the permission contract is as much a Health Connect API as the reader is.
+    implementation(libs.androidx.activity)
+
     // JUnit 4 on the JVM, for the schema-file checks that need no device (see SchemaVersionPinTest).
     testImplementation(libs.junit)
 

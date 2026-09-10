@@ -16,6 +16,13 @@
     <!-- Alarms are wiped by a restart. Without this one reboot silently ends every prompt. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!--
+      Steps (M7). A runtime permission; declining it HIDES steps rather than offering manual entry,
+      which is permanently out of scope (spec 2, 3.3). Framework Health Connect needs no separate
+      install at minSdk 34 - confirmed in M0.
+    -->
+    <uses-permission android:name="android.permission.health.READ_STEPS" />
+
     <application
         android:name=".ConsistencyApp"
         android:allowBackup="true"
@@ -47,6 +54,26 @@
         <receiver
             android:name=".notify.CheckInAlarmReceiver"
             android:exported="false" />
+
+        <!--
+          Where the system sends the user to find out why this app wants health data.
+
+          An activity-alias guarded by START_VIEW_PERMISSION_USAGE, which is the Android 14+ form -
+          the only one needed at minSdk 34. The M0 spike put the intent-filter straight on
+          MainActivity with no permission guard; its own comment said to verify that against current
+          docs before reusing it, and this is that verification. Without the guard any app could
+          launch it.
+        -->
+        <activity-alias
+            android:name=".ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
 
         <!--
           Exported by necessity: the system delivers both of these from outside the app. A reboot

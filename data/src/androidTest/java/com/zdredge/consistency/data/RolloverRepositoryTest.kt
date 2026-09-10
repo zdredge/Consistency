@@ -5,6 +5,10 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.domain.model.CheckInState
+import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.model.MeasuredOrigin
+import com.zdredge.consistency.domain.model.MeasuredState
+import com.zdredge.consistency.domain.model.MeasuredValue
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.time.DayResolver
 import kotlinx.coroutines.runBlocking
@@ -17,6 +21,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -158,6 +163,66 @@ class RolloverRepositoryTest {
         assertNull("a failure is not a success", repo.lastSuccessfulRollover())
         assertEquals(1, repo.recentRolloverRuns().size)
         assertEquals(ROLLOVER_FAILED, repo.recentRolloverRuns().single().outcome)
+    }
+
+    // ---- O4, end to end ------------------------------------------------------------------------
+
+    /**
+     * **The freeze, actually written.** M5 shipped this rule inert -- nothing populated
+     * `last_synced_at`, so the path from `inState(PROVISIONAL)` through `RolloverPlanner` to
+     * `setState(FROZEN)` had never once executed outside a unit test of the pure rule. M7 is the
+     * first milestone in which it can be proven, and a rule that has never run is a rule nobody has
+     * checked the wiring of.
+     */
+    @Test
+    fun aProvisionalValuePastItsWindowIsFrozenByTheRollover() = runBlocking {
+        val repo = repoAt("2026-09-03T04:15")
+        repo.recordMeasuredValue(
+            MeasuredValue(
+                itemId = ItemId("steps"),
+                day = installDay,
+                value = 11_240.0,
+                state = MeasuredState.PROVISIONAL,
+                // 25 hours before the run, so the window has closed.
+                lastSyncedAt = Instant.parse("2026-09-02T07:15:00Z"),
+                origins = listOf(MeasuredOrigin("com.android.healthconnect.phone.jf9fc", 11_240.0)),
+            ),
+        )
+
+        val outcome = repo.runRollover(installDay.plusDays(2))
+
+        assertEquals(1, outcome.valuesFrozen)
+        assertEquals(
+            MeasuredState.FROZEN,
+            repo.measuredValue(ItemId("steps"), installDay)!!.state,
+        )
+    }
+
+    /**
+     * The other half, and the one that would go unnoticed: freezing early permanently mis-scores a
+     * day the platform was still going to correct, which is the outcome O4 was chosen to avoid.
+     */
+    @Test
+    fun aValueStillInsideItsWindowSurvivesTheRollover() = runBlocking {
+        val repo = repoAt("2026-09-03T04:15")
+        repo.recordMeasuredValue(
+            MeasuredValue(
+                itemId = ItemId("steps"),
+                day = installDay,
+                value = 9_100.0,
+                state = MeasuredState.PROVISIONAL,
+                // 23 hours before the run.
+                lastSyncedAt = Instant.parse("2026-09-02T09:15:00Z"),
+            ),
+        )
+
+        val outcome = repo.runRollover(installDay.plusDays(2))
+
+        assertEquals(0, outcome.valuesFrozen)
+        assertEquals(
+            MeasuredState.PROVISIONAL,
+            repo.measuredValue(ItemId("steps"), installDay)!!.state,
+        )
     }
 
     private fun dayResolverAt(local: String) =

@@ -16,6 +16,11 @@ room = "2.8.4"
 # M5 rollover. The only scheduler that survives a reboot and retries on failure; architecture 4
 # picks it over AlarmManager for this job because nothing here depends on the minute.
 work = "2.11.2"
+# M7 steps. Pinned to the STABLE 1.1.0 rather than the 1.1.0-alpha10 the M0 spike proved: architecture
+# 8 lists "Health Connect alpha APIs shift under the build" as a live risk, and a stable release is
+# the cheapest way to retire it. The API this app touches -- getSdkStatus, readRecords, StepsRecord,
+# metadata.dataOrigin -- is unchanged between the two.
+healthConnect = "1.1.0"
 androidxTestRunner = "1.6.2"
 androidxTestRules = "1.6.1"
 
@@ -41,6 +46,8 @@ room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 room-testing = { group = "androidx.room", name = "room-testing", version.ref = "room" }
 androidx-work-runtime = { group = "androidx.work", name = "work-runtime-ktx", version.ref = "work" }
+androidx-health-connect = { group = "androidx.health.connect", name = "connect-client", version.ref = "healthConnect" }
+androidx-activity = { group = "androidx.activity", name = "activity", version.ref = "activityCompose" }
 androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "androidxTestRules" }
 

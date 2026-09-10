@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.zdredge.consistency.data.ConsistencyRepository
 import com.zdredge.consistency.data.db.createConsistencyDatabase
+import com.zdredge.consistency.data.health.HealthConnectStepSource
+import com.zdredge.consistency.data.health.StepSource
 import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.ui.checkin.CheckInViewModel
 import com.zdredge.consistency.ui.home.HomeViewModel
@@ -17,7 +19,8 @@ import java.time.Clock
  * graph being visible in one place is the point. Hilt is worth adopting only once several
  * ViewModels need the same dependencies, and that is an ask-first decision (CLAUDE.md).
  *
- * The graph is four objects: the clock, the day resolver everything dates through, the repository
+ * The graph is five objects: the clock, the day resolver everything dates through, the step
+ * source, the repository
  * that is the only way in and out of storage, and a factory so the two ViewModels survive rotation.
  * Note the database is not exposed — `:data` builds it (see `createConsistencyDatabase`) so Room
  * stays inside that module and nothing here can reach past the repository to a DAO.
@@ -30,9 +33,20 @@ class AppContainer(
     /** The single day resolver. Nothing else may compute which day a timestamp belongs to. */
     val dayResolver: DayResolver = DayResolver(clock)
 
+    /**
+     * The only Health Connect implementation (architecture §5). Built here so `:app` never calls the
+     * API directly and the repository stays the single way to reach it.
+     */
+    val stepSource: StepSource =
+        HealthConnectStepSource(context.applicationContext, dayResolver)
+
     /** The single way in and out of storage. */
     val repository: ConsistencyRepository =
-        ConsistencyRepository(createConsistencyDatabase(context), dayResolver)
+        ConsistencyRepository(
+            createConsistencyDatabase(context),
+            dayResolver,
+            stepSource = stepSource,
+        )
 
     /**
      * Hand-written rather than generated, and hand-written rather than skipped.

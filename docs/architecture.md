@@ -471,6 +471,26 @@ them: log it, and surface it in the app. Rationale in the risk table below. This
 code, not a reconciliation system; actual multi-source reconciliation waits until a second source
 exists.
 
+**As built (M7).** `StepSource` in `:data` with one implementation, `HealthConnectStepSource`, plus
+`StepPermissions` so `:app` never imports Health Connect — the permission contract is as much a
+Health Connect API as the reader is, and letting `MainActivity` call it would have put the churn in
+two modules instead of one. Reads use `DayResolver`'s **04:00 boundary**, not the calendar day the M0
+spike used: a calendar day files every step walked before 04:00 under the wrong date, in an app whose
+premise is that the day ends at bedtime.
+
+The guard groups records by `metadata.dataOrigin.packageName` and hands the group to `StepMapper`
+(`:domain`, pure, tested). One origin is taken at its word; **two are marked `CONFLICTED` and the day
+is not scored**. `CONFLICTED` is a state rather than a null value because `value_number` is NOT NULL
+and this needed no migration — the column keeps the origins' total purely so a flagged day can be
+investigated, and nothing reads it as a step count. No records at all writes **no row**: "did not
+walk" and "has not synced" are indistinguishable, and a zero would score a miss the user could not
+have earned.
+
+Two read triggers, one entry point (`ConsistencyRepository.syncSteps`): the rollover reads the day
+that just closed, and opening the night check-in reads today. The rollover reads **only** that one
+day on purpose — re-reading history each night would reset every `last_synced_at` and nothing would
+ever freeze, which is the O4 rule looking present and never firing.
+
 ### Cross-cutting: one clock, one day resolver
 
 **Decided.** The 04:00 day boundary is constraint 1 in the spec appendix, and it is the kind of rule
@@ -763,8 +783,8 @@ of mind.
 |---|---|---|
 | Battery optimisation delays alarms even with the exact-alarm permission held | **Downgraded High → Medium by M0.** | M0 measured it rather than assuming: in confirmed deep Doze (`deviceidle get deep` = IDLE) with battery optimisation unexempted, an exact alarm fired with a **0.6 s slip**. What one forced 15-minute run cannot show is maintenance windows, thermal throttling and adaptive-battery learning over time — so still watch real firings across the first several days of M6, and request a battery-optimisation exemption during setup as cheap insurance. **Night one (2026-09-09): the 21:00 prompt and both repeats arrived on time**, unexempted, in standby bucket 20 — the repeats being the stronger signal, as they fire deeper into the idle window. **Day two (2026-09-10): the 08:00 morning prompt and both repeats arrived on time on a day nobody opened the app** — the condition this row was actually asking about. Alarms are not the exposure. **The rollover is:** it was due at 04:15 and ran at 06:16, spending two of its three and three-quarter hours of margin. Exact alarms fire when told; the inexact job that decides *what* to tell them is the part that drifts. If the exemption is ever requested, this is the reason, and the trigger to watch for is a rollover run after roughly 06:30. |
 | Rollover job silently fails; all figures quietly wrong | High — invisible | Log every run, record last-successful-rollover, surface staleness in the app rather than only in logs. **Built in M5:** the `rollover_runs` table records every run including failures, and Home says so plainly when the last success is more than two days old. A history rather than one timestamp, so "it failed every night" can be told from "it never ran" — and the oldest check-in dates the install, so a job broken since day one is not mistaken for one not yet due. |
-| Step double-counting once a second source appears | Medium, and **dormant rather than hypothetical** | M0 confirmed exactly one step origin today (`com.android.healthconnect.phone.jf9fc...`, the on-device synthetic package). But **Samsung Health and Google Health are both already installed** on the device and simply are not writing steps — so a second origin needs no new hardware, just one of them starting to sync. A mislaid Galaxy Watch would add a third. Any of these could appear with no warning from Health Connect, and step counts would quietly inflate. Because the dashboard only shows a 14-day window, this would read as improvement rather than as a bug. Mitigation is the day-one origin grouping guard in §5, not a filtering system. Note also the synthetic-package-name change from June 2026 when identifying origins. |
-| Health Connect alpha APIs shift under the build | Medium | Pin versions; isolate all Health Connect calls behind one interface in `:data` |
+| Step double-counting once a second source appears | Medium, and **dormant rather than hypothetical** | M0 confirmed exactly one step origin today (`com.android.healthconnect.phone.jf9fc...`, the on-device synthetic package). But **Samsung Health and Google Health are both already installed** on the device and simply are not writing steps — so a second origin needs no new hardware, just one of them starting to sync. A mislaid Galaxy Watch would add a third. Any of these could appear with no warning from Health Connect, and step counts would quietly inflate. Because the dashboard only shows a 14-day window, this would read as improvement rather than as a bug. Mitigation is the day-one origin grouping guard in §5, not a filtering system. Note also the synthetic-package-name change from June 2026 when identifying origins. **M7 found it changes more often than that:** the same phone reported `…jf9fc11088d6938c28480cb1ae667b25e` in M0 and `…j94257314766b3142a71ff5cce8f3ca59` days later. The guard is unaffected because it groups whatever one day's read returns rather than matching a known name — but **any future "ignore this known-good origin" filter would break silently, in the direction of hiding a real second source.** |
+| Health Connect alpha APIs shift under the build | **Retired by M7.** | A stable **1.1.0** has shipped, and that is what is pinned — the M0 spike's `1.1.0-alpha10` was never used in the app. The isolation stands anyway: every Health Connect call, **including the permission `ActivityResultContract`**, sits behind `:data`, so `:app` does not import the library at all and a future API change lands in one module. |
 | Keystore loss | Medium | Off-machine backup before the first release-signed build |
 | Kotlin and Compose learning curve stalls momentum | Medium | Build the check-in flow and Room layer first; leave charts until the data exists |
 | Publishing later would invalidate the `USE_EXACT_ALARM` decision | Low, unless plans change | Documented in §2; the fallback path would need building |
