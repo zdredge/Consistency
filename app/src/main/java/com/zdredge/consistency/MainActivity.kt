@@ -25,6 +25,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.export.ExportToDownloads
 import com.zdredge.consistency.data.health.StepPermissions
 import com.zdredge.consistency.data.health.StepSourceStatus
 import com.zdredge.consistency.notify.CheckInAlarmScheduler
@@ -74,6 +75,16 @@ class MainActivity : ComponentActivity() {
     private var notificationsEnabled by mutableStateOf(true)
 
     /**
+     * What the last export did, or null before one has been asked for.
+     *
+     * Held here rather than in `HomeViewModel` because writing the file needs a `Context` and a
+     * `ContentResolver`, and pushing those into the ViewModel would put Android in the one place the
+     * architecture keeps it out of. The counts come back from the snapshot itself, so the line the
+     * user reads is evidence of what was written rather than a hopeful "Done".
+     */
+    private var exportStatus by mutableStateOf<String?>(null)
+
+    /**
      * Asked once, and never nagged about again.
      *
      * The result is deliberately ignored: if it is denied, Home says so (see [notificationsEnabled])
@@ -83,6 +94,9 @@ class MainActivity : ComponentActivity() {
     private val requestNotifications =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) {
             notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
+            // Only now, with the first dialog gone. Asking for both at once is how the steps
+            // request was lost on the first real install.
+            askForStepsOnce()
         }
 
     /**
@@ -110,8 +124,9 @@ class MainActivity : ComponentActivity() {
         )
 
         Notifications.ensureChannel(this)
+        // Steps are asked for *after* notifications resolves, never alongside it -- see
+        // askForNotificationsOnce for what happens otherwise.
         askForNotificationsOnce()
-        askForStepsOnce()
         // A notification tap arrives as the launch Intent on a cold start, and through onNewIntent
         // when the app is already alive.
         screen = screenFor(intent) ?: Screen.Home
@@ -136,6 +151,17 @@ class MainActivity : ComponentActivity() {
                             HomeScreen(
                                 state = state,
                                 notificationsEnabled = notificationsEnabled,
+                                exportStatus = exportStatus,
+                                onExport = {
+                                    exportStatus = "Exporting…"
+                                    lifecycleScope.launch {
+                                        val summary = ExportToDownloads.run(this@MainActivity)
+                                        exportStatus = summary?.let {
+                                            "Saved to Downloads — ${it.checkIns} check-ins, " +
+                                                "${it.answers} answers, ${it.measuredValues} step days"
+                                        } ?: "Export failed. Nothing was saved."
+                                    }
+                                },
                                 onOpenCheckIn = { day, slot -> screen = Screen.CheckIn(day, slot) },
                                 modifier = Modifier.padding(padding),
                             )
@@ -224,7 +250,12 @@ class MainActivity : ComponentActivity() {
         ) == PackageManager.PERMISSION_GRANTED
 
         notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
-        if (!granted) requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+
+        // **One permission dialog at a time.** Firing both on first launch loses the second: the
+        // steps request was launched behind the notifications dialog and never reached the user,
+        // who was recorded as having made no choice at all -- no USER_SET flag, not a denial. On the
+        // real day-0 install that meant steps silently never collected, which is the whole of M7.
+        if (granted) askForStepsOnce() else requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /**

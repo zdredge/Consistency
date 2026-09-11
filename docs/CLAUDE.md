@@ -14,7 +14,9 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M7 are complete. M8 (item detail views, charts, item configuration and check-in times) is next.** Do not begin a later milestone
+**M0 through M7 are complete, and real data collection began on 2026-09-10.** M8 (item detail views,
+charts, item configuration and check-in times) is next — **and is the first milestone whose work
+happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do not begin a later milestone
 than the one in progress.
 
 The two defects M6 left were fixed on 2026-09-09; see *Defects found after M6* in `build-order.md`.
@@ -123,6 +125,14 @@ likely to be broken by well-intentioned code:
   through `:data` (`StepSource`, `StepPermissions`) so an API change lands in one module. The
   interface has **one** implementation on purpose — it is for version pinning, not provider
   abstraction. Do not add a second.
+- **A check-in counts as answered only if something was recorded for it.** Response rate is the
+  primary metric and counts that state, so an opened-and-closed check-in used to inflate it. A
+  deferral counts (A2.2: "not yet" is a response); a step value does not (steps are read, not given).
+- **Any copy of the database must checkpoint the WAL first.** Room auto-checkpoints around 4 MB, which
+  this database will not reach for years, so `consistency.db` on its own can be days behind — measured
+  at 5 check-ins against 9, and without the checkpoint an exported file loses even the `checkins`
+  table. `DatabaseSnapshot` is the only sanctioned way out; **auto-backup is off** precisely because
+  it would have taken that stale copy silently.
 - **`Grace` is the one backfill boundary.** Both the outstanding-check-in banner and the rollover
   read it. Restating "yesterday" in either place lets a check-in fall between them: no longer
   offered, never missed, and response rate wrong with nothing on screen to show it.

@@ -23,9 +23,22 @@
     -->
     <uses-permission android:name="android.permission.health.READ_STEPS" />
 
+    <!--
+      allowBackup is OFF, and that is a decision rather than a default.
+
+      Both rule files below are untouched IDE templates - every rule in them is still commented out,
+      TODO included - so with backup enabled the database was eligible for cloud backup and device
+      transfer under default rules, and nothing had ever verified that a backup ran, let alone that a
+      restore worked. Room runs in WAL mode, and a captured copy of consistency.db can be days stale
+      while looking complete: measured here, the .db file alone held 5 check-ins where the file plus
+      its -wal held 9. A restore of that is worse than no restore, because it presents old data as
+      current. The export on the home screen is the one mechanism the user controls and can check.
+
+      (backup_rules.xml was already dead regardless - it only applies below API 31, and minSdk is 34.)
+    -->
     <application
         android:name=".ConsistencyApp"
-        android:allowBackup="true"
+        android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"

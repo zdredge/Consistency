@@ -107,7 +107,7 @@ object SeedLibrary {
         version(TOOK_TIME, "Did you take time when time could be taken?", AnswerType.SINGLE_SELECT, Slot.NIGHT, Classification.GOAL, effectiveFrom),
         // Never a goal. Scoring a mood reintroduces exactly the shame this product is designed
         // against; the derived average is the signal, watched rather than targeted (spec section 4).
-        version(MINDSET, "How was your mindset today?", AnswerType.SCALE, Slot.NIGHT, Classification.OBSERVATION, effectiveFrom),
+        version(MINDSET, "How positive was your mindset today? (1 - Very Negative, 5 - Very Positive)", AnswerType.SCALE, Slot.NIGHT, Classification.OBSERVATION, effectiveFrom),
 
         // Measured: no schedule slot, never asked, read-only in the night check-in (spec 3.3).
         version(STEPS, "Steps", AnswerType.NUMBER, Slot.NONE, Classification.GOAL, effectiveFrom),
@@ -153,7 +153,9 @@ object SeedLibrary {
 
         // Lower bounds on non-daily behaviours: weekly only, assessed against the roll-up.
         target(WORKED_OUT, Period.WEEK, Direction.AT_LEAST, 3.0, effectiveFrom),
-        target(STRETCHED, Period.WEEK, Direction.AT_LEAST, 4.0, effectiveFrom),
+        // Six, not seven: the aim is daily, but a target only ever met by a perfect week reads as
+        // missed more often than it reads as true. One day of slack keeps it achievable.
+        target(STRETCHED, Period.WEEK, Direction.AT_LEAST, 6.0, effectiveFrom),
 
         // An upper bound, so it needs both. The weekly cap alone would pass a five-coffee day
         // (see the granularity note on this object); the daily cap alone would miss a steady week.
@@ -168,8 +170,12 @@ object SeedLibrary {
         // is deliberate -- a must-include naming one option would fail an evening of YouTube.
         target(PRE_SLEEP, Period.DAY, Direction.MUST_NOT_INCLUDE, null, effectiveFrom, "$PRE_SLEEP.scrolled_on_phone"),
 
-        target(STEPS, Period.DAY, Direction.AT_LEAST, 10_000.0, effectiveFrom),
-        target(STEPS, Period.WEEK, Direction.AT_LEAST, 70_000.0, effectiveFrom),
+        // The week is seven times the day deliberately. Spec 3.4 keeps the two independent and
+        // reports them separately, so this is a choice rather than arithmetic -- but a weekly target
+        // quietly stricter than the daily one would read as a bug the first time a perfect week
+        // scored as missed.
+        target(STEPS, Period.DAY, Direction.AT_LEAST, 8_000.0, effectiveFrom),
+        target(STEPS, Period.WEEK, Direction.AT_LEAST, 56_000.0, effectiveFrom),
     ) + weeklyItemIds.map {
         target(it, Period.WEEK, Direction.MUST_INCLUDE, null, effectiveFrom, "$it.yes")
     }

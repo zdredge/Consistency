@@ -4,21 +4,24 @@ import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.data.db.LOCAL_USER_ID
 import com.zdredge.consistency.data.db.entity.CheckInEntity
 import com.zdredge.consistency.data.db.entity.RolloverRunEntity
+import com.zdredge.consistency.data.export.DatabaseSnapshot
+import com.zdredge.consistency.data.export.SnapshotSummary
+import com.zdredge.consistency.data.health.StepSource
+import com.zdredge.consistency.data.health.StepSourceStatus
+import com.zdredge.consistency.data.health.UnavailableStepSource
 import com.zdredge.consistency.data.mapper.originEntities
 import com.zdredge.consistency.data.mapper.selectionEntities
 import com.zdredge.consistency.data.mapper.toDomain
 import com.zdredge.consistency.data.mapper.toEntity
+import com.zdredge.consistency.domain.checkin.AnswerDay
 import com.zdredge.consistency.domain.checkin.AnswerRevision
 import com.zdredge.consistency.domain.checkin.CheckInContent
 import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.checkin.CheckInPlanner
-import com.zdredge.consistency.data.health.StepSource
-import com.zdredge.consistency.data.health.StepSourceStatus
-import com.zdredge.consistency.data.health.UnavailableStepSource
 import com.zdredge.consistency.domain.checkin.CheckInTimes
-import com.zdredge.consistency.domain.checkin.StepMapper
 import com.zdredge.consistency.domain.checkin.Grace
 import com.zdredge.consistency.domain.checkin.RolloverPlanner
+import com.zdredge.consistency.domain.checkin.StepMapper
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.CheckIn
@@ -35,9 +38,13 @@ import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.Target
 import com.zdredge.consistency.domain.time.DayResolver
+import java.io.File
+import java.io.OutputStream
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** What one rollover changed. Returned to the worker, and written to `rollover_runs`. */
 data class RolloverOutcome(
@@ -420,6 +427,35 @@ class ConsistencyRepository(
         db.rolloverDao().recent(limit)
 
     /**
+     * Marks a check-in answered **only if something was actually recorded for it**, returning whether
+     * it did.
+     *
+     * Reaching the end of a set used to be enough on its own. It is not: response rate is the primary
+     * metric and it counts check-ins in this state, so a check-in opened and closed without a single
+     * answer was inflating the one number the product exists to report. That is not hypothetical --
+     * it happened on the real device, when a check-in screen was left open and later dismissed, and
+     * the row was marked answered with zero answers behind it.
+     *
+     * **Measured entries do not count.** Steps are read, not given (spec §3.3); a night check-in
+     * where the user looked at their step count and answered nothing is not a check-in they answered.
+     *
+     * **A deferral does count.** "Not yet" is a response the app deliberately offers, and A2.2 is
+     * explicit that a check-in answered that way stays ANSWERED even if the deferral is never
+     * resolved. This asks whether the user responded, not whether the data is complete.
+     */
+    suspend fun markCheckInAnsweredIfAnswered(day: LocalDate, slot: Slot, at: Instant): Boolean {
+        val responded = checkInQuestions(day, slot)
+            .filterNot { it.readOnly }
+            .any { entry ->
+                val answersDay = entry.carriedOverFrom ?: AnswerDay.forCheckIn(day, slot)
+                answer(entry.item.id, answersDay) != null
+            }
+
+        if (responded) markCheckInAnswered(day, slot, at)
+        return responded
+    }
+
+    /**
      * Marks a check-in answered. Note it does not touch the answers: a check-in answered "not yet"
      * stays ANSWERED even if the deferral is never resolved, because the user did complete the
      * check-in (scoring-cases A2.2), and a LATE answer must not repair a MISSED one (A1.2). Deriving
@@ -518,6 +554,22 @@ class ConsistencyRepository(
     suspend fun deleteAnswer(itemId: ItemId, day: LocalDate) {
         db.answerDao().deleteForItemOnDay(itemId.value, day.toString())
     }
+
+    // ---- Export ------------------------------------------------------------------------------
+
+    /**
+     * Writes a complete copy of the database to [out]. The caller owns and closes [out].
+     *
+     * Routed through the repository because `AppContainer` deliberately does not expose the database
+     * -- `:app` cannot reach a DAO, and it should not be able to reach the file either. The caller
+     * supplies the path via `context.getDatabasePath(DATABASE_NAME)`, which is public for exactly
+     * this.
+     *
+     * On `Dispatchers.IO` explicitly: unlike every other method here this is file I/O rather than a
+     * Room query, so it does not get Room's dispatcher for free.
+     */
+    suspend fun writeSnapshotTo(databaseFile: File, out: OutputStream): SnapshotSummary =
+        withContext(Dispatchers.IO) { DatabaseSnapshot.writeTo(db, databaseFile, out) }
 
     // ---- Measured values ---------------------------------------------------------------------
 

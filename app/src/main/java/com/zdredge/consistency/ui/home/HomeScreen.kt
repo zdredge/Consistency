@@ -10,6 +10,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -35,6 +36,8 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 fun HomeScreen(
     state: HomeUiState,
     notificationsEnabled: Boolean,
+    exportStatus: String?,
+    onExport: () -> Unit,
     onOpenCheckIn: (LocalDate, Slot) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -102,6 +105,20 @@ fun HomeScreen(
             style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.padding(top = 16.dp),
         )
+
+        // The only way data leaves this app. Plain and unglamorous on purpose -- it is not a feature
+        // to be encouraged toward, it is the thing that means one lost phone is not the whole record.
+        TextButton(onClick = onExport, modifier = Modifier.padding(top = 4.dp)) {
+            Text("Export a copy to Downloads")
+        }
+
+        exportStatus?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

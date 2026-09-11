@@ -219,9 +219,11 @@ than two.
 - **Targets are stored per period with an effective-from date.** Raising a target never re-scores
   closed periods.
 - **Targets key on (item, period type)**, so one item may hold a daily and a weekly target at once
-  (steps: 10,000 daily and 70,000 weekly). Both are scored **independently and reported
-  separately**, because 70,000 across three big rides is a different week from 10,000 every day, and
-  collapsing them hides which one happened.
+  (steps: 8,000 daily and 56,000 weekly). Both are scored **independently and reported
+  separately**, because 56,000 across three big rides is a different week from 8,000 every day, and
+  collapsing them hides which one happened. The weekly figure is deliberately seven times the daily
+  one, so a week of days that each met their target exactly meets the week — the two being
+  independent measures does not mean they should be set to contradict each other.
 - **Targets carry a direction**, not just a value: at least · at most · exactly · must be yes ·
   must be no · must include *option* · must not include *option*. Coffee wants an upper bound;
   "scrolled on phone" wants an absence.
@@ -320,7 +322,7 @@ scrolled on phone, watched TV, …) · woke at (time) · got out of bed at (time
 
 **Night:** meals (number) · vitamins (yes/no) · water (number, unit = bottles, size configurable) ·
 worked out (yes/no) · stretched (yes/no) · coffee (number) · took time for yourself (single-select:
-yes · no · no opportunity) · mindset (1–5)
+yes · no · no opportunity) · mindset (1–5, labelled 1 = very negative, 5 = very positive)
 
 **Goal granularity in the night set:**
 
@@ -331,7 +333,9 @@ yes · no · no opportunity) · mindset (1–5)
   The wider rule it follows: **a direction must describe what would actually count as failing**, or
   the score stops meaning anything (see also the pre-sleep absence rule in §3.4).
 - **worked out and stretched are recorded daily and targeted weekly**, assessed against the weekly
-  roll-up (count-of-yes): e.g. worked out ≥ 3/week, stretched ≥ 4/week (illustrative and editable).
+  roll-up (count-of-yes): worked out ≥ 3/week, stretched ≥ 6/week (editable). Stretching was set to 6
+  rather than 7 when the library was reviewed before real collection began: the aim is daily, but a
+  target only a perfect week can meet reads as missed far more often than it reads as true.
   This is the "one off day should not fail me" case, handled by choosing the right *period* rather
   than by softening the target: each weekly target is still a clean binary hit or miss (§3.4,
   dual-granularity).
