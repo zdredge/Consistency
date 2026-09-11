@@ -392,6 +392,11 @@ chart library handles correctly out of the box.
 **Alternative:** MPAndroidChart. Mature, View-based so it needs interop wrapping in Compose, and
 barely maintained now.
 
+**Under review (M8).** The mockups agreed with the user put no item on a line chart — every view is a
+calendar, rows of squares, bars or dots on a clock axis (product spec §5.4). Vico's reason for being
+here was line charts, so M8 Phase 5 should confirm drawing everything in Compose Canvas and adding no
+dependency. The 04:00 clock axis remains the part no library handles, whichever way that goes.
+
 ### Storage Access Framework document picker — export
 **Why:** free, no API, no OAuth, and it writes wherever the user points, including Drive.
 **Pro:** zero infrastructure.
@@ -799,4 +804,4 @@ of mind.
 | ~~T2~~ | **Closed by M3.** Typed nullable columns were kept and the mapping did not get ugly: `EntityMappers.kt` is a flat set of one-line conversions with no branching on answer type, because the domain `Answer` carries the same typed nullable fields the table does. A blob would have added a serialiser on both sides and made every numeric query a parse. Revisit only if a new answer type cannot be expressed as a column. |
 | T3 | How to test alarm scheduling and the restore receiver without relying on manual device verification. **Narrowed twice, still open:** which alarms should exist is a pure tested function (`AlarmPlanner`), and *that the rows exist before anything is armed* is now a `:data` instrumented test (`checkInsForAlarms`) rather than a device observation — it was moved there precisely because the untested version of it was wrong for a whole milestone. What is left untestable is only *that a set alarm fires* and *that alarms return after a reboot or an update*. Each has been observed on a real device, but by hand, and nothing guards them against regression. The residue is not theoretical: **three real defects have now lived exactly there**, in the wiring between the tested rule and the platform. |
 | T4 | Whether the rollover job should also pre-compute and cache dashboard figures, or whether scoring on read is fast enough at a few thousand rows. Probably fast enough; worth measuring rather than assuming. |
-| T5 | Compose navigation approach across the five screens — deliberately not decided here. **Evidence from M4.5, still open:** two screens are a sealed `Screen` and a `when`, and the check-in summary was made a *page inside* the check-in rather than a third screen — routing it through `MainActivity` would have put it behind the `exit` flag, which is a live defect (build-order M4.5, defect 1). That defect is itself the argument: navigation currently depends on a state field that outlives the screen setting it, and a one-shot event or a real back stack both fix it. Decide when the item detail view and dashboard make five screens real. |
+| T5 | Compose navigation approach. **Decided in M8: stays hand-rolled**, gaining a small back stack and the system back gesture as the Items and item detail screens arrive. No navigation library: at five screens the whole flow stays readable in one file, and the notification deep-link (`MainActivity.screenFor`) keeps working unchanged. Revisit only if screens multiply well past that. |

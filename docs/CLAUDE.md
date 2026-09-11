@@ -14,10 +14,11 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M7 are complete, and real data collection began on 2026-09-10.** M8 (item detail views,
-charts, item configuration and check-in times) is next — **and is the first milestone whose work
-happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do not begin a later milestone
-than the one in progress.
+**M0 through M7 are complete, and real data collection began on 2026-09-10.** M8 (item detail views
+and charts) is in progress, in six phases; Phase 1, the chart design, is done. Item configuration and
+check-in times are deferred to a settings add-on after the plan. **M8 is the first milestone whose
+work happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do
+not begin a later milestone than the one in progress.
 
 The two defects M6 left were fixed on 2026-09-09; see *Defects found after M6* in `build-order.md`.
 Confirmed on 2026-09-10: the first morning prompt the app has ever sent arrived at 08:00 on a day
@@ -177,8 +178,12 @@ module. This is what makes the whole rulebook testable without an emulator, whic
 - Enums for `answer_type`, `direction`, `capture`, `slot`, `state`. No magic strings.
 - All Health Connect calls behind a single interface in `:data`, with **one** implementation. The
   interface exists for version pinning, not provider abstraction.
-- Charts: Compose Canvas for the calendar heatmap, Vico for line charts. Time-of-day line charts must
-  respect the 04:00 boundary or a 01:30 bedtime plots as the earliest night of the month.
+- Charts: **each item's view is fixed per item in spec §5.4**, agreed with the user in M8 — not a
+  setting, and not derived from answer type. **No item uses a line chart**, so the Vico choice in
+  architecture §4 is under review in M8 Phase 5; draw in Compose Canvas unless that concludes
+  otherwise. Clock times plot on an axis that starts at 04:00, or a 01:30 bedtime plots as the
+  earliest night of the month. A missed day is grey, never red — only *scrolled on phone* is red, by
+  the user's explicit choice.
 
 ## UI
 

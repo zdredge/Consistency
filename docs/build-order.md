@@ -2,8 +2,9 @@
 
 **Status:** agreed and in progress. **M0 through M7 are complete**, including the four defects M4.5
 found and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
-cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts, plus item
-configuration and check-in times) is next.**
+cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts) is in progress**:
+Phase 1, the chart design, was agreed with the user on 2026-09-11. Item configuration and check-in
+times moved to a settings add-on after the plan.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -77,7 +78,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M5 | Rollover job (expected check-ins, missed, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
-| M8 | Item detail views and charts, **plus item configuration (spec §5.7) and check-in times** — note that changing a time must re-anchor the rollover *and* re-arm alarms explicitly; `RolloverScheduler.schedule`'s `KEEP` will not notice a changed constant | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
+| M8 | Item detail views and charts, in six reviewable phases (item configuration and check-in times deferred to a post-plan add-on) | Mockups agreed first; `:domain` TDD; charts hand-checked in previews | M3, M4 | M7 |
 | M9 | Seed-data fixture (spec O7) | N/A — it *is* test scaffolding | M3 | M4–M8 |
 | M10 | Dashboard | ViewModel TDD against seeded data | M9 | — |
 | M11 | Export | TDD the serialiser; hand-verify the picker | M3 | M10 |
@@ -972,44 +973,101 @@ had gone to plan.
 
 ---
 
-## M8 — Item detail views and charts
+## M8 — Item detail views and charts — **in progress**
 
-**Proposed.** With real answers accumulating, the per-item view becomes meaningful. Dashboard still
-waits (it needs history and O1); the detail view does not.
+**Why now.** Real data started on 2026-09-10 and there was nowhere to see it: the only screens were
+Home and the check-in, and every figure the scoring engine produces was tested and wired to nothing.
+**M8 is also the first milestone built while real data accumulates**, so a wipe is no longer a free
+way out of a mistake. That is why charts are checked in Compose previews fed invented data, never
+against a database.
 
-**Deliverables** (spec §5.4).
-- Automatic chart-type selection from answer type — *not* a user setting (spec §2, §5.4): calendar
-  heatmap for yes/no, single-select and multi-select; line chart for number and 1–5 scale; line chart
-  for time-of-day **with the y-axis respecting the 04:00 boundary** or a 01:30 bedtime plots as the
-  earliest night of the month (spec §5.4; `CLAUDE.md`; architecture §4).
-- The always-available plain table — the only surface exposing backfilled/edited/pending/provisional
-  states and notes in bulk (spec §5.4).
-- Per-item longest run, and hit rate **and** average attainment side by side, never merged (spec
-  §5.4; constraint 16).
-- **No-opportunity usage frequency** surfaced here (spec constraint 17): how often the neutral option
-  was chosen must be legible, so leaning on it is visible rather than hidden.
-- Notes surfaced per data point (spec §5.4).
-- Charts: Compose Canvas for the heatmap, Vico for line charts (architecture §4; `CLAUDE.md`).
-- **Check-in times**, assigned here as of M6. Spec §1 says the night time is user-set and nothing
-  implements it: `CheckInTimes` is a Kotlin default that both the check-in generator and the alarm
-  scheduler read. Whatever stores them must stay the single source for both, or the row's
-  `scheduled_at` and the alarm that fires would disagree. Architecture §6 names this screen as the
-  Scheduler's second caller — changing a time must cancel and re-set real alarms, not merely store a
-  preference.
-- **Item configuration (spec §5.7)**, assigned here as of M4.5. It had no milestone at all and was
-  flagged four times across M3, M4 and M4.5 without landing anywhere. It belongs beside the detail
-  view because that is the surface already devoted to a single item, and editing an item's setup is
-  what a user reaching that screen would next want. It also **unblocks per-item defaults** — the time
-  questions currently all open at 07:00, which is wrong for bedtime, and there is nowhere to record a
-  better starting value until items are configurable. Note this makes M8 the milestone that first
-  touches item versioning from the UI: items are versioned and retired, never deleted.
+**Most of the arithmetic already existed.** `ItemSummary` (hit rate, average attainment,
+no-opportunity count) and `RunCalculator.itemRun` were built and tested in M2. What M8 adds is the
+assembly from an item's history to its figures and chart, a clock axis that respects 04:00, the
+charts, and a way to reach them.
 
-**TDD.** The chart-type selection is a pure map from answer type — tested exhaustively. The
-clock-axis transform for time-of-day (the 04:00 wrap) is pure and is the one with a real bug waiting
-in it — test it directly. The rendered charts themselves are hand-checked.
+### Scope changes from the original M8
 
-**Exit criteria.** Each answer type renders its correct view; the time-of-day axis respects 04:00
-under test; hit rate and attainment both display; the table exposes every state.
+- **Item configuration (spec §5.7) is deferred again**, now to a separate feature add-on *after* the
+  build plan. It had no milestone until M4.5 and has moved twice since; it belongs with settings, not
+  with seeing your data.
+- **Check-in times go with it.** Both are settings that touch scheduling. Carry this into the add-on:
+  changing a time must re-arm alarms **and** re-anchor the rollover explicitly, because
+  `RolloverScheduler.schedule` uses `KEEP` and ignores changed code on an existing install. Until
+  then the time questions keep opening at 07:00, and check-ins stay at 08:00 and 21:00.
+
+### Phases
+
+Each phase ends green, is reviewed, and is committed only on approval.
+
+1. **Chart design, no code** — mockups agreed with the user. **Done 2026-09-11.**
+2. **The pure core, in `:domain` (TDD)** — the 04:00 clock axis, item detail assembly, the per-item
+   view map, and the small derived figures the views need.
+3. **Getting there** — a hand-rolled back stack, an Items screen from one button on Home, and the
+   detail screen with its figures and table but no charts.
+4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas.
+5. **Bars and dots** — coffee, steps and the sleep times, with the trend line and the night filter.
+6. **Device pass and close.**
+
+### Phase 1 — chart design — **DONE 2026-09-11**
+
+**Three rounds of mockups** on a review page that saved the user's picks as they were made, with
+invented data built to include the awkward cases: a 01:30 bedtime, a backfilled day, a deferred day, a
+no-opportunity streak, an open week, a step day two sources reported. Fifteen decisions in round 1;
+twelve settled outright, three came back with notes and were redrawn until agreed.
+
+**The locked views are spec §5.4**, now a per-item table rather than a rule by answer type. The
+outcomes worth carrying into the build:
+
+- **No item uses a line chart.** Meals and water rejected both bars and a line and chose a calendar
+  shaded by amount; mindset chose a calendar over a line; the sleep times chose dots. Only coffee and
+  steps are bars. **This reopens the Vico decision** (architecture §4): Vico was chosen specifically
+  for line charts, and there are none. Phase 5 should confirm drawing everything in Compose Canvas and
+  adding no dependency.
+- **Figures show from day one on an item's view**, deliberately unlike the dashboard's 14-day
+  suppression (§5.5). The user overruled the opening position: watching a rate settle is information.
+  The option text had called a day-one figure "meaningless", which was editorialising rather than
+  describing the trade-off.
+- **The sleep items gained two features nobody had planned**: a 7-night rolling average, on by default
+  with a switch to hide it, and a night filter — Every night · Sun–Thu · Custom, opening on Sun–Thu
+  each time. The user suggested Sunday to Thursday; it works for waking as well as bedtime only
+  because every sleep answer is filed under the night the user went to bed (`AnswerDay`, spec §3.1).
+- **A new colour.** *Scrolled on phone* is drawn in red at the user's request. The app's only red
+  (`Rust`, `#F2B8B5`) failed the chroma floor — on a square that small it reads as grey — so the red is
+  `#D9645C`, validated against the accent (normal-vision ΔE 26, deutan ΔE 21). `Rust` stays reserved
+  for genuine failure, and **every other missed day stays grey**, in keeping with the app not scolding.
+- **Observations show a recording count** instead of a run, labelled "recorded", never "streak".
+- **Meals has four shades with the biggest step between 2 and 3**, because real answers cluster there
+  and it is the target boundary. **Every ramp was validated as an ordinal scale** on the app's dark
+  surface before it was shown.
+- **Halves shade as the whole number below**, so 1.5 bottles can never look like the target of 2 was
+  reached. The user's note said water input is whole numbers, which holds for the quick-pick buttons;
+  the keypad still accepts a half, and the rule covers both.
+
+**Verified by agreement, not by a build.** Nothing in this phase compiles.
+
+### What Phase 2 onward must build
+
+- **The clock axis** — a time as minutes since 04:00, tested at the boundary (04:00 is 0; 23:00 comes
+  before 01:30, which comes before 03:59). It must fail when anchored at midnight.
+- **Item detail assembly** over an item's answers, measured values and targets, handling each shape the
+  library has: daily goals, weekly roll-up goals with an open week reading as progress, coffee's two
+  periods, steps with conflicted days excluded, and observations that are never scored.
+- **The derived figures the views need**: weekly counts against target, weekly coffee totals, the shade
+  bucket for an amount (halves rounding down), the rolling average and typical time **over only the
+  nights the filter shows**, and the recording count, which ignores the filter.
+- **The per-item view map**, tested over every seeded item.
+
+**TDD.** Phase 2 carries the risk and the tests. Phases 3–5 are hand-checked in previews — `:app` has no
+tests — using fixtures that include the hard cases.
+
+**Exit criteria.** Every item renders its agreed view; the clock axis respects 04:00 under test; hit rate
+and attainment both display; the table exposes every state; the night filter's average and typical time
+are proven to use only the nights shown.
+
+**Flag for M9, not solved here.** M9 as written "populates Room directly". On the only device that now
+holds real data, that is exactly the hazard M8 avoids by using previews. M9 needs a separate debug
+install (`applicationIdSuffix`), or it must never run on this phone.
 
 ---
 
@@ -1113,6 +1171,21 @@ hand-verified.
 
 **Exit criteria.** Export produces a correct file under test; the picker writes it to a
 user-chosen location on the device; no cloud dependency exists anywhere in the build.
+
+---
+
+## After the plan — settings add-on
+
+**Not a milestone, and deliberately after M11.** Two pieces deferred out of M8 on 2026-09-11, because
+they are settings rather than ways of seeing your data:
+
+- **Item configuration** (spec §5.7) — reword, retarget, retire and add items. Items are versioned and
+  retired, never deleted, so this is the first UI to touch versioning. It also unblocks per-item
+  defaults, such as a bedtime question that doesn't open at 07:00.
+- **Check-in times** (spec §1). Whatever stores them must stay the single source for both the check-in
+  generator and the alarm scheduler, or a row's `scheduled_at` and the alarm that fires will disagree.
+  Changing a time must cancel and re-arm real alarms **and** re-anchor the rollover, because
+  `RolloverScheduler.schedule` is `KEEP` and will not notice a changed value.
 
 ---
 
