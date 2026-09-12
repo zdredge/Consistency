@@ -1,5 +1,7 @@
 package com.zdredge.consistency.domain.scoring
 
+import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.model.ItemVersion
 import java.time.LocalDate
 
 /**
@@ -12,3 +14,13 @@ import java.time.LocalDate
  */
 internal fun <T> Iterable<T>.effectiveOn(on: LocalDate, effectiveFrom: (T) -> LocalDate): T? =
     filter { !effectiveFrom(it).isAfter(on) }.maxByOrNull(effectiveFrom)
+
+/**
+ * The version of [itemId] in force on [on], or null before the item had one.
+ *
+ * The same effective-from rule as targets and container sizes, applied to the record that says what
+ * an item *is* on a date. Public because both the check-in and the detail view need it: an answer
+ * given under version 1 must be read under version 1 for ever, whatever the item says today.
+ */
+fun List<ItemVersion>.inForce(itemId: ItemId, on: LocalDate): ItemVersion? =
+    filter { it.itemId == itemId }.effectiveOn(on) { it.effectiveFrom }

@@ -178,8 +178,11 @@ module. This is what makes the whole rulebook testable without an emulator, whic
 - Enums for `answer_type`, `direction`, `capture`, `slot`, `state`. No magic strings.
 - All Health Connect calls behind a single interface in `:data`, with **one** implementation. The
   interface exists for version pinning, not provider abstraction.
-- Charts: **each item's view is fixed per item in spec §5.4**, agreed with the user in M8 — not a
-  setting, and not derived from answer type. **No item uses a line chart**, so the Vico choice in
+- Charts: **each item's view is listed per item in spec §5.4**, agreed with the user in M8, and never
+  a user setting. `ItemViews.derive` works it out from what the item *is* — measured or asked, which
+  slot, its answer type, which periods it has targets in — and a test pins all 16 seeded items to the
+  views that were agreed. Change that rule only by re-deriving §5.4's table, not by special-casing an
+  item. **No item uses a line chart**, so the Vico choice in
   architecture §4 is under review in M8 Phase 5; draw in Compose Canvas unless that concludes
   otherwise. Clock times plot on an axis that starts at 04:00, or a 01:30 bedtime plots as the
   earliest night of the month. A missed day is grey, never red — only *scrolled on phone* is red, by
