@@ -21,11 +21,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.domain.detail.Chart
+import com.zdredge.consistency.domain.detail.NightFilter
 import com.zdredge.consistency.ui.items.chart.ActivityRowsChart
+import com.zdredge.consistency.ui.items.chart.BarsChart
+import com.zdredge.consistency.ui.items.chart.ClockDotsChart
+import com.zdredge.consistency.ui.items.chart.NightFilterControl
 import com.zdredge.consistency.ui.items.chart.ChartPalette
 import com.zdredge.consistency.ui.items.chart.DayGrid
 import com.zdredge.consistency.ui.items.chart.ShadeKey
 import com.zdredge.consistency.ui.items.chart.WeekSquaresChart
+import com.zdredge.consistency.ui.items.chart.weeklyTotalLabel
 import com.zdredge.consistency.ui.items.chart.dayCalendarFill
 import com.zdredge.consistency.ui.items.chart.keyLabels
 import com.zdredge.consistency.ui.items.chart.shadedFill
@@ -48,6 +53,8 @@ fun ItemDetailScreen(
     state: ItemDetailUiState,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onFilter: (NightFilter) -> Unit = {},
+    onShowTrend: (Boolean) -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize().padding(horizontal = 24.dp)) {
         TextButton(onClick = onBack, modifier = Modifier.padding(top = 8.dp)) { Text("← Items") }
@@ -74,7 +81,7 @@ fun ItemDetailScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(top = 16.dp),
         ) {
-            item { ItemChart(state) }
+            item { ItemChart(state, onFilter, onShowTrend) }
 
             item {
                 Text(
@@ -121,7 +128,11 @@ fun ItemDetailScreen(
  * charts and the sleep dots.
  */
 @Composable
-private fun ItemChart(state: ItemDetailUiState) {
+private fun ItemChart(
+    state: ItemDetailUiState,
+    onFilter: (NightFilter) -> Unit,
+    onShowTrend: (Boolean) -> Unit,
+) {
     when (val chart = state.chart) {
         null -> ChartPlaceholder(state.chartToCome)
 
@@ -140,8 +151,24 @@ private fun ItemChart(state: ItemDetailUiState) {
 
         is Chart.WeekSquares -> WeekSquaresChart(chart.weeks)
 
-        is Chart.ClockDots, is Chart.DailyBars, is Chart.StepBars ->
-            ChartPlaceholder(state.chartToCome)
+        is Chart.ClockDots -> Column {
+            ClockDotsChart(
+                nights = chart.nights,
+                allDays = state.days,
+                // Hiding the average hides only the line. The nights, the typical time and the
+                // recording count are untouched -- it is a view switch, not a filter.
+                trend = if (state.showTrend) chart.trend else emptyList(),
+            )
+            NightFilterControl(chart.filter, onFilter, state.showTrend, onShowTrend)
+        }
+
+        // One chart for both. They differ in the states a measured day can be in, which the cells
+        // already carry, and in what their weekly chip says.
+        is Chart.DailyBars ->
+            BarsChart(state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel)
+
+        is Chart.StepBars ->
+            BarsChart(state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel)
     }
 }
 

@@ -383,19 +383,28 @@ Health lengthens that chain rather than shortening it. The correct response to s
 here is the shortest possible chain, which is Health Connect counting the phone's own steps with no
 source app involved.
 
-### Vico (line charts) and Compose Canvas (calendar heatmap)
-**Why:** a heatmap is a grid of coloured rounded rectangles and needs no dependency. Line charts have
-real work in axes, scales and touch handling.
-**Pro:** minimal dependencies, and full control over the clock-axis problem for bedtime, which no
-chart library handles correctly out of the box.
-**Con:** Vico's ecosystem is small next to web charting; the Canvas code is yours to maintain.
+### Compose Canvas for every chart — **settled in M8 Phase 5, 2026-09-13**
+
+**Vico was never added, and now will not be.** It was chosen here for line charts, and the mockups
+agreed with the user put **no item on a line chart**: every view is a calendar, rows of squares, bars
+or dots on a clock axis (product spec §5.4). All seven are drawn in Compose Canvas, and the whole of
+it is four files.
+
+**Why it turned out to be the easy call.** The charts consume `DayCell`s — days already judged in
+`:domain` — so the drawing code decides nothing and needs no data model of its own, which is most of
+what a charting library sells. What was left was rounded rectangles, a value axis and a path, against
+a library's axis formatting, its own theme, and an interop layer.
+
+**The 04:00 clock axis is the part no library handles**, which was true before this decision and is
+the reason it always leaned this way. `ClockAxis` owns the conversion; the chart plots numbers.
+
+**Con, stated plainly:** the Canvas code is ours to maintain, and the device found three things the
+reasoning did not — duplicate axis labels from fractional ticks, a chip row that drifted out of
+alignment with the plot it labelled, and a chip whose text wrapped mid-word. A library would have got
+the first of those right for free.
+
 **Alternative:** MPAndroidChart. Mature, View-based so it needs interop wrapping in Compose, and
 barely maintained now.
-
-**Under review (M8).** The mockups agreed with the user put no item on a line chart — every view is a
-calendar, rows of squares, bars or dots on a clock axis (product spec §5.4). Vico's reason for being
-here was line charts, so M8 Phase 5 should confirm drawing everything in Compose Canvas and adding no
-dependency. The 04:00 clock axis remains the part no library handles, whichever way that goes.
 
 ### Storage Access Framework document picker — export
 **Why:** free, no API, no OAuth, and it writes wherever the user points, including Drive.

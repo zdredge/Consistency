@@ -261,6 +261,8 @@ class MainActivity : ComponentActivity() {
                                 state = state,
                                 onBack = { backStack.pop() },
                                 modifier = Modifier.padding(padding),
+                                onFilter = itemDetailViewModel::setFilter,
+                                onShowTrend = itemDetailViewModel::setShowTrend,
                             )
                         }
                     }

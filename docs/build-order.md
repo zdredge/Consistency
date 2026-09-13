@@ -1009,6 +1009,7 @@ Each phase ends green, is reviewed, and is committed only on approval.
    detail screen with its figures and table but no charts. **Done 2026-09-13.**
 4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas. **Done 2026-09-13.**
 5. **Bars and dots** — coffee, steps and the sleep times, with the trend line and the night filter.
+   **Done 2026-09-13.**
 6. **Device pass and close.**
 
 ### Phase 1 — chart design — **DONE 2026-09-11**
@@ -1262,6 +1263,43 @@ What the real data showed, which is a better test than any fixture: the week sta
 weekly target, because the goal was created on the Thursday. So its tally chip reads `2` with no
 denominator, the weekly hit rate reads "nothing scored yet", and the run stays at zero — the same
 rule visible in three places at once, agreeing with itself.
+
+### Phase 5 — bars and dots — **DONE 2026-09-13**
+
+The last three views, and the two controls the sleep charts needed. **All seven views now draw.**
+
+**The Vico decision is settled and the answer is no dependency** — architecture §4 is rewritten. Vico
+was here for line charts and there are none. What made it the easy call is that the charts consume
+`DayCell`s, days already judged in `:domain`, so the drawing decides nothing and needs no data model
+of its own — which is most of what a charting library sells. The 04:00 clock axis is the part no
+library handles, which is why it always leaned this way.
+
+**The clock axis, seen on real data:** the chart runs 10 PM to 1 AM and **midnight plots above 11 PM**.
+Anchored at midnight instead, a 01:30 bedtime would be the earliest reading of the month rather than
+the latest. `ClockAxis` owns the conversion; the chart plots numbers and does no clock arithmetic.
+
+**Coffee and steps share one chart** and differ only in what their cells carry: a provisional step day
+is a dimmer bar — the figure is real and may still change — and a day two sources reported is an empty
+outline the full height of the plot, because a short bar would claim the user walked nowhere.
+
+**The weekly figure sits in its own row beneath the plot, never as a second line on it.** Coffee's cap
+of 2 a day and its cap of 14 a week are scored separately (7.1–7.2), and drawing them on one axis
+invites comparing two numbers that have nothing to say to each other.
+
+**The night filter re-assembles rather than filtering what is on screen**, so the average and the
+typical time move with it and the recording count does not — which is enforced by `RecordingCount`
+taking no filter at all. It opens on Sun–Thu every visit, never remembering the last choice.
+
+Three more things the device found:
+
+- **The coffee axis read `0, 1, 1, 2, 2`.** A maximum of two produced a tick step of 0.5, and each
+  fractional tick rounded to a whole number, so the axis carried two pairs of duplicate labels. Ticks
+  now take a minimum step — both charts plot counts, so never a half of either — and the scale runs
+  one step past the data so the tallest bar stops short of the frame.
+- **The weekly chips drifted right of their own weeks**, because they were laid out across the full
+  width while the plot is inset for its axis. That is a chart quietly labelling the wrong week. The
+  insets are now one constant, shared.
+- **"Average" wrapped to "Avera/ge".** Four chips do not fit one phone-width row; they wrap now.
 
 ### Open defect — the rollover has been failing since 2026-09-11
 

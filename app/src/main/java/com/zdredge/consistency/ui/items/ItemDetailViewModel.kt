@@ -5,6 +5,8 @@ import com.zdredge.consistency.data.ConsistencyRepository
 import com.zdredge.consistency.domain.detail.Chart
 import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.ItemDetails
+import com.zdredge.consistency.domain.detail.ItemHistory
+import com.zdredge.consistency.domain.detail.NightFilter
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.time.DayResolver
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +39,8 @@ data class ItemDetailUiState(
     val chart: Chart? = null,
     /** The five weeks of judged days every view is drawn from. */
     val days: List<DayCell> = emptyList(),
+    /** Whether the sleep chart's rolling average is drawn. On by default (spec §5.4). */
+    val showTrend: Boolean = true,
     val figures: List<Figure> = emptyList(),
     val rows: List<HistoryRow> = emptyList(),
 )
@@ -57,16 +61,55 @@ class ItemDetailViewModel(
     private val _state = MutableStateFlow(ItemDetailUiState())
     val state: StateFlow<ItemDetailUiState> = _state.asStateFlow()
 
+    /** Held so the filter can re-assemble without going back to the database for the same rows. */
+    private var history: ItemHistory? = null
+
+    /**
+     * **Opened on Sun–Thu every time, never remembered.** Spec §5.4: a filter set weeks ago would be
+     * hiding nights nobody had asked it to hide, so it resets with every visit to the item.
+     */
+    private var filter: NightFilter = NightFilter.OPENING
+
+    /** The rolling average is on by default, with a switch to hide it (spec §5.4). */
+    private var showTrend: Boolean = true
+
     suspend fun load(itemId: ItemId) {
         _state.value = ItemDetailUiState(loading = true)
 
-        val today = dayResolver.today()
-        val history = repository.itemHistory(itemId, today)
-        if (history == null) {
+        val loaded = repository.itemHistory(itemId, dayResolver.today())
+        history = loaded
+        filter = NightFilter.OPENING
+        showTrend = true
+
+        if (loaded == null) {
             _state.value = ItemDetailUiState(loading = false, missing = true)
             return
         }
+        present()
+    }
 
-        _state.value = presentItemDetail(history, ItemDetails.assemble(history, today, dayResolver))
+    /**
+     * Re-assembles on the new filter rather than mutating what is on screen.
+     *
+     * The average and the typical time are computed from the nights shown, so they have to move with
+     * it; the recording count must not, and does not, because `RecordingCount` takes no filter at all.
+     */
+    fun setFilter(next: NightFilter) {
+        filter = next
+        present()
+    }
+
+    fun setShowTrend(show: Boolean) {
+        showTrend = show
+        present()
+    }
+
+    private fun present() {
+        val loaded = history ?: return
+        val today = dayResolver.today()
+        _state.value = presentItemDetail(
+            loaded,
+            ItemDetails.assemble(loaded, today, dayResolver, filter),
+        ).copy(showTrend = showTrend)
     }
 }
