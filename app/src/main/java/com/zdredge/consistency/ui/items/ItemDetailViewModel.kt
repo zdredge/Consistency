@@ -2,6 +2,8 @@ package com.zdredge.consistency.ui.items
 
 import androidx.lifecycle.ViewModel
 import com.zdredge.consistency.data.ConsistencyRepository
+import com.zdredge.consistency.domain.detail.Chart
+import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.ItemDetails
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.time.DayResolver
@@ -29,7 +31,12 @@ data class ItemDetailUiState(
     val subtitle: String = "",
     /** The 14 days every figure covers, spelled out, because §5.2 says they all cover the same ones. */
     val windowLabel: String = "",
+    /** What the chart is, for the views that are not drawn yet. */
     val chartToCome: String = "",
+    /** The chart's own data, or null while the item is loading. */
+    val chart: Chart? = null,
+    /** The five weeks of judged days every view is drawn from. */
+    val days: List<DayCell> = emptyList(),
     val figures: List<Figure> = emptyList(),
     val rows: List<HistoryRow> = emptyList(),
 )

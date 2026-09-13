@@ -20,6 +20,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.zdredge.consistency.domain.detail.Chart
+import com.zdredge.consistency.ui.items.chart.ActivityRowsChart
+import com.zdredge.consistency.ui.items.chart.ChartPalette
+import com.zdredge.consistency.ui.items.chart.DayGrid
+import com.zdredge.consistency.ui.items.chart.ShadeKey
+import com.zdredge.consistency.ui.items.chart.WeekSquaresChart
+import com.zdredge.consistency.ui.items.chart.dayCalendarFill
+import com.zdredge.consistency.ui.items.chart.keyLabels
+import com.zdredge.consistency.ui.items.chart.shadedFill
+import com.zdredge.consistency.ui.items.chart.targetBucket
 
 /**
  * One item's history.
@@ -64,7 +74,7 @@ fun ItemDetailScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.padding(top = 16.dp),
         ) {
-            item { ChartPlaceholder(state.chartToCome) }
+            item { ItemChart(state) }
 
             item {
                 Text(
@@ -104,9 +114,41 @@ fun ItemDetailScreen(
 }
 
 /**
- * Where the chart goes, naming the view the rule picked.
+ * The chart, for the views that are drawn, and its name for the ones that are not yet.
  *
- * Worth its own space rather than nothing at all: this is the only place a device pass can check that
+ * **Exhaustive over [Chart] with no `else`**, so a view added to the domain cannot reach this screen
+ * undrawn — it stops the build instead. The three still on a placeholder are Phase 5's: the two bar
+ * charts and the sleep dots.
+ */
+@Composable
+private fun ItemChart(state: ItemDetailUiState) {
+    when (val chart = state.chart) {
+        null -> ChartPlaceholder(state.chartToCome)
+
+        is Chart.DayCalendar -> DayGrid(state.days, ::dayCalendarFill, chart.weeks)
+
+        is Chart.ShadedCalendar -> {
+            val ramp = ChartPalette.rampOf(chart.scale.buckets.size)
+            Column {
+                DayGrid(state.days, shadedFill(chart.shades, ramp), emptyList())
+                // The key is what makes the ramp mean something rather than merely vary.
+                ShadeKey(chart.scale.keyLabels(), ramp, chart.scale.targetBucket())
+            }
+        }
+
+        is Chart.ActivityRows -> ActivityRowsChart(chart.rows, state.days)
+
+        is Chart.WeekSquares -> WeekSquaresChart(chart.weeks)
+
+        is Chart.ClockDots, is Chart.DailyBars, is Chart.StepBars ->
+            ChartPlaceholder(state.chartToCome)
+    }
+}
+
+/**
+ * Where a chart will go, naming the view the rule picked.
+ *
+ * Worth its own space rather than nothing at all: it is the one place a device pass can check that
  * `ItemViews.derive` chose what §5.4 agreed, before there is any drawing to confuse the question.
  */
 @Composable

@@ -1007,7 +1007,7 @@ Each phase ends green, is reviewed, and is committed only on approval.
    2a the building blocks, 2b the assembly.
 3. **Getting there** — a hand-rolled back stack, an Items screen from one button on Home, and the
    detail screen with its figures and table but no charts. **Done 2026-09-13.**
-4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas.
+4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas. **Done 2026-09-13.**
 5. **Bars and dots** — coffee, steps and the sleep times, with the trend line and the night filter.
 6. **Device pass and close.**
 
@@ -1224,6 +1224,44 @@ Three things the pass found and fixed, none of which a preview would have shown:
   `AnswerFormat`, shared with the check-in, where nothing reaches four digits.
 - **Two rows both read "Longest run"** on coffee and steps, differing only by the unit on the value.
   Now named by period, like the hit rate above them.
+
+### Phase 4 — calendars and rows — **DONE 2026-09-13**
+
+Four of the seven views: the day calendar, the calendar shaded by amount, the before-bed activity
+rows, and one square per week. Drawn in Compose Canvas with **no charting library** — Phase 1 ended
+with no item on a line chart, which left Vico, chosen in architecture §4 for line charts, with nothing
+to draw. That confirms the reopened §4 decision: nothing was added.
+
+**The palette is recovered from the mockups rather than re-invented.** Every hex in `ChartPalette` is
+a value the user agreed to on 2026-09-11, including the two ramps that came back with notes and were
+redrawn: meals' four shades with the largest step between 2 and 3, and water's three whole-number
+shades. They live in their own object rather than in `Color.kt` because nothing outside a chart may
+reach for them — a second red loose in the UI is what the theme's single accent exists to prevent.
+
+**A missed day is grey.** Only *scrolled on phone* is red, and it is the only red on any chart.
+
+Cells arrive already judged: `DayCell` is a verdict and the drawing decides nothing but shape and
+colour. Labels are text composables rather than canvas text — the only drawing here is squares, and
+measuring glyphs by hand to place four words is work with nothing to show for it.
+
+Three things the device found that the reasoning did not:
+
+- **Days before the item existed drew as nothing**, which on a three-day-old item left four of five
+  calendar rows blank and the chart reading as broken. They are now a dim dot: it holds the grid
+  together and is plainly not a judgement, where an empty square is the shape a *missed* day has.
+  The same fix was needed on the activity rows, where the strip looked as though it began three days
+  ago in the middle of the chart.
+- **The activity labels truncated mid-word** — "Watched YouTube" to "Watched", and "Scrolled on
+  phone" to "Scrolled on", which is the one the goal is actually about. Two lines and an ellipsis.
+- **Every running week was flagged incomplete**, which is true and useless: an open week is
+  incomplete by definition and its dashed chip already says so. The ring now marks a **closed** week
+  that had unanswered days, which is the case §3.4 cares about, and a one-line key appears only when
+  one is on screen — an unexplained glyph is worse than none.
+
+What the real data showed, which is a better test than any fixture: the week starting 7 Sep has no
+weekly target, because the goal was created on the Thursday. So its tally chip reads `2` with no
+denominator, the weekly hit rate reads "nothing scored yet", and the run stays at zero — the same
+rule visible in three places at once, agreeing with itself.
 
 ### Open defect — the rollover has been failing since 2026-09-11
 

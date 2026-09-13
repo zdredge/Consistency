@@ -26,6 +26,8 @@ internal fun presentItemDetail(history: ItemHistory, detail: ItemDetail): ItemDe
             "${detail.figures.windowDays.first().format(windowDayFormat)} – " +
             "${detail.figures.windowDays.last().format(windowDayFormat)}",
         chartToCome = detail.view.name(),
+        chart = detail.chart,
+        days = detail.days,
         figures = figuresFor(detail),
         rows = rowsFor(detail, labels),
     )
