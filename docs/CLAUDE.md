@@ -15,9 +15,9 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
    what you may build.
 
 **M0 through M7 are complete, and real data collection began on 2026-09-10.** M8 (item detail views
-and charts) is in progress, in six phases; Phase 1, the chart design, and Phase 2, the pure core in
-`:domain`, are done. Item configuration and check-in times are deferred to a settings add-on after
-the plan. **M8 is the first milestone whose
+and charts) is in progress, in six phases; Phases 1 to 3 are done — the chart design, the pure core
+in `:domain`, and navigation plus the item screen's figures and table. Phases 4 and 5 draw the
+charts. Item configuration and check-in times are deferred to a settings add-on after the plan. **M8 is the first milestone whose
 work happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do
 not begin a later milestone than the one in progress.
 
@@ -175,6 +175,11 @@ module. This is what makes the whole rulebook testable without an emulator, whic
   not interchangeable (silence costs a check-in, no-opportunity costs nothing).
 - Manual constructor injection via `AppContainer` in `:app`. No DI framework unless the wiring
   becomes genuinely painful, and then ask first.
+- **Navigation is hand-rolled** — `ui/Navigation.kt`, a `BackStack` of a few lines. Settled in M8
+  Phase 3, which is where architecture §T5 said the decision fell due. It is held on the Activity,
+  not in `remember`, because a notification tap arrives through `onNewIntent`, outside composition.
+  Add a navigation library only for a deep link to a screen with arguments, or state that must
+  survive process death — and ask first, as with DI.
 - One answer row per item per day, keyed `(item_id, day_date)`.
 - Enums for `answer_type`, `direction`, `capture`, `slot`, `state`. No magic strings.
 - All Health Connect calls behind a single interface in `:data`, with **one** implementation. The

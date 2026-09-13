@@ -19,6 +19,12 @@ import java.time.format.DateTimeFormatter
  */
 internal val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
 
-/** `2.0` reads as "2"; a half from the keypad reads as "1.5". A trailing `.0` is noise. */
+/**
+ * `2.0` reads as "2"; a half from the keypad reads as "1.5". A trailing `.0` is noise.
+ *
+ * Grouped, because this formats step counts too: `18191` is a number to decode and `18,191` is one to
+ * read, and spec §5.4 writes the step figures that way. It changes nothing for an answer anyone types
+ * into a check-in, none of which reach four digits.
+ */
 internal fun Double.asAnswer(): String =
-    if (this % 1.0 == 0.0) "%.0f".format(this) else this.toString()
+    if (this % 1.0 == 0.0) "%,.0f".format(this) else this.toString()

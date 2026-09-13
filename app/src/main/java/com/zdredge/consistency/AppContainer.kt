@@ -10,6 +10,9 @@ import com.zdredge.consistency.data.health.StepSource
 import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.ui.checkin.CheckInViewModel
 import com.zdredge.consistency.ui.home.HomeViewModel
+import com.zdredge.consistency.ui.items.ItemDetailViewModel
+import com.zdredge.consistency.ui.NavigationViewModel
+import com.zdredge.consistency.ui.items.ItemsViewModel
 import java.time.Clock
 
 /**
@@ -21,7 +24,7 @@ import java.time.Clock
  *
  * The graph is five objects: the clock, the day resolver everything dates through, the step
  * source, the repository
- * that is the only way in and out of storage, and a factory so the two ViewModels survive rotation.
+ * that is the only way in and out of storage, and a factory so the ViewModels survive rotation.
  * Note the database is not exposed — `:data` builds it (see `createConsistencyDatabase`) so Room
  * stays inside that module and nothing here can reach past the repository to a DAO.
  */
@@ -62,6 +65,13 @@ class AppContainer(
                 HomeViewModel(repository, dayResolver) as T
             modelClass.isAssignableFrom(CheckInViewModel::class.java) ->
                 CheckInViewModel(repository, dayResolver) as T
+            modelClass.isAssignableFrom(ItemsViewModel::class.java) ->
+                ItemsViewModel(repository, dayResolver) as T
+            modelClass.isAssignableFrom(ItemDetailViewModel::class.java) ->
+                ItemDetailViewModel(repository, dayResolver) as T
+            // No dependencies at all -- it is here so the back stack outlives a screen turn.
+            modelClass.isAssignableFrom(NavigationViewModel::class.java) ->
+                NavigationViewModel() as T
             else -> error("Unknown ViewModel: ${modelClass.name}")
         }
     }

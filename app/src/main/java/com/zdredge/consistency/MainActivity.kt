@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
@@ -34,22 +35,16 @@ import com.zdredge.consistency.ui.checkin.CheckInScreen
 import com.zdredge.consistency.ui.checkin.CheckInViewModel
 import com.zdredge.consistency.ui.home.HomeScreen
 import com.zdredge.consistency.ui.home.HomeViewModel
+import com.zdredge.consistency.ui.BackStack
+import com.zdredge.consistency.ui.NavigationViewModel
+import com.zdredge.consistency.ui.Screen
+import com.zdredge.consistency.ui.items.ItemDetailScreen
+import com.zdredge.consistency.ui.items.ItemDetailViewModel
+import com.zdredge.consistency.ui.items.ItemsScreen
+import com.zdredge.consistency.ui.items.ItemsViewModel
 import com.zdredge.consistency.ui.theme.ConsistencyTheme
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-
-/**
- * Where the user lands, and the only place navigation is decided.
- *
- * **No navigation library.** Architecture T5 leaves the approach open, and at two screens a sealed
- * state switched with a `when` is the whole of it — the same posture as manual constructor
- * injection: adopt the framework once hand-rolling hurts. It has not yet. T5 gets revisited when the
- * item detail view and dashboard arrive and there are five screens with a real back stack.
- */
-sealed interface Screen {
-    data object Home : Screen
-    data class CheckIn(val day: LocalDate, val slot: Slot) : Screen
-}
 
 class MainActivity : ComponentActivity() {
 
@@ -64,12 +59,28 @@ class MainActivity : ComponentActivity() {
     private val checkInViewModel by lazy {
         ViewModelProvider(this, container.viewModelFactory)[CheckInViewModel::class.java]
     }
+    private val itemsViewModel by lazy {
+        ViewModelProvider(this, container.viewModelFactory)[ItemsViewModel::class.java]
+    }
+    private val itemDetailViewModel by lazy {
+        ViewModelProvider(this, container.viewModelFactory)[ItemDetailViewModel::class.java]
+    }
 
     /**
+     * Where the user is, and how they got there.
+     *
      * Held on the Activity rather than in `remember`, because a notification tap has to be able to
      * change it from [onNewIntent] — which runs outside composition entirely.
+     *
+     * It became a stack in M8: with Home, the item list and one item's history, leaving a screen is
+     * no longer a question with one answer. See `ui/Navigation.kt` for why there is still no
+     * navigation library, and why the stack lives in a `ViewModel` rather than in a field here — a
+     * field is rebuilt on every rotation, which would send the user Home mid-check-in.
      */
-    private var screen by mutableStateOf<Screen>(Screen.Home)
+    private val navigation by lazy {
+        ViewModelProvider(this, container.viewModelFactory)[NavigationViewModel::class.java]
+    }
+    private val backStack: BackStack get() = navigation.backStack
 
     /** Whether notifications can actually be delivered. Re-read on resume, since it changes in system settings. */
     private var notificationsEnabled by mutableStateOf(true)
@@ -128,13 +139,18 @@ class MainActivity : ComponentActivity() {
         // askForNotificationsOnce for what happens otherwise.
         askForNotificationsOnce()
         // A notification tap arrives as the launch Intent on a cold start, and through onNewIntent
-        // when the app is already alive.
-        screen = screenFor(intent) ?: Screen.Home
+        // when the app is already alive. Either way it lands on the check-in with Home beneath it,
+        // so backing out of a prompt goes home rather than closing the app.
+        //
+        // Only on a genuinely new Activity. The launch Intent is still the notification's after a
+        // rotation, so handling it again would drag the user back to that check-in from wherever
+        // they had since navigated.
+        if (savedInstanceState == null) screenFor(intent)?.let(backStack::openFromNotification)
 
         setContent {
             ConsistencyTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { padding ->
-                    when (val current = screen) {
+                    when (val current = backStack.current) {
                         Screen.Home -> {
                             val state by homeViewModel.state.collectAsState()
 
@@ -162,13 +178,19 @@ class MainActivity : ComponentActivity() {
                                         } ?: "Export failed. Nothing was saved."
                                     }
                                 },
-                                onOpenCheckIn = { day, slot -> screen = Screen.CheckIn(day, slot) },
+                                onOpenCheckIn = { day, slot -> backStack.push(Screen.CheckIn(day, slot)) },
+                                onOpenItems = { backStack.push(Screen.Items) },
                                 modifier = Modifier.padding(padding),
                             )
                         }
 
                         is Screen.CheckIn -> {
                             val state by checkInViewModel.state.collectAsState()
+
+                            // The system back button does what the Close button does: commits the
+                            // question on screen and leaves without marking the check-in answered.
+                            // Popping the stack directly would discard whatever was just typed.
+                            BackHandler { checkInViewModel.close() }
 
                             LaunchedEffect(current) {
                                 checkInViewModel.load(current.day, current.slot)
@@ -184,7 +206,7 @@ class MainActivity : ComponentActivity() {
                                     // wrong. The banner itself is dismissed here.
                                     Notifications.cancel(this@MainActivity, current.day, current.slot)
                                     CheckInAlarmScheduler.reschedule(this@MainActivity)
-                                    screen = Screen.Home
+                                    backStack.pop()
                                 }
                             }
 
@@ -209,6 +231,38 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(padding),
                             )
                         }
+
+                        Screen.Items -> {
+                            val state by itemsViewModel.state.collectAsState()
+
+                            BackHandler { backStack.pop() }
+                            LaunchedEffect(Unit) { itemsViewModel.refresh() }
+
+                            ItemsScreen(
+                                state = state,
+                                // Kept in the ViewModel, so coming back from an item returns to
+                                // where the list was rather than to the top of it.
+                                listState = itemsViewModel.listState,
+                                onOpenItem = { backStack.push(Screen.ItemDetail(it)) },
+                                onBack = { backStack.pop() },
+                                modifier = Modifier.padding(padding),
+                            )
+                        }
+
+                        is Screen.ItemDetail -> {
+                            val state by itemDetailViewModel.state.collectAsState()
+
+                            BackHandler { backStack.pop() }
+                            // Keyed on the screen, so opening a second item reloads rather than
+                            // showing the first one's figures under the second one's name.
+                            LaunchedEffect(current) { itemDetailViewModel.load(current.itemId) }
+
+                            ItemDetailScreen(
+                                state = state,
+                                onBack = { backStack.pop() },
+                                modifier = Modifier.padding(padding),
+                            )
+                        }
                     }
                 }
             }
@@ -224,7 +278,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        screenFor(intent)?.let { screen = it }
+        screenFor(intent)?.let(backStack::openFromNotification)
     }
 
     override fun onResume() {

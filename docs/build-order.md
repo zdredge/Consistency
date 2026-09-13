@@ -3,8 +3,8 @@
 **Status:** agreed and in progress. **M0 through M7 are complete**, including the four defects M4.5
 found and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
 cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts) is in progress**:
-Phase 1, the chart design, was agreed with the user on 2026-09-11, and Phase 2, the pure core in
-`:domain`, landed on 2026-09-13. Item configuration and check-in times moved to a settings add-on
+Phase 1, the chart design, was agreed with the user on 2026-09-11; Phase 2, the pure core in
+`:domain`, and Phase 3, navigation and the figures, both landed on 2026-09-13. Item configuration and check-in times moved to a settings add-on
 after the plan.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
@@ -1006,7 +1006,7 @@ Each phase ends green, is reviewed, and is committed only on approval.
    view map, and the small derived figures the views need. **Done 2026-09-12**, in two review gates:
    2a the building blocks, 2b the assembly.
 3. **Getting there** — a hand-rolled back stack, an Items screen from one button on Home, and the
-   detail screen with its figures and table but no charts.
+   detail screen with its figures and table but no charts. **Done 2026-09-13.**
 4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas.
 5. **Bars and dots** — coffee, steps and the sleep times, with the trend line and the night filter.
 6. **Device pass and close.**
@@ -1132,6 +1132,138 @@ is now emptied before each run and an empty one reported as an inconclusive run.
 sixteen views against a hand-written mirror of the library, which would keep passing if the seed
 changed underneath it; this one fails when it does. It also asserts that a fresh install shows no
 missed day on any of the sixteen — the greeting the user would otherwise get on day three.
+
+### Phase 3 — getting there — **DONE 2026-09-13**
+
+Navigation, an Items screen, and the item detail screen with **its figures and table and no charts**.
+Splitting it that way was deliberate: the figures are what the product is for, and putting them on a
+device before any drawing code exists means a wrong number is a wrong number rather than something to
+blame the canvas for.
+
+**T5 is settled and the answer is that hand-rolling still wins.** The revisit fell due here, as
+architecture §T5 said it would. `BackStack` is a `mutableStateListOf`, three methods and no
+serialisation of an `ItemId` into a route string and back; Navigation-Compose would replace exactly
+that. It is held on the Activity rather than in `remember` because a notification tap arrives through
+`onNewIntent`, outside composition. What would change the answer is a deep link to an item, or a
+screen that must survive process death with its argument intact — neither exists.
+
+**A stack is not the same as a current screen**, which is what it replaced. With one variable,
+leaving the item detail meant *deciding* where to go, and the right answer differs by how you arrived.
+A notification now opens its check-in with Home beneath it, so backing out of a prompt goes home
+rather than closing the app. The system back button gets a handler per screen, and on a check-in it
+does what the Close button does — commits the question on screen and leaves without marking the
+check-in answered. Popping the stack directly there would discard whatever had just been typed.
+
+**`ConsistencyRepository.itemHistory` is the one read.** It lives in `:data` because `ItemHistory`
+refuses rows belonging to another item and satisfying that is a question about queries; a ViewModel
+doing its own six reads would be a second place where "which rows are this item's" is decided. Answers
+come back from the item's creation rather than the start of the chart, because the runs go over the
+whole history. Measured values are read only for a measured item — `MeasuredDao` has no per-item query
+and does not need one, since the alternative is reading the same rows and discarding them fifteen
+times out of sixteen.
+
+**The presentation is a function, not a method**, so a preview can run the real pipeline: an invented
+`ItemHistory` through `ItemDetails.assemble` and then through `presentItemDetail`. `:app` has no
+tests, so the previews are the only check these screens get, and a preview fed a hand-written UI state
+would agree with the screen by construction and prove nothing about either. Seven previews, built to
+contain the awkward cases — a fortnight of near misses, a no-opportunity streak, an unresolved
+deferral, a backfill with a note, an edit, a day two step sources reported, a provisional day, and an
+item three days old whose chart is mostly days it did not exist on.
+
+**The Items list carries no figures, and must not grow any.** A row with a hit rate against it is the
+dashboard — M10, with the rings and the panels and the 14-day suppression behind it — and a list that
+gains a figure per row arrives at a worse version of it without ever deciding to. The judgements live
+on the item's own screen, where a hit rate can sit beside the attainment that keeps it honest.
+
+**An item's name is its prompt**, because that is the only name an item has. It makes for long rows;
+inventing a short label that nothing stores would put the list and the check-in at odds about the same
+item. Naming is a settings-add-on question.
+
+**The stack lives in a `ViewModel`, and that fixed a defect older than this phase.** The Activity is
+recreated on every configuration change, so a stack built in `onCreate` starts again at Home each
+time — and the same was true of the single `screen` field it replaced. `AppContainer` already names
+that failure: losing a half-finished check-in to a screen turn is the friction spec §1 says ends the
+product, which is why the ViewModels exist at all. The check-in's answers survived a rotation; the
+pointer at the screen did not, so rotating mid-check-in left the session intact in memory and
+unreachable, back at Home. It now survives configuration changes and not process death, which is the
+right pair — restoring a screen whose ViewModel session died with the process would show a check-in
+with every answer gone, a worse lie than starting at Home. The launch Intent is handled only when
+`savedInstanceState` is null, or a rotation would drag the user back to the notification's check-in
+from wherever they had since navigated.
+
+**A new instrumented test covers the read.** `ItemHistory`'s own guards turn a *wrong* row into an
+exception, so the dangerous mistake is a **missing** one: an item read without its options gives a
+screen with no labels on its answers, and without its roll-up spec a weekly figure that quietly does
+not exist. Neither fails anywhere on its own.
+
+**Device pass, 2026-09-13.** Instrumented suite 115 → 122, all green. Every screen walked on the
+real database: three days of answers, sixteen items, nothing seeded.
+
+What it confirmed, all of it on real data rather than fixtures:
+
+- Water reads **100%, "3 of 3 days"** — the denominator says the fortnight is three days old, and the
+  eleven window days before the item existed appear nowhere as failures.
+- Today reads **"Open"**, not missed. The four-kinds-of-blank rule, visible.
+- Bedtime's window is **30 Aug – 12 Sep** against water's **31 Aug – 13 Sep**: a morning item ending
+  on yesterday, so it gets fourteen real days.
+- Steps shows both periods, and the weekly one reads **"nothing scored yet"** — the first partial
+  week had no target on its Monday, exactly as the day-0 rule says.
+- The weekly question reads **Open** for this week, because the pass ran on a Sunday and it is
+  answerable tonight.
+- Bedtime shows **"Nights recorded in a row"** and no hit rate; vitamins shows no attainment row,
+  which is right for a yes/no goal.
+
+Three things the pass found and fixed, none of which a preview would have shown:
+
+- **The Items list lost its scroll position.** Opening Steps from the bottom and coming back landed
+  at the top. The screen leaves composition entirely, so `rememberLazyListState` has nothing to
+  remember it in; the state is hoisted into `ItemsViewModel`. A Compose type in a ViewModel is a
+  smell worth naming — it holds no Context and leaks nothing, and the alternative is copying an index
+  and an offset in and out by hand.
+- **Step counts read `18191`.** Now `18,191`, which is how spec §5.4 writes them. The change is in
+  `AnswerFormat`, shared with the check-in, where nothing reaches four digits.
+- **Two rows both read "Longest run"** on coffee and steps, differing only by the unit on the value.
+  Now named by period, like the hit rate above them.
+
+### Open defect — the rollover has been failing since 2026-09-11
+
+**Found by the Phase 3 device pass, deferred by the user until M8 closes.** Not caused by M8; found
+because a real database was read for the first time in four days.
+
+Every rollover since 2026-09-11 09:17 has failed, thirteen consecutive runs, all with the same error:
+
+```
+SecurityException: Caller does not have permission to read data
+for the following (recordType: StepsRecord) from other applications.
+```
+
+**Reading steps is not broken.** It succeeded at 21:09 on 09-11 and 21:17 on 09-12, both during night
+check-ins — both with the app in the **foreground**. The rollover runs at 04:00 with no Activity
+alive, and Android 15+ requires a separate `READ_HEALTH_DATA_IN_BACKGROUND` permission for a
+background read. The manifest declares `READ_STEPS` and nothing else, and "from other applications" is
+Health Connect's wording for exactly that restriction: without it, a backgrounded app may read only
+what it wrote itself.
+
+**What it has cost so far: nothing.** Every check-in through 09-13 was answered, so there was nothing
+to mark missed. Three step days are stuck `PROVISIONAL` rather than freezing, which does not change
+how they score (`MeasuredScorer` treats the two alike, deliberately).
+
+**What it will cost.** `runRollover` reads steps as its third of four steps, so the throw aborts the
+run before `checkInsToMiss` and `valuesToFreeze` are applied. `ensureCheckInsExist` runs first, which
+is why rows still exist. The first check-in the user misses will stay `PENDING` for ever instead of
+`MISSED`, and response rate — the primary metric — goes quietly wrong. Recoverable: `RolloverPlanner`
+compares stored state against today rather than assuming one run per day, so a fixed job repairs the
+backlog on its next run.
+
+Two fixes, and **the second matters more than the first**:
+
+1. Declare and request `READ_HEALTH_DATA_IN_BACKGROUND`, so the 04:00 read works.
+2. **A failing step read must not take down the rollover.** Steps are one of four jobs and the other
+   three do not depend on them. This is precisely the silently-failing rollover architecture §8 rates
+   *High — invisible*, and it failed invisibly for two days.
+
+The app's own safety net works and was about to fire: `HomeViewModel.isRolloverOverdue` trips two days
+after the last success, which would have surfaced on 09-14.
 
 ### What Phase 2 onward must build
 

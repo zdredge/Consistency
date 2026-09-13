@@ -27,8 +27,10 @@ import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.CheckIn
 import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.ContainerSize
+import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.MeasuredValue
@@ -169,6 +171,48 @@ class ConsistencyRepository(
 
     suspend fun rollUpSpecs(): List<RollUpSpec> =
         db.targetDao().allRollUpSpecs().map { it.toDomain() }
+
+    // ---- The item detail view ------------------------------------------------------------------
+
+    /**
+     * Everything one item's detail screen needs, gathered in one place.
+     *
+     * **The reads live here rather than in the ViewModel** because `ItemHistory` refuses rows that
+     * belong to another item, and satisfying that is a question about queries. A ViewModel doing its
+     * own six reads would be a second place where "which rows are this item's" is decided, and the
+     * one after that would get it slightly wrong.
+     *
+     * Answers are read from the day the item was created, not from the start of the chart. The chart
+     * is five weeks but the runs go over the whole history, and a run that only looked back five
+     * weeks would reset itself every five weeks.
+     *
+     * Measured values are read only for a measured item. `MeasuredDao` has no per-item query and does
+     * not need one -- there is a single measured item, so the alternative is reading the same rows
+     * and discarding them fifteen times out of sixteen.
+     */
+    suspend fun itemHistory(
+        itemId: ItemId,
+        today: LocalDate = dayResolver.today(),
+    ): ItemHistory? {
+        val item = item(itemId) ?: return null
+        val versions = versions(itemId)
+        if (versions.isEmpty()) return null
+
+        return ItemHistory(
+            item = item,
+            versions = versions,
+            // Retired options included: an answer given under one still has to render.
+            options = options(itemId),
+            targets = targets(itemId),
+            rollUp = rollUpSpecs().firstOrNull { it.itemId == itemId },
+            answers = answers(itemId, item.createdOn, today),
+            measured = if (item.kind == ItemKind.MEASURED) {
+                measuredValues(item.createdOn, today).filter { it.itemId == itemId }
+            } else {
+                emptyList()
+            },
+        )
+    }
 
     // ---- Check-ins ---------------------------------------------------------------------------
 

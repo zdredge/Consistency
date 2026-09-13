@@ -39,6 +39,7 @@ fun HomeScreen(
     exportStatus: String?,
     onExport: () -> Unit,
     onOpenCheckIn: (LocalDate, Slot) -> Unit,
+    onOpenItems: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -100,10 +101,17 @@ fun HomeScreen(
             }
         }
 
+        // One button, and the whole of M8's way in. Not a dashboard and not a summary -- the
+        // figures live on an item's own screen, where a hit rate can sit beside the attainment that
+        // keeps it honest. This screen is still the thing that gets you to a check-in.
+        Button(onClick = onOpenItems, modifier = Modifier.padding(top = 20.dp)) {
+            Text("Items and history")
+        }
+
         Text(
             "Library: ${state.itemCount} items",
             style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.padding(top = 16.dp),
+            modifier = Modifier.padding(top = 8.dp),
         )
 
         // The only way data leaves this app. Plain and unglamorous on purpose -- it is not a feature
