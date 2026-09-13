@@ -268,6 +268,8 @@ class MainActivity : ComponentActivity() {
                                 modifier = Modifier.padding(padding),
                                 onFilter = itemDetailViewModel::setFilter,
                                 onShowTrend = itemDetailViewModel::setShowTrend,
+                                onSelectDay = itemDetailViewModel::selectDay,
+                                onClearDay = itemDetailViewModel::clearDay,
                             )
                         }
                     }

@@ -67,7 +67,7 @@ fun ItemsScreen(
                         Text(row.prompt, style = MaterialTheme.typography.bodyLarge)
                         Text(
                             row.subtitle,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }

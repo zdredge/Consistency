@@ -12,9 +12,21 @@ import com.zdredge.consistency.domain.time.DayResolver
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.time.LocalDate
 
 /** One figure, and the second number that keeps it from being read wrongly. */
 data class Figure(val label: String, val value: String, val detail: String? = null)
+
+/**
+ * The day a tap selected, as the card beneath the chart shows it (spec §5.4): the day, its answer,
+ * how it was recorded, and its note.
+ */
+data class DayCardUi(
+    val date: String,
+    val what: String,
+    val how: String,
+    val note: String?,
+)
 
 /** One day in the table. */
 data class HistoryRow(
@@ -43,6 +55,9 @@ data class ItemDetailUiState(
     val showTrend: Boolean = true,
     val figures: List<Figure> = emptyList(),
     val rows: List<HistoryRow> = emptyList(),
+    /** The tapped day, outlined on the chart. Null shows the figures instead of a day. */
+    val selectedDay: LocalDate? = null,
+    val dayCard: DayCardUi? = null,
 )
 
 /**
@@ -73,6 +88,9 @@ class ItemDetailViewModel(
     /** The rolling average is on by default, with a switch to hide it (spec §5.4). */
     private var showTrend: Boolean = true
 
+    /** Not remembered between visits, for the same reason as the filter. */
+    private var selected: LocalDate? = null
+
     /**
      * Called as the item is tapped, before the screen composes.
      *
@@ -97,6 +115,7 @@ class ItemDetailViewModel(
         history = loaded
         filter = NightFilter.OPENING
         showTrend = true
+        selected = null
 
         if (loaded == null) {
             _state.value = ItemDetailUiState(loading = false, missing = true)
@@ -121,12 +140,24 @@ class ItemDetailViewModel(
         present()
     }
 
+    /** Tapping the selected day again closes it, which is the gesture the spec's mockups used. */
+    fun selectDay(day: LocalDate) {
+        selected = if (selected == day) null else day
+        present()
+    }
+
+    fun clearDay() {
+        selected = null
+        present()
+    }
+
     private fun present() {
         val loaded = history ?: return
         val today = dayResolver.today()
         _state.value = presentItemDetail(
             loaded,
             ItemDetails.assemble(loaded, today, dayResolver, filter),
+            selected,
         ).copy(showTrend = showTrend)
     }
 }

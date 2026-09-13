@@ -1,16 +1,17 @@
 package com.zdredge.consistency.ui.items.chart
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +42,7 @@ import com.zdredge.consistency.ui.theme.Ash
 import com.zdredge.consistency.ui.theme.Bone
 import com.zdredge.consistency.ui.theme.Ink
 import com.zdredge.consistency.ui.theme.Outline
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 private val weekLabelFormat = DateTimeFormatter.ofPattern("d MMM")
@@ -54,106 +56,126 @@ private val DayNames = listOf("M", "T", "W", "T", "F", "S", "S")
  * habits is the pattern worth seeing (spec §5.4). The cells arrive already judged — [DayCell] is a
  * verdict, not an answer — so nothing here decides anything beyond which shape and which colour.
  *
- * Drawn in Compose Canvas with no charting library. M8 Phase 1 ended with no item on a line chart,
- * which left Vico — chosen in architecture §4 specifically for line charts — with nothing to draw.
+ * **Square cells, sized from the width.** An earlier version sized them from a fixed share of the
+ * screen height and stretched them to fill it, which is what made the chart look pulled out of
+ * shape. The calendar's height now follows from its width.
  *
- * Labels are real text composables rather than canvas text: the only drawing here is squares, and
- * measuring glyphs by hand to place four words is work with nothing to show for it.
+ * Tapping a day selects it (spec §5.4): the square is outlined and the card beneath shows that day.
  */
 @Composable
 internal fun DayGrid(
     days: List<DayCell>,
     fillOf: (DayCell) -> CellFill,
     weeks: List<WeekFigure>,
+    selected: LocalDate?,
+    onSelect: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val rows = days.chunked(7)
     val showTally = weeks.isNotEmpty()
-    val labelWidth = 46.dp
-    val tallyWidth = 54.dp
+    // Wide enough for "31 Aug" at 13sp without crowding the first column -- the review found the
+    // week labels squeezed against the grid.
+    val labelWidth = 48.dp
+    val tallyWidth = 56.dp
+    val gap = 4.dp
     val flagged = weeks.any { it.closed && it.incomplete }
 
     BoxWithConstraints(modifier.fillMaxWidth()) {
-    // The squares grow into whatever height the screen gave the chart -- at a fixed 30dp they were
-    // the smallest thing on a page whose point is the chart. **Capped against their own width**,
-    // because past that they stop being squares: a calendar of tall rectangles reads as a bar chart,
-    // and the first attempt at filling the space produced exactly that.
-    val cellWidth = (maxWidth - labelWidth - (if (showTally) tallyWidth else 0.dp) - 24.dp) / 7
-    val spare = maxHeight - 20.dp - (if (flagged) 22.dp else 0.dp)
-    val cellHeight = (spare / rows.size.coerceAtLeast(1) - 4.dp)
-        .coerceIn(22.dp, cellWidth * 1.1f)
+        val tallySpace = if (showTally) tallyWidth + 8.dp else 0.dp
+        val cell = (maxWidth - labelWidth - tallySpace - gap * 6) / 7
 
-    Column(
-        Modifier.fillMaxWidth().fillMaxHeight(),
-        // Centred, so the leftover sits above and below the grid rather than opening a gap between
-        // the calendar and the key that explains it.
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Spacer(Modifier.width(labelWidth))
-            DayNames.forEach { name ->
-                Text(
-                    name,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            if (showTally) {
-                Text(
-                    "Week",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.width(tallyWidth),
-                )
-            }
-        }
-
-        rows.forEachIndexed { index, week ->
-            Row(
-                Modifier.fillMaxWidth().padding(top = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    // The week's Monday, rather than "W3". The mockups numbered weeks because their
-                    // data was invented; a real week is worth naming by the date it starts on.
-                    week.first().day.format(weekLabelFormat),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(labelWidth),
-                )
-                Row(Modifier.weight(7f), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    week.forEach { cell ->
-                        Box(
-                            Modifier
-                                .weight(1f)
-                                .height(cellHeight)
-                                .drawBehind { drawCell(cell, fillOf(cell)) },
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(gap)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(labelWidth))
+                Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    DayNames.forEach { name ->
+                        Text(
+                            name,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.width(cell),
                         )
                     }
-                    // A short final week -- today is rarely a Sunday -- keeps its columns rather than
-                    // stretching the days it does have across the whole row.
-                    repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
                 }
                 if (showTally) {
-                    TallyChip(weeks.getOrNull(index), cellHeight, Modifier.width(tallyWidth))
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        "Week",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.width(tallyWidth),
+                    )
                 }
             }
-        }
 
-        // An unexplained glyph is worse than none. Shown only when one is actually on screen.
-        if (flagged) {
-            Text(
-                "○ that week had days nobody answered",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp),
-            )
+            rows.forEachIndexed { index, week ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        // The week's Monday, rather than "W3": a real week is worth naming by the
+                        // date it starts on.
+                        week.first().day.format(weekLabelFormat),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        modifier = Modifier.width(labelWidth),
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                        week.forEach { day ->
+                            Box(
+                                Modifier
+                                    .size(cell)
+                                    .then(
+                                        if (day.isSelectable()) {
+                                            Modifier.clickable(onClickLabel = "Show this day") { onSelect(day.day) }
+                                        } else {
+                                            Modifier
+                                        },
+                                    )
+                                    .drawBehind {
+                                        if (day.day == selected) drawSelection()
+                                        drawCell(day, fillOf(day))
+                                    },
+                            )
+                        }
+                    }
+                    if (showTally) {
+                        Spacer(Modifier.width(8.dp))
+                        TallyChip(weeks.getOrNull(index), cell, Modifier.width(tallyWidth))
+                    }
+                }
+            }
+
+            // An unexplained glyph is worse than none. Shown only when one is actually on screen.
+            if (flagged) {
+                Text(
+                    "○ that week had days nobody answered",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
         }
     }
-    }
+}
+
+/** A day that has something to show: it existed, and it has arrived. */
+internal fun DayCell.isSelectable(): Boolean = state != DayState.NOT_ACTIVE && state != DayState.FUTURE
+
+/**
+ * The outline around a selected day, drawn just outside the square so it reads on any fill —
+ * including the palest shade, where an outline drawn inside would vanish into it.
+ */
+internal fun DrawScope.drawSelection() {
+    val out = 3.dp.toPx()
+    drawRoundRect(
+        color = Bone,
+        topLeft = Offset(-out, -out),
+        size = Size(size.width + out * 2, size.height + out * 2),
+        cornerRadius = CornerRadius(9.dp.toPx()),
+        style = Stroke(width = 2.dp.toPx()),
+    )
 }
 
 /** Labels for a shade key: "0-1", "2", "3", "4+" -- read off the buckets rather than restated. */
@@ -228,7 +250,7 @@ internal fun shadedFill(shades: Map<java.time.LocalDate, Int>, ramp: List<Color>
     }
 
 internal fun DrawScope.drawCell(cell: DayCell, fill: CellFill) {
-    val corner = CornerRadius(5.dp.toPx())
+    val corner = CornerRadius(6.dp.toPx())
     val inset = 1.dp.toPx()
 
     when (fill) {
@@ -346,7 +368,7 @@ private fun TallyChip(week: WeekFigure?, height: Dp, modifier: Modifier = Modifi
             // incomplete by definition and its dashed border already says so, so flagging that too
             // would put a mark on every running week and teach the user to ignore it.
             if (week.incomplete && week.closed) "$text ○" else text,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
             color = if (met) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }

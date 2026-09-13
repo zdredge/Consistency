@@ -1,5 +1,6 @@
 package com.zdredge.consistency.ui.items.chart
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -18,16 +20,18 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.zdredge.consistency.domain.detail.ActivityRow
 import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.WeekAnswer
+import com.zdredge.consistency.ui.theme.Bone
 import com.zdredge.consistency.ui.theme.Graphite
 import com.zdredge.consistency.ui.theme.Outline
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 private val weekLabelFormat = DateTimeFormatter.ofPattern("d MMM")
@@ -41,45 +45,54 @@ private val weekLabelFormat = DateTimeFormatter.ofPattern("d MMM")
  *
  * The flagged activity comes last and in red, which is the user's explicit choice and the only red on
  * any chart in the app. Every other activity is quiet — they are not achievements, they are what the
- * evening was — and the target is an absence rule on the one that is.
+ * evening was.
+ *
+ * Rows are a fixed height rather than a share of the screen: stretched to fill one, four strips of
+ * thirty-five slivers read as a barcode.
  */
 @Composable
-internal fun ActivityRowsChart(rows: List<ActivityRow>, days: List<DayCell>, modifier: Modifier = Modifier) {
-    BoxWithConstraints(modifier.fillMaxWidth()) {
-    // The strips grow into the height the chart was given. At a fixed 14dp they were a footnote on a
-    // screen whose whole point is the chart.
-    val rowHeight = (maxHeight / rows.size.coerceAtLeast(1) - 10.dp).coerceIn(14.dp, 56.dp)
-
-    Column(Modifier.fillMaxWidth()) {
+internal fun ActivityRowsChart(
+    rows: List<ActivityRow>,
+    days: List<DayCell>,
+    selected: LocalDate?,
+    onSelect: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         rows.forEach { row ->
-            Row(
-                Modifier.fillMaxWidth().padding(bottom = if (row.flagged) 0.dp else 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            // The flagged row is set apart rather than merely coloured: it is the goal, and the
+            // others are context for it.
+            if (row.flagged) Box(Modifier.height(4.dp))
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     row.option.label,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurface,
-                    // Two lines and an ellipsis. The seeded labels are "Watched YouTube" and
-                    // "Scrolled on phone", which a single line cut to "Watched" and "Scrolled on" --
-                    // and the second of those is the one the goal is about.
+                    // Two lines and an ellipsis. One line cut "Scrolled on phone" to "Scrolled on",
+                    // and that is the activity the goal is about.
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    lineHeight = 12.sp,
-                    modifier = Modifier.width(104.dp).padding(end = 6.dp),
+                    modifier = Modifier.width(104.dp).padding(end = 8.dp),
                 )
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
                     days.forEach { cell ->
                         val picked = cell.day in row.picked
+                        val isSelected = cell.day == selected
                         Box(
                             Modifier
                                 .weight(1f)
-                                .height(rowHeight)
+                                .height(24.dp)
+                                .then(
+                                    if (cell.isSelectable()) {
+                                        Modifier.clickable(onClickLabel = "Show this night") { onSelect(cell.day) }
+                                    } else {
+                                        Modifier
+                                    },
+                                )
                                 .drawBehind {
-                                    // A night before the item existed gets a dim dot, the same mark
-                                    // the calendar uses. Drawing nothing was tried first and left the
-                                    // strip looking as though it began three days ago in the middle
-                                    // of the chart.
+                                    // A night before the item existed gets a dim dot, the mark the
+                                    // calendar uses: drawing nothing left the strip looking as
+                                    // though it began in the middle of the chart.
                                     if (cell.state == DayState.NOT_ACTIVE) {
                                         drawCircle(
                                             color = Outline,
@@ -96,20 +109,21 @@ internal fun ActivityRowsChart(rows: List<ActivityRow>, days: List<DayCell>, mod
                                         picked -> ChartPalette.Quiet
                                         else -> Graphite
                                     }
-                                    drawRoundRect(
-                                        color = fill,
-                                        cornerRadius = CornerRadius(1.5.dp.toPx()),
-                                    )
+                                    drawRoundRect(color = fill, cornerRadius = CornerRadius(2.dp.toPx()))
+                                    // A selected night lightens the whole column, so it reads across
+                                    // all four rows at once rather than as four separate outlines.
+                                    if (isSelected) {
+                                        drawRoundRect(
+                                            color = Bone.copy(alpha = 0.4f),
+                                            cornerRadius = CornerRadius(2.dp.toPx()),
+                                        )
+                                    }
                                 },
                         )
                     }
                 }
             }
-            // The flagged row is set apart rather than merely coloured: it is the goal, and the
-            // others are context for it.
-            if (row.flagged) Box(Modifier.height(6.dp))
         }
-    }
     }
 }
 
@@ -118,41 +132,47 @@ internal fun ActivityRowsChart(rows: List<ActivityRow>, days: List<DayCell>, mod
  *
  * Asked once, in Sunday night's check-in, so a day calendar would be six squares in seven empty. The
  * squares use the same marks as every other calendar, which is what lets a week read as *no
- * opportunity* rather than as a miss.
+ * opportunity* rather than as a miss. Square, sized from the width, and capped at 64dp — past that
+ * five squares stop reading as a row of weeks and start reading as buttons.
  */
 @Composable
-internal fun WeekSquaresChart(weeks: List<WeekAnswer>, modifier: Modifier = Modifier) {
+internal fun WeekSquaresChart(
+    weeks: List<WeekAnswer>,
+    selected: LocalDate?,
+    onSelect: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     BoxWithConstraints(modifier.fillMaxWidth()) {
-    // Five squares across a phone are limited by width, not height, so this grows only until they
-    // would stop being squares.
-    val squareHeight = (maxHeight - 24.dp).coerceIn(44.dp, maxWidth / 5 + 8.dp)
+        val square = ((maxWidth - 32.dp) / 5).coerceAtMost(64.dp)
 
-    Row(
-        Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        weeks.forEach { week ->
-            Column(
-                Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .height(squareHeight)
-                        .drawBehind { drawCell(week.cell, dayCalendarFill(week.cell)) },
-                )
-                Text(
-                    week.weekStart.format(weekLabelFormat),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            weeks.forEach { week ->
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier
+                            .size(square)
+                            .then(
+                                if (week.cell.isSelectable()) {
+                                    Modifier.clickable(onClickLabel = "Show this week") { onSelect(week.cell.day) }
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .drawBehind {
+                                if (week.cell.day == selected) drawSelection()
+                                drawCell(week.cell, dayCalendarFill(week.cell))
+                            },
+                    )
+                    Text(
+                        week.weekStart.format(weekLabelFormat),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
             }
         }
-    }
     }
 }
 
@@ -160,7 +180,8 @@ internal fun WeekSquaresChart(weeks: List<WeekAnswer>, modifier: Modifier = Modi
  * The key beneath a shaded calendar, marking **where the target starts** (spec §5.4).
  *
  * Without it the ramp is a gradient with no meaning: the user can see that one day is brighter than
- * another and not that the brighter one reached the target.
+ * another and not that the brighter one reached the target. The word "target" rather than an arrow,
+ * which said the same thing less plainly.
  */
 @Composable
 internal fun ShadeKey(
@@ -169,30 +190,35 @@ internal fun ShadeKey(
     targetFrom: Int?,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier.fillMaxWidth().padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         labels.forEachIndexed { index, label ->
             Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(10.dp)
+                        .height(8.dp)
                         .drawBehind {
                             drawRoundRect(
                                 color = ramp.getOrElse(index) { ramp.last() },
-                                cornerRadius = CornerRadius(3.dp.toPx()),
+                                cornerRadius = CornerRadius(4.dp.toPx()),
                             )
                         },
                 )
-                Text(
-                    if (targetFrom != null && index == targetFrom) "$label ↑" else label,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
+                Row(Modifier.padding(top = 4.dp)) {
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (targetFrom != null && index == targetFrom) {
+                        Text(
+                            " target",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
             }
         }
     }

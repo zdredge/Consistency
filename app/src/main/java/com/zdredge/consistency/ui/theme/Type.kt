@@ -98,4 +98,18 @@ val ConsistencyTypography = Typography(
         lineHeight = 17.sp,
         letterSpacing = 0.2.sp,
     ),
+    /**
+     * Chart axes and weekly chips — the smallest text in the app, and a floor.
+     *
+     * **Chosen, where it had been inherited.** Until 2026-09-13 this was Material's default of 11sp,
+     * the one slot nobody in this project set, and it rendered every label on every chart while the
+     * canvas axis beside it was a hardcoded 9sp. Nothing on screen goes below this.
+     */
+    labelSmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.2.sp,
+    ),
 )

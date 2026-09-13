@@ -1,11 +1,14 @@
 package com.zdredge.consistency.ui.items
 
+import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.GoalFigures
 import com.zdredge.consistency.domain.detail.ItemDetail
 import com.zdredge.consistency.domain.detail.ItemHistory
+import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Slot
+import java.time.LocalDate
 
 /**
  * An assembled [ItemDetail] into the strings the screen draws.
@@ -15,8 +18,15 @@ import com.zdredge.consistency.domain.model.Slot
  * with the screen by construction. `:app` has no tests, so the previews are the only check these
  * screens get, and a preview that cannot reach the real code is only checking the layout.
  */
-internal fun presentItemDetail(history: ItemHistory, detail: ItemDetail): ItemDetailUiState {
+internal fun presentItemDetail(
+    history: ItemHistory,
+    detail: ItemDetail,
+    selected: LocalDate? = null,
+): ItemDetailUiState {
     val labels = history.options.associate { it.id to it.label }
+    // A selection that has scrolled out of the chart's five weeks, or onto a day with nothing to
+    // show, is dropped rather than drawn as a card about nothing.
+    val cell = selected?.let { day -> detail.days.firstOrNull { it.day == day && it.state != DayState.NOT_ACTIVE && it.state != DayState.FUTURE } }
 
     return ItemDetailUiState(
         loading = false,
@@ -30,7 +40,38 @@ internal fun presentItemDetail(history: ItemHistory, detail: ItemDetail): ItemDe
         days = detail.days,
         figures = figuresFor(detail),
         rows = rowsFor(detail, labels),
+        selectedDay = cell?.day,
+        dayCard = cell?.let { dayCardFor(it, labels, detail.item.kind == ItemKind.MEASURED) },
     )
+}
+
+/**
+ * What a tapped day says: when it was, what was answered, how, and the note.
+ *
+ * "How it was recorded" is worded for a person rather than read off the capture enum — "backfilled
+ * the next day", not BACKFILLED — because this card is the one place the product explains a mark the
+ * chart only draws.
+ */
+private fun dayCardFor(cell: DayCell, labels: Map<OptionId, String>, measured: Boolean): DayCardUi {
+    val value = cell.value.text(labels)
+    val what = if (value.isEmpty()) cell.state.label() else "${cell.state.label()} · $value"
+    val how = when (cell.state) {
+        DayState.OPEN -> if (measured) "Still being counted" else "Still open — it can be answered"
+        DayState.NOT_ANSWERED -> "Nothing was recorded before the window closed"
+        DayState.DEFERRED -> "Answered \u201cnot yet\u201d — still open until the morning"
+        DayState.CONFLICTED -> "Two apps reported steps for this day, so it isn\u2019t counted"
+        else -> buildList {
+            when {
+                cell.marks.backfilled -> add("Backfilled the next day")
+                cell.marks.late -> add("Answered after the window closed")
+                cell.marks.provisional -> add("Provisional — may still change")
+                measured -> add("Read from Health Connect")
+                else -> add("Answered on time")
+            }
+            if (cell.marks.edited) add("edited")
+        }.joinToString(" · ")
+    }
+    return DayCardUi(date = cell.day.format(tableDayFormat), what = what, how = how, note = cell.note)
 }
 
 /**

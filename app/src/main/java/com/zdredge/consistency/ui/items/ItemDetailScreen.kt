@@ -3,29 +3,27 @@ package com.zdredge.consistency.ui.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zdredge.consistency.domain.detail.Chart
 import com.zdredge.consistency.domain.detail.NightFilter
 import com.zdredge.consistency.ui.items.chart.ActivityRowsChart
@@ -41,32 +39,26 @@ import com.zdredge.consistency.ui.items.chart.keyLabels
 import com.zdredge.consistency.ui.items.chart.shadedFill
 import com.zdredge.consistency.ui.items.chart.targetBucket
 import com.zdredge.consistency.ui.items.chart.weeklyTotalLabel
+import java.time.LocalDate
 
 /**
- * How much of the screen the chart gets.
+ * One item's history: its chart on a card, and the daily log beneath it.
  *
- * **The chart is the point of this screen.** At the size it was first drawn — a strip above a long
- * list of numbers — it was the smallest thing on the page, on the one device this app runs on. The
- * figures and the table are what you read *after* seeing the shape of the month.
+ * **Laid out from the review of 2026-09-13**, which picked from true-scale drafts rather than from
+ * argument. Three decisions carry it:
  *
- * 0.55 rather than the 0.6 first tried: at 0.6 the table's three rows fell below the fold on the one
- * device this runs on, and a default view you have to scroll to reach is not a default view.
- */
-private const val CHART_SHARE = 0.55f
-
-/** About three entries, which is what the table shows before it needs scrolling. */
-private val TableHeight = 170.dp
-
-/**
- * One item's history: its chart, its figures, and a table of every day.
+ * - **The chart and its figures sit on a card; the log sits on the ground.** One separation
+ *   technique, a contrasting surface — Material's guidance is a border, a shadow or a surface, and
+ *   not all three. The card is the surface the check-in screen already uses.
+ * - **The figures are a list under the chart**, name left and value right, a size apart so the two
+ *   cannot run together the way 15sp and 13sp did.
+ * - **Tapping a day replaces the figures with that day**, in place, directly under the square that
+ *   was tapped (spec §5.4). Tapping it again, or ×, brings the figures back.
  *
- * Figures show **from day one**, unlike the dashboard, which suppresses everything until 14 days of
- * history exist (spec §5.5). That was the user's call and it overruled the opening position: watching
- * a rate move while it settles is itself information.
+ * The whole screen scrolls as one. Nothing is sized to a share of the screen: the card is as tall as
+ * its chart, and each chart is as tall as its own proportions make it.
  *
- * The chart is pinned to the top at a fixed share of the screen and everything beneath it scrolls.
- * The table scrolls **inside its own box** rather than running off the end of the page, so reading
- * back through a month does not push the figures out of sight.
+ * Figures show **from day one**, unlike the dashboard (spec §5.5) — the user's call.
  */
 @Composable
 fun ItemDetailScreen(
@@ -75,87 +67,98 @@ fun ItemDetailScreen(
     modifier: Modifier = Modifier,
     onFilter: (NightFilter) -> Unit = {},
     onShowTrend: (Boolean) -> Unit = {},
+    onSelectDay: (LocalDate) -> Unit = {},
+    onClearDay: () -> Unit = {},
 ) {
-    val chartHeight = LocalConfiguration.current.screenHeightDp.dp * CHART_SHARE
-
-    Column(modifier = modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        TextButton(onClick = onBack, modifier = Modifier.padding(top = 4.dp)) { Text("← Items") }
-
-        // The header comes from the list, before the read finishes, so opening an item does not
-        // flash the previous one's name on the way in.
-        Text(
-            state.prompt,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        if (state.subtitle.isNotEmpty()) {
-            Text(
-                state.subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    LazyColumn(
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp),
+    ) {
+        item {
+            Column(Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                TextButton(onClick = onBack, modifier = Modifier.padding(top = 4.dp)) { Text("← Items") }
+                // The full question, at the size the check-in asks it, wrapping as far as it needs.
+                // The header is set from the list before the read lands, so it never flashes.
+                Text(
+                    state.prompt,
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                if (state.subtitle.isNotEmpty()) {
+                    Text(
+                        state.subtitle,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
         }
 
         if (state.missing) {
-            Text(
-                "That item is no longer in the library.",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 16.dp),
-            )
-            return@Column
-        }
-
-        // The chart keeps its space while the read runs, so nothing below it jumps when it lands.
-        Box(Modifier.fillMaxWidth().height(chartHeight).padding(top = 8.dp)) {
-            if (!state.loading) ItemChart(state, onFilter, onShowTrend)
-        }
-
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            if (state.loading) {
-                Text(
-                    "Loading…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-                return@Column
+            item {
+                Text("That item is no longer in the library.", style = MaterialTheme.typography.bodyLarge)
             }
+            return@LazyColumn
+        }
 
-            Text(
-                state.windowLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
-            )
-
-            state.figures.forEach { FigureRow(it) }
-
-            Text(
-                "Every Day",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(top = 14.dp, bottom = 2.dp),
-            )
-
-            if (state.rows.isEmpty()) {
-                Text(
-                    "Nothing recorded yet.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                LazyColumn(Modifier.fillMaxWidth().height(TableHeight)) {
-                    items(state.rows) { HistoryRowLine(it) }
+        item {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                // 12dp at the sides rather than 16: the review found the axis labels squeezed toward
+                // the middle, and the side padding is width the chart's labels need more.
+                Column(
+                    Modifier.padding(horizontal = 12.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    if (state.loading) {
+                        // Holds roughly a calendar's height, so the log does not jump when it lands.
+                        Box(Modifier.fillMaxWidth().height(280.dp))
+                    } else {
+                        ItemChart(state, onFilter, onShowTrend, onSelectDay)
+                        val card = state.dayCard
+                        if (card != null) {
+                            DayCard(card, onClearDay)
+                        } else {
+                            Figures(state.figures)
+                        }
+                        Text(
+                            state.windowLabel,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
+        }
 
-            Spacer(Modifier.height(24.dp))
+        if (!state.loading) {
+            item {
+                Text(
+                    "Daily Log",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(top = 24.dp, bottom = 4.dp),
+                )
+            }
+            if (state.rows.isEmpty()) {
+                item {
+                    Text(
+                        "Nothing recorded yet.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            items(state.rows) { HistoryRowLine(it) }
         }
     }
 }
 
 /**
- * The chart, drawn into whatever height the screen gave it.
+ * The chart, drawn at its own proportions.
  *
  * **Exhaustive over [Chart] with no `else`**, so a view added to the domain cannot reach this screen
  * undrawn — it stops the build instead.
@@ -165,140 +168,152 @@ private fun ItemChart(
     state: ItemDetailUiState,
     onFilter: (NightFilter) -> Unit,
     onShowTrend: (Boolean) -> Unit,
+    onSelectDay: (LocalDate) -> Unit,
 ) {
+    val ground = MaterialTheme.colorScheme.surface
+    val selected = state.selectedDay
+
     when (val chart = state.chart) {
         null -> Unit
 
         is Chart.DayCalendar ->
-            DayGrid(state.days, ::dayCalendarFill, chart.weeks, Modifier.fillMaxHeight())
+            DayGrid(state.days, ::dayCalendarFill, chart.weeks, selected, onSelectDay)
 
         is Chart.ShadedCalendar -> {
             val ramp = ChartPalette.rampOf(chart.scale.buckets.size)
-            Column(Modifier.fillMaxHeight()) {
-                DayGrid(
-                    state.days,
-                    shadedFill(chart.shades, ramp),
-                    emptyList(),
-                    Modifier.weight(1f),
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                DayGrid(state.days, shadedFill(chart.shades, ramp), emptyList(), selected, onSelectDay)
                 // The key is what makes the ramp mean something rather than merely vary.
                 ShadeKey(chart.scale.keyLabels(), ramp, chart.scale.targetBucket())
             }
         }
 
-        is Chart.ActivityRows ->
-            ActivityRowsChart(chart.rows, state.days, Modifier.fillMaxHeight())
+        is Chart.ActivityRows -> ActivityRowsChart(chart.rows, state.days, selected, onSelectDay)
 
-        is Chart.WeekSquares -> WeekSquaresChart(chart.weeks, Modifier.fillMaxHeight())
+        is Chart.WeekSquares -> WeekSquaresChart(chart.weeks, selected, onSelectDay)
 
-        is Chart.ClockDots -> Column(Modifier.fillMaxHeight()) {
+        is Chart.ClockDots -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             ClockDotsChart(
                 nights = chart.nights,
                 allDays = state.days,
-                // Hiding the average hides only the line. The nights, the typical time and the
-                // recording count are untouched -- it is a view switch, not a filter.
+                // Hiding the average hides only the line -- it is a view switch, not a filter.
                 trend = if (state.showTrend) chart.trend else emptyList(),
-                modifier = Modifier.weight(1f),
+                selected = selected,
+                onSelect = onSelectDay,
+                ground = ground,
             )
             NightFilterControl(chart.filter, onFilter, state.showTrend, onShowTrend)
         }
 
         // One chart for both. They differ in the states a measured day can be in, which the cells
         // already carry, and in what their weekly chip says.
-        is Chart.DailyBars -> BarsChart(
-            state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel, Modifier.fillMaxHeight(),
-        )
+        is Chart.DailyBars ->
+            BarsChart(state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel, selected, onSelectDay, ground)
 
-        is Chart.StepBars -> BarsChart(
-            state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel, Modifier.fillMaxHeight(),
-        )
+        is Chart.StepBars ->
+            BarsChart(state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel, selected, onSelectDay, ground)
     }
 }
 
 /**
- * One figure and, beneath it, the number that stops it being read wrongly.
+ * The figures: name on the left, value on the right, one row each.
  *
- * A hit rate of 100% over two scored days and one over fourteen are the same percentage and not the
- * same fact, so the denominator is never dropped. The label sits a size above its own detail line:
- * set at the same weight the two ran together and the screen read as a wall of grey.
+ * 16sp names against 13sp detail and 21sp values — three sizes, plus colour, where there had been
+ * 15 and 13 in the same grey. A hit rate is never shown without its denominator: 2 of 3 and 200 of
+ * 300 are the same percentage and not the same fact.
  */
 @Composable
-private fun FigureRow(figure: Figure) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Row(
-            Modifier.weight(1f).padding(end = 12.dp),
-            verticalAlignment = Alignment.Bottom,
-        ) {
-            Text(
-                figure.label,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-            )
-            // On one line with its label rather than beneath it. Stacked, three figures and a table
-            // of three days would not fit one phone screen alongside a chart that is the point of
-            // the page; weight and colour carry the distinction instead of a line break.
-            figure.detail?.let {
-                Text(
-                    "  $it",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+private fun Figures(figures: List<Figure>) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        figures.forEach { figure ->
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(figure.label, style = MaterialTheme.typography.bodyLarge)
+                    figure.detail?.let {
+                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Text(figure.value, style = MaterialTheme.typography.titleLarge)
             }
         }
-        Text(figure.value, style = MaterialTheme.typography.titleMedium)
     }
 }
 
-/** One day in the table — the only surface that shows every state and every note in bulk (§5.4). */
+/**
+ * The tapped day, in the figures' place (spec §5.4): when, what was answered, how it was recorded,
+ * and its note. On the raised colour one step up from the card, so it reads as the thing that has
+ * been opened.
+ */
+@Composable
+private fun DayCard(card: DayCardUi, onClose: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.extraSmall,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Box {
+            Column(
+                Modifier.padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = 48.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(card.date, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(card.what, style = MaterialTheme.typography.bodyLarge)
+                Text(card.how, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                card.note?.let {
+                    Text(
+                        "“$it”",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontStyle = FontStyle.Italic,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+            IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd)) {
+                Text("×", fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** One day in the log — the only surface that shows every state and every note in bulk (§5.4). */
 @Composable
 private fun HistoryRowLine(row: HistoryRow) {
     Column(Modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Column(Modifier.padding(end = 16.dp)) {
-                Text(row.day, style = MaterialTheme.typography.bodyMedium)
+            Column(Modifier.weight(1f).padding(end = 16.dp)) {
+                Text(row.day, style = MaterialTheme.typography.bodyLarge)
                 if (row.marks.isNotEmpty()) {
-                    Text(
-                        row.marks,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    Text(row.marks, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Column {
-                Text(
-                    row.state,
-                    style = MaterialTheme.typography.bodyMedium,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            Column(horizontalAlignment = Alignment.End) {
+                Text(row.state, style = MaterialTheme.typography.bodyLarge, textAlign = TextAlign.End)
                 if (row.value.isNotEmpty()) {
                     Text(
                         row.value,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.End,
-                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
         }
         row.note?.let {
             Text(
-                it,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 6.dp),
+                "“$it”",
+                style = MaterialTheme.typography.bodyMedium,
+                fontStyle = FontStyle.Italic,
+                modifier = Modifier.padding(bottom = 12.dp),
             )
         }
-        HorizontalDivider(color = MaterialTheme.colorScheme.outline)
+        HorizontalDivider(thickness = 1.dp, color = ChartPalette.Grid)
     }
 }
+

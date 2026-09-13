@@ -1363,6 +1363,40 @@ One thing the review surfaced that was a real defect rather than a preference: t
 adds one only when the data lands exactly on the top tick — which is the case that needed it, a
 full-height bar merging with the frame.
 
+### The item screen, rebuilt — 2026-09-13
+
+The user's second review said the screen was still wrong: stretched charts, headers too small to tell
+from body text, and nothing marking where the chart ended and the entries began. An audit put numbers
+on it — the screen's largest text was 17sp against the check-in's 25 and 30, every chart label was
+Material's unchosen 11sp default, the canvas axis a hardcoded 9sp, a figure's name and its detail two
+points apart, and every chart stretched to fill 55% of the screen.
+
+**Decided from true-scale drafts, not argument.** A review page drew the options as phones at 366dp
+with every size in sp as it would ship, and the user picked:
+
+- **The chart and its figures on a card; the log on the ground beneath.** One separation technique —
+  a contrasting surface — per Material's guidance to use a border, a shadow or a surface, not all three.
+- **The figures as a list under the chart**, 16sp names against 21sp values and 13sp detail.
+- **Tapping a day replaces the figures with that day**, in place. This is the spec §5.4 requirement
+  M8 closed without; it now works on all seven views.
+- **"Every Day" renamed "Daily Log"**, and the card's side padding cut to 12dp after the user found
+  the week labels squeezed toward the grid.
+
+**Charts keep their own proportions.** `CHART_SHARE` is gone. Calendar cells are square and sized from
+the width; bars and dots are 4:3; activity rows a fixed height. A chart's aspect ratio decides how its
+marks compare, and it had been whatever height was left over.
+
+**`labelSmall` is now chosen, at 12sp**, and the canvas axis reads it from the theme. Hairlines are
+1dp rather than a raw pixel. The bars' target label moved inside the plot over a halo of the card's
+colour, which gave the 44dp gutter it had used back to the bars; axis values abbreviate to "10k".
+
+Two defects the device found in this work: the halo drew as **white blobs**, because drawing a text
+layout with a stroke leaves the stroke on its paint and the fill pass inherited it; and weekly totals
+read **"67.0k"**, because the whole-number check ran before rounding.
+
+Bars also gained the chart marks they lacked — a note dot above the bar, a cap on a backfilled day, and
+a dashed stub for a deferral. Dots show a note; activity rows show selection only.
+
 ### Open defect — the rollover has been failing since 2026-09-11
 
 **Found by the Phase 3 device pass, deferred by the user until M8 closes.** Not caused by M8; found
