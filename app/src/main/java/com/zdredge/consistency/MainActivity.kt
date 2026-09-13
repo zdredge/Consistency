@@ -137,7 +137,8 @@ class MainActivity : ComponentActivity() {
         Notifications.ensureChannel(this)
         // Steps are asked for *after* notifications resolves, never alongside it -- see
         // askForNotificationsOnce for what happens otherwise.
-        askForNotificationsOnce()
+        // The fixture install (M9) never prompts and reads no real steps, so it has nothing to ask for.
+        if ((application as ConsistencyApp).schedulesPrompts) askForNotificationsOnce()
         // A notification tap arrives as the launch Intent on a cold start, and through onNewIntent
         // when the app is already alive. Either way it lands on the check-in with Home beneath it,
         // so backing out of a prompt goes home rather than closing the app.

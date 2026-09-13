@@ -25,6 +25,19 @@ android {
                 enable = false
             }
         }
+        /*
+         * The M9 verification fixture, as its own install. **Not debug**: the real app on the phone
+         * is the debug build and has held real data since 2026-09-10, so a tool that clears the
+         * database cannot live in it. The suffix gives this build its own app id, and with it its
+         * own database, alarms and permissions. Install with `installFixture`; `installDebug` is
+         * still the real app.
+         */
+        create("fixture") {
+            initWith(getByName("debug"))
+            applicationIdSuffix = ".fixture"
+            // :data and :fixture only have debug and release.
+            matchingFallbacks += "debug"
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -38,6 +51,8 @@ android {
 dependencies {
     implementation(project(":domain"))
     implementation(project(":data"))
+    // Only the fixture build type. Never debug, never release -- see the build type above.
+    "fixtureImplementation"(project(":fixture"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.activity.compose)
@@ -55,4 +70,6 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
+    "fixtureImplementation"(libs.androidx.compose.ui.test.manifest)
+    "fixtureImplementation"(libs.androidx.compose.ui.tooling)
 }

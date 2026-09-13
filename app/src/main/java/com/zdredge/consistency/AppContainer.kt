@@ -32,6 +32,21 @@ class AppContainer(
     context: Context,
     /** Production wall clock. Tests substitute `Clock.fixed(...)`. */
     clock: Clock = Clock.systemDefaultZone(),
+    /**
+     * Health Connect in the real app. The M9 fixture build passes a source that reads nothing, so
+     * opening a check-in can never overwrite a generated step day with real steps.
+     */
+    stepSourceFor: (DayResolver) -> StepSource = {
+        HealthConnectStepSource(context.applicationContext, it)
+    },
+    /**
+     * The real database in the real app. The fixture build passes a repository over the database
+     * its loader also writes to, so the two share one Room instance rather than two that do not
+     * see each other's writes.
+     */
+    repositoryFor: (DayResolver, StepSource) -> ConsistencyRepository = { resolver, steps ->
+        ConsistencyRepository(createConsistencyDatabase(context), resolver, stepSource = steps)
+    },
 ) {
     /** The single day resolver. Nothing else may compute which day a timestamp belongs to. */
     val dayResolver: DayResolver = DayResolver(clock)
@@ -40,16 +55,10 @@ class AppContainer(
      * The only Health Connect implementation (architecture §5). Built here so `:app` never calls the
      * API directly and the repository stays the single way to reach it.
      */
-    val stepSource: StepSource =
-        HealthConnectStepSource(context.applicationContext, dayResolver)
+    val stepSource: StepSource = stepSourceFor(dayResolver)
 
     /** The single way in and out of storage. */
-    val repository: ConsistencyRepository =
-        ConsistencyRepository(
-            createConsistencyDatabase(context),
-            dayResolver,
-            stepSource = stepSource,
-        )
+    val repository: ConsistencyRepository = repositoryFor(dayResolver, stepSource)
 
     /**
      * Hand-written rather than generated, and hand-written rather than skipped.

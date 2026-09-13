@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.zdredge.consistency.ConsistencyApp
 import com.zdredge.consistency.container
 import com.zdredge.consistency.domain.checkin.AlarmPlanner
 import com.zdredge.consistency.domain.checkin.AlarmSpec
@@ -41,6 +42,8 @@ object CheckInAlarmScheduler {
      */
     suspend fun reschedule(context: Context) {
         val app = context.applicationContext
+        // The fixture install (M9) shares the phone with the real app and must not prompt beside it.
+        if (!(app as ConsistencyApp).schedulesPrompts) return
         val resolver = app.container.dayResolver
         val today = resolver.today()
 

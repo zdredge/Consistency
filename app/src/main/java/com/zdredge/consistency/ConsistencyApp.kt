@@ -21,9 +21,22 @@ import kotlinx.coroutines.launch
  * nothing else. Architecture §1.1: the app is not running most of the time, the system wakes it to
  * do one small thing, and it goes away again.
  */
-class ConsistencyApp : Application() {
+open class ConsistencyApp : Application() {
 
-    val container: AppContainer by lazy { AppContainer(applicationContext) }
+    val container: AppContainer by lazy { createContainer() }
+
+    /**
+     * Whether this install prompts for check-ins at all.
+     *
+     * Always true in the real app. The M9 fixture build installs *beside* it on the same phone and
+     * overrides this to false, so a phone carrying both is not prompted twice at 08:00 and 21:00 —
+     * once for real history and once for generated history. Checked in `CheckInAlarmScheduler`, the
+     * one place every prompt is armed, rather than at each of its callers.
+     */
+    open val schedulesPrompts: Boolean = true
+
+    /** The object graph. Open only so the fixture build can give it a different step source. */
+    protected open fun createContainer(): AppContainer = AppContainer(applicationContext)
 
     override fun onCreate() {
         super.onCreate()
