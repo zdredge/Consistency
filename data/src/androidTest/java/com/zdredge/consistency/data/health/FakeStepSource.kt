@@ -16,6 +16,12 @@ class FakeStepSource(
     private var days: Map<LocalDate, List<MeasuredOrigin>> = emptyMap(),
 ) : StepSource {
 
+    /**
+     * Days whose read throws, as Health Connect's did from the background on 2026-09-11: status
+     * said available, and the read itself raised a `SecurityException`.
+     */
+    var failingDays: Set<LocalDate> = emptySet()
+
     /** How many times [readDay] has been called, so a test can prove a read did not happen. */
     var reads: Int = 0
         private set
@@ -24,6 +30,9 @@ class FakeStepSource(
 
     override suspend fun readDay(day: LocalDate): List<MeasuredOrigin> {
         reads++
+        if (day in failingDays) {
+            throw SecurityException("Caller does not have permission to read data (fake)")
+        }
         return days[day].orEmpty()
     }
 

@@ -1,6 +1,8 @@
 package com.zdredge.consistency.domain.scoring
 
 import com.zdredge.consistency.domain.answer
+import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.ExclusionReason
 import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.GoalOutcome
 import com.zdredge.consistency.domain.target
@@ -116,5 +118,31 @@ class GoalScorerTest {
         assertEquals(1, summary.met)
         assertEquals(1, summary.missed)
         assertEquals(1, summary.excluded)
+    }
+
+    @Test
+    @DisplayName("A2.1 - a deferral is not a miss while it can still be answered")
+    fun anUnresolvedDeferralInsideItsWindow() {
+        // Spec 3.2 converts a pending answer to a missed goal *at rollover*. Scoring it tonight would
+        // drop today's hit rate for a promise the user still has all morning to keep.
+        val deferred = answer("meals", capture = Capture.PENDING)
+        val target = target("meals", Direction.AT_LEAST, value = 3.0)
+
+        val stillOpen = GoalScorer.score(target, deferred, stillResolvable = true)
+
+        assertEquals(GoalOutcome.EXCLUDED, stillOpen.outcome)
+        assertEquals(ExclusionReason.PERIOD_OPEN, stillOpen.exclusionReason)
+    }
+
+    @Test
+    @DisplayName("A2.1 - and is a miss once it cannot")
+    fun aDeferralThatRanOut() {
+        val deferred = answer("meals", capture = Capture.PENDING, number = 3.0)
+        val target = target("meals", Direction.AT_LEAST, value = 3.0)
+
+        // The default is the strict reading, so a caller with no notion of "now" never forgives by
+        // accident. The stale 3.0 is ignored either way.
+        assertEquals(GoalOutcome.MISSED, GoalScorer.score(target, deferred).outcome)
+        assertEquals(GoalOutcome.MISSED, GoalScorer.score(target, deferred, stillResolvable = false).outcome)
     }
 }

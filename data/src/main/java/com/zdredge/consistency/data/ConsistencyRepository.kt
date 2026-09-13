@@ -1,5 +1,6 @@
 package com.zdredge.consistency.data
 
+import android.util.Log
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.data.db.LOCAL_USER_ID
 import com.zdredge.consistency.data.db.entity.CheckInEntity
@@ -27,8 +28,10 @@ import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.CheckIn
 import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.ContainerSize
+import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.MeasuredValue
@@ -43,6 +46,7 @@ import java.io.OutputStream
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -57,6 +61,8 @@ data class RolloverOutcome(
 /** Stored in `rollover_runs.outcome`. Plain strings: the set is not a domain concept. */
 const val ROLLOVER_SUCCEEDED = "SUCCEEDED"
 const val ROLLOVER_FAILED = "FAILED"
+
+private const val TAG = "ConsistencyRepository"
 
 /**
  * The one way in and out of storage.
@@ -169,6 +175,48 @@ class ConsistencyRepository(
 
     suspend fun rollUpSpecs(): List<RollUpSpec> =
         db.targetDao().allRollUpSpecs().map { it.toDomain() }
+
+    // ---- The item detail view ------------------------------------------------------------------
+
+    /**
+     * Everything one item's detail screen needs, gathered in one place.
+     *
+     * **The reads live here rather than in the ViewModel** because `ItemHistory` refuses rows that
+     * belong to another item, and satisfying that is a question about queries. A ViewModel doing its
+     * own six reads would be a second place where "which rows are this item's" is decided, and the
+     * one after that would get it slightly wrong.
+     *
+     * Answers are read from the day the item was created, not from the start of the chart. The chart
+     * is five weeks but the runs go over the whole history, and a run that only looked back five
+     * weeks would reset itself every five weeks.
+     *
+     * Measured values are read only for a measured item. `MeasuredDao` has no per-item query and does
+     * not need one -- there is a single measured item, so the alternative is reading the same rows
+     * and discarding them fifteen times out of sixteen.
+     */
+    suspend fun itemHistory(
+        itemId: ItemId,
+        today: LocalDate = dayResolver.today(),
+    ): ItemHistory? {
+        val item = item(itemId) ?: return null
+        val versions = versions(itemId)
+        if (versions.isEmpty()) return null
+
+        return ItemHistory(
+            item = item,
+            versions = versions,
+            // Retired options included: an answer given under one still has to render.
+            options = options(itemId),
+            targets = targets(itemId),
+            rollUp = rollUpSpecs().firstOrNull { it.itemId == itemId },
+            answers = answers(itemId, item.createdOn, today),
+            measured = if (item.kind == ItemKind.MEASURED) {
+                measuredValues(item.createdOn, today).filter { it.itemId == itemId }
+            } else {
+                emptyList()
+            },
+        )
+    }
 
     // ---- Check-ins ---------------------------------------------------------------------------
 
@@ -317,22 +365,20 @@ class ConsistencyRepository(
     /**
      * The 04:00 job, in one call. `RolloverWorker` is the wrapper; this is the work.
      *
-     * Three steps, and only the middle one is new to M5:
+     * Three steps:
      *
      * 1. **Generate the check-ins that should exist** — [ensureCheckInsExist], the same function the
      *    home screen calls. One implementation of the response-rate denominator, two callers.
      * 2. **Close what has run out of grace** — the rule is `RolloverPlanner`'s; this writes its
      *    answer. Nothing in this app had ever set `MISSED` before.
-     * 3. **Read the steps for the day that just closed** (M7), which is what finally populates
-     *    `last_synced_at`.
-     * 4. **Freeze measured values past their provisional window** (spec O4).
+     * 3. **Freeze measured values past their provisional window** (spec O4).
      *
-     * **Steps are read before the freeze is planned, and only for the day that just closed.** Both
-     * halves matter. Reading first means the day just read is 24 hours from freezing rather than
-     * frozen on the spot; reading *only* that day means every older value keeps the anchor it already
-     * has, so it freezes on schedule. Re-reading the whole history each night would reset every
-     * anchor and nothing would ever freeze — the rule would look present and never fire, which is the
-     * failure mode M5 built `rollover_runs` to make visible.
+     * **It makes no call outside local storage, and in particular never reads steps.** Until
+     * 2026-09-13 it read the day that had just closed, and from 09-11 every run failed on that read:
+     * reading Health Connect from the background needs a separate permission the app does not hold,
+     * and the `SecurityException` aborted the run before steps 2 and 3. Steps are now read only when
+     * a check-in opens — see [syncRecentSteps]. The freeze does not care which read set a value's
+     * `last_synced_at`, so it is unaffected.
      *
      * **Only candidates are read**, not the whole history: `PENDING` check-ins and `PROVISIONAL`
      * values are the only rows either rule can act on, and both sets stay small because this job is
@@ -344,10 +390,6 @@ class ConsistencyRepository(
      */
     suspend fun runRollover(today: LocalDate = dayResolver.today()): RolloverOutcome {
         val created = ensureCheckInsExist(today)
-
-        // The day that just closed. At 04:15 on day D that is D-1, and it is the last chance to read
-        // it before the 24-hour provisional window starts running against it.
-        syncSteps(today.minusDays(1))
 
         val plan = RolloverPlanner.plan(
             today = today,
@@ -587,11 +629,8 @@ class ConsistencyRepository(
     /**
      * Reads [day]'s steps and records them, returning what was written or null if there was nothing.
      *
-     * **One entry point for both triggers**, so they cannot drift: the 04:15 rollover calls it for
-     * the day that just closed, and opening the night check-in calls it for today. Spec §3.3 wants a
-     * current number in the moment; O4 wants the day re-readable for 24 hours after its last read.
-     * Those are the same operation at different times, and writing it twice is how they would come
-     * to disagree.
+     * **The one path a step value is written by.** [syncRecentSteps] calls it for each day it reads,
+     * so the mapping, the origin guard and the write cannot drift between callers.
      *
      * Re-reading a day deliberately resets its `lastSyncedAt`, which restarts the O4 window. That is
      * the rule working, not a bug: a value re-read late is young again, which is what lets a late
@@ -609,6 +648,34 @@ class ConsistencyRepository(
 
         recordMeasuredValue(value)
         return value
+    }
+
+    /**
+     * Reads yesterday's and today's steps. Called when either check-in opens.
+     *
+     * **The only time steps are read**, and always in the foreground: Health Connect refuses a
+     * background read without a permission the app does not hold, which is what broke the 04:15
+     * rollover from 2026-09-11. The two days cover both check-ins — the morning one runs after 04:00,
+     * when yesterday is complete, and the night one shows today "in the moment" (spec §3.3). A day is
+     * therefore read at up to three check-ins: its own night, the next morning and the next night.
+     *
+     * **A frozen day is never re-read.** Reading resets `last_synced_at`, and the frozen day would
+     * look young again. The two-day window makes that unlikely; this makes it impossible.
+     *
+     * **A failed read is logged and skipped**, per day, so one bad read loses one figure rather than
+     * the other day's read or the check-in that asked for it.
+     */
+    suspend fun syncRecentSteps(today: LocalDate = dayResolver.today()) {
+        for (day in listOf(today.minusDays(1), today)) {
+            if (measuredValue(ItemId(SeedLibrary.STEPS), day)?.state == MeasuredState.FROZEN) continue
+            try {
+                syncSteps(day)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.w(TAG, "could not read steps for $day", e)
+            }
+        }
     }
 
     suspend fun recordMeasuredValue(value: MeasuredValue) {

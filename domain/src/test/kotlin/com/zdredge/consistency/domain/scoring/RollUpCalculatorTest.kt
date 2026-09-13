@@ -2,7 +2,9 @@ package com.zdredge.consistency.domain.scoring
 
 import com.zdredge.consistency.domain.TEST_ZONE
 import com.zdredge.consistency.domain.answer
+import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.Direction
+import com.zdredge.consistency.domain.model.ExclusionReason
 import com.zdredge.consistency.domain.model.GoalOutcome
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpAggregation
@@ -83,6 +85,50 @@ class RollUpCalculatorTest {
         val rollUp = RollUpCalculator.weekly(workouts(yes = 4, no = 3), week, RollUpAggregation.COUNT_OF_YES)
         assertFalse(rollUp.incomplete)
         assertEquals(7, rollUp.observedDays)
+    }
+
+    @Test
+    @DisplayName("A2.1 - a deferral's stale value is not counted by the roll-up")
+    fun deferralsAreNotObserved() {
+        // GoalScorer ignores whatever value a PENDING row carries -- the user chose not to answer yet,
+        // so the value is stale. The roll-up read it, which meant the same deferral could be a miss
+        // on the day and a yes in the week. The check-in clears the value on deferral today, so this
+        // is a disagreement between two scorers rather than a live wrong number.
+        val deferred = answer("workout", day = week[0], bool = true, capture = Capture.PENDING)
+
+        val rollUp = RollUpCalculator.weekly(listOf(deferred), week, RollUpAggregation.COUNT_OF_YES)
+
+        assertEquals(0.0, rollUp.value, "a deferral is not a yes")
+        assertEquals(0, rollUp.observedDays, "and it is not an answered day either")
+    }
+
+    @Test
+    @DisplayName("1.13 - a closed week nobody answered is excluded, not met under an at-most limit")
+    fun silenceIsNotSuccess() {
+        // The trap in an upper bound: an empty week sums to zero, and zero is within any limit, so
+        // a week the user never opened the app in scored as a success. Constraint 11 -- silence must
+        // never satisfy a goal. MeasuredScorer.scoreWeek already refuses this; now both agree.
+        val empty = RollUpCalculator.weekly(emptyList(), week, RollUpAggregation.SUM)
+
+        val result = RollUpCalculator.score(empty, target("coffee", Direction.AT_MOST, value = 14.0, period = Period.WEEK))
+
+        assertEquals(GoalOutcome.EXCLUDED, result.outcome)
+        assertEquals(ExclusionReason.NO_ANSWER, result.exclusionReason)
+    }
+
+    @Test
+    @DisplayName("a week with one answer is still scored -- only total silence is excluded")
+    fun oneAnswerIsEnoughToScore() {
+        val one = RollUpCalculator.weekly(
+            listOf(answer("coffee", day = week[0], number = 2.0)),
+            week,
+            RollUpAggregation.SUM,
+        )
+
+        assertEquals(
+            GoalOutcome.MET,
+            RollUpCalculator.score(one, target("coffee", Direction.AT_MOST, value = 14.0, period = Period.WEEK)).outcome,
+        )
     }
 
     @Test

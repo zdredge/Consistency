@@ -2,8 +2,12 @@
 
 **Status:** agreed and in progress. **M0 through M7 are complete**, including the four defects M4.5
 found and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
-cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts, plus item
-configuration and check-in times) is next.**
+cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts) is in progress**:
+**M8 is complete as of 2026-09-13**, all six phases: the chart design agreed on 2026-09-11, then the
+pure core, navigation and the figures, the grid charts, the plotted charts, and the close-out pass.
+One open defect is recorded against it — the rollover has been failing since 2026-09-11 — and is the
+next thing to fix. Item configuration and check-in times moved to a settings add-on
+after the plan.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -77,7 +81,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M5 | Rollover job (expected check-ins, missed, freeze) | TDD the pure core; hand-verify the worker | M3, M4 | — |
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
-| M8 | Item detail views and charts, **plus item configuration (spec §5.7) and check-in times** — note that changing a time must re-anchor the rollover *and* re-arm alarms explicitly; `RolloverScheduler.schedule`'s `KEEP` will not notice a changed constant | ViewModel TDD; charts hand-checked | M3, M4 | M7 |
+| M8 | Item detail views and charts, in six reviewable phases (item configuration and check-in times deferred to a post-plan add-on) | Mockups agreed first; `:domain` TDD; charts hand-checked in previews | M3, M4 | M7 |
 | M9 | Seed-data fixture (spec O7) | N/A — it *is* test scaffolding | M3 | M4–M8 |
 | M10 | Dashboard | ViewModel TDD against seeded data | M9 | — |
 | M11 | Export | TDD the serialiser; hand-verify the picker | M3 | M10 |
@@ -972,44 +976,501 @@ had gone to plan.
 
 ---
 
-## M8 — Item detail views and charts
+## M8 — Item detail views and charts — **COMPLETE 2026-09-13**
 
-**Proposed.** With real answers accumulating, the per-item view becomes meaningful. Dashboard still
-waits (it needs history and O1); the detail view does not.
+**Why now.** Real data started on 2026-09-10 and there was nowhere to see it: the only screens were
+Home and the check-in, and every figure the scoring engine produces was tested and wired to nothing.
+**M8 is also the first milestone built while real data accumulates**, so a wipe is no longer a free
+way out of a mistake. That is why charts are checked in Compose previews fed invented data, never
+against a database.
 
-**Deliverables** (spec §5.4).
-- Automatic chart-type selection from answer type — *not* a user setting (spec §2, §5.4): calendar
-  heatmap for yes/no, single-select and multi-select; line chart for number and 1–5 scale; line chart
-  for time-of-day **with the y-axis respecting the 04:00 boundary** or a 01:30 bedtime plots as the
-  earliest night of the month (spec §5.4; `CLAUDE.md`; architecture §4).
-- The always-available plain table — the only surface exposing backfilled/edited/pending/provisional
-  states and notes in bulk (spec §5.4).
-- Per-item longest run, and hit rate **and** average attainment side by side, never merged (spec
-  §5.4; constraint 16).
-- **No-opportunity usage frequency** surfaced here (spec constraint 17): how often the neutral option
-  was chosen must be legible, so leaning on it is visible rather than hidden.
-- Notes surfaced per data point (spec §5.4).
-- Charts: Compose Canvas for the heatmap, Vico for line charts (architecture §4; `CLAUDE.md`).
-- **Check-in times**, assigned here as of M6. Spec §1 says the night time is user-set and nothing
-  implements it: `CheckInTimes` is a Kotlin default that both the check-in generator and the alarm
-  scheduler read. Whatever stores them must stay the single source for both, or the row's
-  `scheduled_at` and the alarm that fires would disagree. Architecture §6 names this screen as the
-  Scheduler's second caller — changing a time must cancel and re-set real alarms, not merely store a
-  preference.
-- **Item configuration (spec §5.7)**, assigned here as of M4.5. It had no milestone at all and was
-  flagged four times across M3, M4 and M4.5 without landing anywhere. It belongs beside the detail
-  view because that is the surface already devoted to a single item, and editing an item's setup is
-  what a user reaching that screen would next want. It also **unblocks per-item defaults** — the time
-  questions currently all open at 07:00, which is wrong for bedtime, and there is nowhere to record a
-  better starting value until items are configurable. Note this makes M8 the milestone that first
-  touches item versioning from the UI: items are versioned and retired, never deleted.
+**Most of the arithmetic already existed.** `ItemSummary` (hit rate, average attainment,
+no-opportunity count) and `RunCalculator.itemRun` were built and tested in M2. What M8 adds is the
+assembly from an item's history to its figures and chart, a clock axis that respects 04:00, the
+charts, and a way to reach them.
 
-**TDD.** The chart-type selection is a pure map from answer type — tested exhaustively. The
-clock-axis transform for time-of-day (the 04:00 wrap) is pure and is the one with a real bug waiting
-in it — test it directly. The rendered charts themselves are hand-checked.
+### Scope changes from the original M8
 
-**Exit criteria.** Each answer type renders its correct view; the time-of-day axis respects 04:00
-under test; hit rate and attainment both display; the table exposes every state.
+- **Item configuration (spec §5.7) is deferred again**, now to a separate feature add-on *after* the
+  build plan. It had no milestone until M4.5 and has moved twice since; it belongs with settings, not
+  with seeing your data.
+- **Check-in times go with it.** Both are settings that touch scheduling. Carry this into the add-on:
+  changing a time must re-arm alarms **and** re-anchor the rollover explicitly, because
+  `RolloverScheduler.schedule` uses `KEEP` and ignores changed code on an existing install. Until
+  then the time questions keep opening at 07:00, and check-ins stay at 08:00 and 21:00.
+
+### Phases
+
+Each phase ends green, is reviewed, and is committed only on approval.
+
+1. **Chart design, no code** — mockups agreed with the user. **Done 2026-09-11.**
+2. **The pure core, in `:domain` (TDD)** — the 04:00 clock axis, item detail assembly, the per-item
+   view map, and the small derived figures the views need. **Done 2026-09-12**, in two review gates:
+   2a the building blocks, 2b the assembly.
+3. **Getting there** — a hand-rolled back stack, an Items screen from one button on Home, and the
+   detail screen with its figures and table but no charts. **Done 2026-09-13.**
+4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas. **Done 2026-09-13.**
+5. **Bars and dots** — coffee, steps and the sleep times, with the trend line and the night filter.
+   **Done 2026-09-13.**
+6. **Device pass and close.** **Done 2026-09-13.**
+
+### Phase 1 — chart design — **DONE 2026-09-11**
+
+**Three rounds of mockups** on a review page that saved the user's picks as they were made, with
+invented data built to include the awkward cases: a 01:30 bedtime, a backfilled day, a deferred day, a
+no-opportunity streak, an open week, a step day two sources reported. Fifteen decisions in round 1;
+twelve settled outright, three came back with notes and were redrawn until agreed.
+
+**The locked views are spec §5.4**, now a per-item table rather than a rule by answer type. The
+outcomes worth carrying into the build:
+
+- **No item uses a line chart.** Meals and water rejected both bars and a line and chose a calendar
+  shaded by amount; mindset chose a calendar over a line; the sleep times chose dots. Only coffee and
+  steps are bars. **This reopens the Vico decision** (architecture §4): Vico was chosen specifically
+  for line charts, and there are none. Phase 5 should confirm drawing everything in Compose Canvas and
+  adding no dependency.
+- **Figures show from day one on an item's view**, deliberately unlike the dashboard's 14-day
+  suppression (§5.5). The user overruled the opening position: watching a rate settle is information.
+  The option text had called a day-one figure "meaningless", which was editorialising rather than
+  describing the trade-off.
+- **The sleep items gained two features nobody had planned**: a 7-night rolling average, on by default
+  with a switch to hide it, and a night filter — Every night · Sun–Thu · Custom, opening on Sun–Thu
+  each time. The user suggested Sunday to Thursday; it works for waking as well as bedtime only
+  because every sleep answer is filed under the night the user went to bed (`AnswerDay`, spec §3.1).
+- **A new colour.** *Scrolled on phone* is drawn in red at the user's request. The app's only red
+  (`Rust`, `#F2B8B5`) failed the chroma floor — on a square that small it reads as grey — so the red is
+  `#D9645C`, validated against the accent (normal-vision ΔE 26, deutan ΔE 21). `Rust` stays reserved
+  for genuine failure, and **every other missed day stays grey**, in keeping with the app not scolding.
+- **Observations show a recording count** instead of a run, labelled "recorded", never "streak".
+- **Meals has four shades with the biggest step between 2 and 3**, because real answers cluster there
+  and it is the target boundary. **Every ramp was validated as an ordinal scale** on the app's dark
+  surface before it was shown.
+- **Halves shade as the whole number below**, so 1.5 bottles can never look like the target of 2 was
+  reached. The user's note said water input is whole numbers, which holds for the quick-pick buttons;
+  the keypad still accepts a half, and the rule covers both.
+
+**Verified by agreement, not by a build.** Nothing in this phase compiles.
+
+### Phase 2 — the pure core — **DONE 2026-09-13**
+
+Two review gates: **2a** the building blocks, landed 2026-09-12, and **2b** the assembly. `:domain` went from 235 tests to
+341, `:data`'s JVM suite from 3 to 5.
+
+**Everything the item screen decides lives here**, because `:app` has no tests and Phases 3–5 only
+draw. `ItemDetails.assemble` takes one item's history and returns its chart, its table and its
+figures, all read off a single list of `DayCell`s — the rule that stops a calendar and the hit rate
+beside it from describing different fortnights. A `Chart` variant per view keeps `:app`'s `when`
+exhaustive, so a view added later cannot reach the screen undrawn.
+
+**Three real defects, found by tests written to fail first.**
+
+- **A week nobody answered scored as met.** `RollUpCalculator.score` sums an empty coffee week to 0,
+  and 0 is inside a limit of 14. Silence counted as success — constraint 11 exactly — and
+  `MeasuredScorer.scoreWeek` already excluded the same case, so the two scorers simply disagreed.
+- **The weekly roll-up counted a deferral's stale value**, where `GoalScorer` ignores it. The same
+  disagreement, in the other direction.
+- **`NightFilter.OPENING` read `null` at runtime.** A stored `val` in a companion object pointing at
+  a nested `data object`: the companion initialises first and captured the value before it existed.
+  The chart would have opened with no filter at all. A one-line constant that looked too simple to
+  test, caught by its test within a minute of that test being written.
+
+**Two rules the spec had settled and the code had not applied.**
+
+- **A "not yet" is not a miss while it can still be answered.** `GoalScorer` scored every `PENDING`
+  answer as missed, so deferring at 21:00 dropped the day's hit rate before the morning to resolve it
+  had happened. A2.1 converts it at rollover, so it now converts at rollover — `PERIOD_OPEN` inside
+  grace, `MISSED` after, on the boundary the rollover itself uses.
+- **A week is open all of Sunday.** `PeriodProgress.closed` read `elapsedDays >= totalDays`, calling
+  a week finished on the one day it can still be changed. Removed rather than fixed; "closed" is now
+  `today > weekEnd`, in one place.
+
+**Decisions worth carrying forward.**
+
+- **The window ends on the item's latest answerable day**, not on today. A morning item cannot have
+  an answer for tonight, so ending on today would give it thirteen real days and a guaranteed blank.
+  A retired item anchors on its retirement day.
+- **A blank square is four different things** — not active, not yet arrived, still answerable,
+  unanswered — and only the last is a failure. On a five-week chart of an app three days old, almost
+  every square is the first.
+- **A weekly question is judged on its Sunday against the weekly target; a weekly count or total is
+  judged against the target in force on the week's Monday.** Targets were created Thursday
+  2026-09-10, so the first partial week is simply not a goal week for stretching, working out,
+  coffee's weekly cap or steps — it neither extends a run nor breaks one.
+- **Observations show a recording count, and it takes no filter at all** — enforced by
+  `RecordingCount.of`'s signature, so "the count ignores the night filter" cannot be got wrong by a
+  caller. The rolling average and the typical time do follow it, which is the milestone's exit
+  criterion.
+- **Brittle by design:** giving water a weekly target would turn it from a shaded calendar into bars.
+  It follows §5.4's reasoning and it will still surprise — relevant to the settings add-on.
+
+**Bugs introduced and fixed inside this phase**, listed because the mutation runs are what found
+most of them: the shade buckets left zero outside every shade at a target of 2; the trend line drew
+across nights with no answer; a conflicted step day nearly carried the two sources' total as a
+figure. One of the test assertions was also wrong — a week with one answer across three active days
+is incomplete, and the code was right.
+
+**Twelve mutations run, four in 2a and eight in 2b**, each one a rule deliberately broken to see
+whether anything failed. 2a's four were the clock axis anchored at midnight, the shade buckets
+rounding rather than flooring, the trend ignoring the night filter — M8's stated exit criterion — and
+grace asked about the answer day instead of the check-in day. 2b's broke the four kinds of blank, the
+deferral boundary, the weekly question's period, the conflicted day's value, the week's target date,
+the window's last day, the closed-week filter and the flagged activity's position.
+
+**Eleven were caught. The twelfth was not, and the reason was worth knowing:** removing the
+closed-week filter from the weekly figures changed nothing, because `WeeklyFigures` independently
+refuses to score an open week and returns `PERIOD_OPEN`. The running week is kept out twice over,
+which is defence in depth working as intended — and it also meant the filter itself was untested, so
+a week in flight could have started appearing as an *excluded* week, which reads as "set aside"
+rather than "has not happened yet". An assertion on the weekly tally now pins it.
+
+**The mutation harness itself was wrong, and it matters.** It ran the suite and then read whatever
+XML was on disk. A build that fails for any reason other than a test — a compile error, or the
+incremental-compilation storage fault this project hits under `--no-daemon` — leaves the previous
+run's *passing* results in place, so "no failures" was indistinguishable from "nothing ran", and
+three mutations were reported as unproven when the tests do catch all three. The results directory
+is now emptied before each run and an empty one reported as an inconclusive run. Same lesson as
+`SchemaVersionPinTest`: **a check that can read a stale artifact is not a check.**
+
+**A `:data` JVM test runs the view rule over the real `SeedLibrary` rows.** `ItemViewTest` pins all
+sixteen views against a hand-written mirror of the library, which would keep passing if the seed
+changed underneath it; this one fails when it does. It also asserts that a fresh install shows no
+missed day on any of the sixteen — the greeting the user would otherwise get on day three.
+
+### Phase 3 — getting there — **DONE 2026-09-13**
+
+Navigation, an Items screen, and the item detail screen with **its figures and table and no charts**.
+Splitting it that way was deliberate: the figures are what the product is for, and putting them on a
+device before any drawing code exists means a wrong number is a wrong number rather than something to
+blame the canvas for.
+
+**T5 is settled and the answer is that hand-rolling still wins.** The revisit fell due here, as
+architecture §T5 said it would. `BackStack` is a `mutableStateListOf`, three methods and no
+serialisation of an `ItemId` into a route string and back; Navigation-Compose would replace exactly
+that. It is held on the Activity rather than in `remember` because a notification tap arrives through
+`onNewIntent`, outside composition. What would change the answer is a deep link to an item, or a
+screen that must survive process death with its argument intact — neither exists.
+
+**A stack is not the same as a current screen**, which is what it replaced. With one variable,
+leaving the item detail meant *deciding* where to go, and the right answer differs by how you arrived.
+A notification now opens its check-in with Home beneath it, so backing out of a prompt goes home
+rather than closing the app. The system back button gets a handler per screen, and on a check-in it
+does what the Close button does — commits the question on screen and leaves without marking the
+check-in answered. Popping the stack directly there would discard whatever had just been typed.
+
+**`ConsistencyRepository.itemHistory` is the one read.** It lives in `:data` because `ItemHistory`
+refuses rows belonging to another item and satisfying that is a question about queries; a ViewModel
+doing its own six reads would be a second place where "which rows are this item's" is decided. Answers
+come back from the item's creation rather than the start of the chart, because the runs go over the
+whole history. Measured values are read only for a measured item — `MeasuredDao` has no per-item query
+and does not need one, since the alternative is reading the same rows and discarding them fifteen
+times out of sixteen.
+
+**The presentation is a function, not a method**, so a preview can run the real pipeline: an invented
+`ItemHistory` through `ItemDetails.assemble` and then through `presentItemDetail`. `:app` has no
+tests, so the previews are the only check these screens get, and a preview fed a hand-written UI state
+would agree with the screen by construction and prove nothing about either. Seven previews, built to
+contain the awkward cases — a fortnight of near misses, a no-opportunity streak, an unresolved
+deferral, a backfill with a note, an edit, a day two step sources reported, a provisional day, and an
+item three days old whose chart is mostly days it did not exist on.
+
+**The Items list carries no figures, and must not grow any.** A row with a hit rate against it is the
+dashboard — M10, with the rings and the panels and the 14-day suppression behind it — and a list that
+gains a figure per row arrives at a worse version of it without ever deciding to. The judgements live
+on the item's own screen, where a hit rate can sit beside the attainment that keeps it honest.
+
+**An item's name is its prompt**, because that is the only name an item has. It makes for long rows;
+inventing a short label that nothing stores would put the list and the check-in at odds about the same
+item. Naming is a settings-add-on question.
+
+**The stack lives in a `ViewModel`, and that fixed a defect older than this phase.** The Activity is
+recreated on every configuration change, so a stack built in `onCreate` starts again at Home each
+time — and the same was true of the single `screen` field it replaced. `AppContainer` already names
+that failure: losing a half-finished check-in to a screen turn is the friction spec §1 says ends the
+product, which is why the ViewModels exist at all. The check-in's answers survived a rotation; the
+pointer at the screen did not, so rotating mid-check-in left the session intact in memory and
+unreachable, back at Home. It now survives configuration changes and not process death, which is the
+right pair — restoring a screen whose ViewModel session died with the process would show a check-in
+with every answer gone, a worse lie than starting at Home. The launch Intent is handled only when
+`savedInstanceState` is null, or a rotation would drag the user back to the notification's check-in
+from wherever they had since navigated.
+
+**A new instrumented test covers the read.** `ItemHistory`'s own guards turn a *wrong* row into an
+exception, so the dangerous mistake is a **missing** one: an item read without its options gives a
+screen with no labels on its answers, and without its roll-up spec a weekly figure that quietly does
+not exist. Neither fails anywhere on its own.
+
+**Device pass, 2026-09-13.** Instrumented suite 115 → 122, all green. Every screen walked on the
+real database: three days of answers, sixteen items, nothing seeded.
+
+What it confirmed, all of it on real data rather than fixtures:
+
+- Water reads **100%, "3 of 3 days"** — the denominator says the fortnight is three days old, and the
+  eleven window days before the item existed appear nowhere as failures.
+- Today reads **"Open"**, not missed. The four-kinds-of-blank rule, visible.
+- Bedtime's window is **30 Aug – 12 Sep** against water's **31 Aug – 13 Sep**: a morning item ending
+  on yesterday, so it gets fourteen real days.
+- Steps shows both periods, and the weekly one reads **"nothing scored yet"** — the first partial
+  week had no target on its Monday, exactly as the day-0 rule says.
+- The weekly question reads **Open** for this week, because the pass ran on a Sunday and it is
+  answerable tonight.
+- Bedtime shows **"Nights recorded in a row"** and no hit rate; vitamins shows no attainment row,
+  which is right for a yes/no goal.
+
+Three things the pass found and fixed, none of which a preview would have shown:
+
+- **The Items list lost its scroll position.** Opening Steps from the bottom and coming back landed
+  at the top. The screen leaves composition entirely, so `rememberLazyListState` has nothing to
+  remember it in; the state is hoisted into `ItemsViewModel`. A Compose type in a ViewModel is a
+  smell worth naming — it holds no Context and leaks nothing, and the alternative is copying an index
+  and an offset in and out by hand.
+- **Step counts read `18191`.** Now `18,191`, which is how spec §5.4 writes them. The change is in
+  `AnswerFormat`, shared with the check-in, where nothing reaches four digits.
+- **Two rows both read "Longest run"** on coffee and steps, differing only by the unit on the value.
+  Now named by period, like the hit rate above them.
+
+### Phase 4 — calendars and rows — **DONE 2026-09-13**
+
+Four of the seven views: the day calendar, the calendar shaded by amount, the before-bed activity
+rows, and one square per week. Drawn in Compose Canvas with **no charting library** — Phase 1 ended
+with no item on a line chart, which left Vico, chosen in architecture §4 for line charts, with nothing
+to draw. That confirms the reopened §4 decision: nothing was added.
+
+**The palette is recovered from the mockups rather than re-invented.** Every hex in `ChartPalette` is
+a value the user agreed to on 2026-09-11, including the two ramps that came back with notes and were
+redrawn: meals' four shades with the largest step between 2 and 3, and water's three whole-number
+shades. They live in their own object rather than in `Color.kt` because nothing outside a chart may
+reach for them — a second red loose in the UI is what the theme's single accent exists to prevent.
+
+**A missed day is grey.** Only *scrolled on phone* is red, and it is the only red on any chart.
+
+Cells arrive already judged: `DayCell` is a verdict and the drawing decides nothing but shape and
+colour. Labels are text composables rather than canvas text — the only drawing here is squares, and
+measuring glyphs by hand to place four words is work with nothing to show for it.
+
+Three things the device found that the reasoning did not:
+
+- **Days before the item existed drew as nothing**, which on a three-day-old item left four of five
+  calendar rows blank and the chart reading as broken. They are now a dim dot: it holds the grid
+  together and is plainly not a judgement, where an empty square is the shape a *missed* day has.
+  The same fix was needed on the activity rows, where the strip looked as though it began three days
+  ago in the middle of the chart.
+- **The activity labels truncated mid-word** — "Watched YouTube" to "Watched", and "Scrolled on
+  phone" to "Scrolled on", which is the one the goal is actually about. Two lines and an ellipsis.
+- **Every running week was flagged incomplete**, which is true and useless: an open week is
+  incomplete by definition and its dashed chip already says so. The ring now marks a **closed** week
+  that had unanswered days, which is the case §3.4 cares about, and a one-line key appears only when
+  one is on screen — an unexplained glyph is worse than none.
+
+What the real data showed, which is a better test than any fixture: the week starting 7 Sep has no
+weekly target, because the goal was created on the Thursday. So its tally chip reads `2` with no
+denominator, the weekly hit rate reads "nothing scored yet", and the run stays at zero — the same
+rule visible in three places at once, agreeing with itself.
+
+### Phase 5 — bars and dots — **DONE 2026-09-13**
+
+The last three views, and the two controls the sleep charts needed. **All seven views now draw.**
+
+**The Vico decision is settled and the answer is no dependency** — architecture §4 is rewritten. Vico
+was here for line charts and there are none. What made it the easy call is that the charts consume
+`DayCell`s, days already judged in `:domain`, so the drawing decides nothing and needs no data model
+of its own — which is most of what a charting library sells. The 04:00 clock axis is the part no
+library handles, which is why it always leaned this way.
+
+**The clock axis, seen on real data:** the chart runs 10 PM to 1 AM and **midnight plots above 11 PM**.
+Anchored at midnight instead, a 01:30 bedtime would be the earliest reading of the month rather than
+the latest. `ClockAxis` owns the conversion; the chart plots numbers and does no clock arithmetic.
+
+**Coffee and steps share one chart** and differ only in what their cells carry: a provisional step day
+is a dimmer bar — the figure is real and may still change — and a day two sources reported is an empty
+outline the full height of the plot, because a short bar would claim the user walked nowhere.
+
+**The weekly figure sits in its own row beneath the plot, never as a second line on it.** Coffee's cap
+of 2 a day and its cap of 14 a week are scored separately (7.1–7.2), and drawing them on one axis
+invites comparing two numbers that have nothing to say to each other.
+
+**The night filter re-assembles rather than filtering what is on screen**, so the average and the
+typical time move with it and the recording count does not — which is enforced by `RecordingCount`
+taking no filter at all. It opens on Sun–Thu every visit, never remembering the last choice.
+
+Three more things the device found:
+
+- **The coffee axis read `0, 1, 1, 2, 2`.** A maximum of two produced a tick step of 0.5, and each
+  fractional tick rounded to a whole number, so the axis carried two pairs of duplicate labels. Ticks
+  now take a minimum step — both charts plot counts, so never a half of either — and the scale runs
+  one step past the data so the tallest bar stops short of the frame.
+- **The weekly chips drifted right of their own weeks**, because they were laid out across the full
+  width while the plot is inset for its axis. That is a chart quietly labelling the wrong week. The
+  insets are now one constant, shared.
+- **"Average" wrapped to "Avera/ge".** Four chips do not fit one phone-width row; they wrap now.
+
+### Phase 6 — device pass and close — **DONE 2026-09-13**
+
+All sixteen items opened on the phone, against the real database, and back out again. No crash and
+nothing in logcat from this package. Every one of the seven views was seen rendering real data during
+Phases 3 to 5 rather than in a sweep at the end — the bugs that mattered were found where they were
+introduced.
+
+**domain 341 · data JVM 5 · instrumented 122. All green.**
+
+**Exit criteria, each met:**
+
+| Criterion | How it was met |
+|---|---|
+| Every item renders its agreed view | `SeedLibraryViewsTest` runs the rule over the real seed rows; all sixteen opened on the device |
+| The clock axis respects 04:00 under test | `ClockAxisTest`, and the mutation anchoring it at midnight is caught by 12 tests. On the phone the axis runs 10 PM to 1 AM with **midnight above 11 PM** |
+| Hit rate and attainment both display | Both on screen for water and steps, never merged, with the denominator beside the percentage |
+| The table exposes every state | All ten `DayState`s have a word; the device showed Open, Met, Recorded, and the provisional and backfilled marks |
+| The night filter's average and typical time use only the nights shown | `SleepTrendTest`, the mutation that ignores the filter — M8's stated exit criterion — and on the device, switching to Every night moved the chart from one dot to three |
+
+**What M8 was actually for.** Real data started on 2026-09-10 and there was nowhere to see it: every
+figure the scoring engine produced was tested and wired to nothing. There is now a way in from Home,
+a list, and a screen per item with its chart, its figures and its table.
+
+**Carried forward:**
+
+- **The rollover defect below**, deferred by the user until M8 closed. It is the next thing.
+- **M9's hazard stands.** M9 as written "populates Room directly", and the only device that runs this
+  app holds four days of real answers. M9 needs a separate debug install (`applicationIdSuffix`), or
+  it must never run on this phone.
+- **Settings and item configuration** remain deferred to the post-plan add-on, with the requirement
+  that changing a check-in time must re-arm alarms **and** re-anchor the rollover explicitly.
+
+### After the close — the user's review of the item screen, 2026-09-13
+
+Six notes, all applied. Worth recording because most of them are about the screen's **priorities**
+rather than its correctness, and the correctness was never in question.
+
+- **The chart is now the point of the page.** It takes a fixed share of the screen height with
+  everything else beneath it, where it had been a strip above a long list of numbers. Every chart
+  grows into the height it is given: calendar cells scale (**capped against their own width** — past
+  that a calendar of tall rectangles reads as a bar chart, which the first attempt produced), and the
+  rows, squares, bars and dots all fill their box.
+- **0.55 of the screen, not the 0.6 asked for.** At 0.6 the table's three rows fell below the fold,
+  and a default view you have to scroll to reach is not a default view. The figures were also
+  compacted to one line each — label, its detail, and the value — to buy the difference back.
+- **The table scrolls inside its own box**, three days deep, so reading back through a month does not
+  push the figures off the top of the page.
+- **The shutter on opening an item is gone.** The ViewModel outlives the screen, so tapping an item
+  rendered the *previous* item's chart for a frame, then a blank while the read ran, then the new one
+  — three things in a few hundred milliseconds. The list already knows the prompt and the subtitle, so
+  the header is set before the screen composes and only the body waits.
+- **Headers are title case and a size above their own detail line.** At the same size the two ran
+  together and the screen read as a wall of grey.
+- **The "now 3" beneath a run is dropped**, and "nothing scored yet" is now **N/A**.
+
+One thing the review surfaced that was a real defect rather than a preference: the steps axis ran to
+**40,000 for a peak of 26,963**, because the tick function always added a step of headroom. It now
+adds one only when the data lands exactly on the top tick — which is the case that needed it, a
+full-height bar merging with the frame.
+
+### The item screen, rebuilt — 2026-09-13
+
+The user's second review said the screen was still wrong: stretched charts, headers too small to tell
+from body text, and nothing marking where the chart ended and the entries began. An audit put numbers
+on it — the screen's largest text was 17sp against the check-in's 25 and 30, every chart label was
+Material's unchosen 11sp default, the canvas axis a hardcoded 9sp, a figure's name and its detail two
+points apart, and every chart stretched to fill 55% of the screen.
+
+**Decided from true-scale drafts, not argument.** A review page drew the options as phones at 366dp
+with every size in sp as it would ship, and the user picked:
+
+- **The chart and its figures on a card; the log on the ground beneath.** One separation technique —
+  a contrasting surface — per Material's guidance to use a border, a shadow or a surface, not all three.
+- **The figures as a list under the chart**, 16sp names against 21sp values and 13sp detail.
+- **Tapping a day replaces the figures with that day**, in place. This is the spec §5.4 requirement
+  M8 closed without; it now works on all seven views.
+- **"Every Day" renamed "Daily Log"**, and the card's side padding cut to 12dp after the user found
+  the week labels squeezed toward the grid.
+
+**Charts keep their own proportions.** `CHART_SHARE` is gone. Calendar cells are square and sized from
+the width; bars and dots are 4:3; activity rows a fixed height. A chart's aspect ratio decides how its
+marks compare, and it had been whatever height was left over.
+
+**`labelSmall` is now chosen, at 12sp**, and the canvas axis reads it from the theme. Hairlines are
+1dp rather than a raw pixel. The bars' target label moved inside the plot over a halo of the card's
+colour, which gave the 44dp gutter it had used back to the bars; axis values abbreviate to "10k".
+
+Two defects the device found in this work: the halo drew as **white blobs**, because drawing a text
+layout with a stroke leaves the stroke on its paint and the fill pass inherited it; and weekly totals
+read **"67.0k"**, because the whole-number check ran before rounding.
+
+Bars also gained the chart marks they lacked — a note dot above the bar, a cap on a backfilled day, and
+a dashed stub for a deferral. Dots show a note; activity rows show selection only.
+
+### The rollover defect, fixed — 2026-09-13
+
+**Found by the Phase 3 device pass, deferred by the user until M8 closed.** Not caused by M8; found
+because a real database was read for the first time in four days.
+
+Every rollover since 2026-09-11 09:17 has failed, thirteen consecutive runs, all with the same error:
+
+```
+SecurityException: Caller does not have permission to read data
+for the following (recordType: StepsRecord) from other applications.
+```
+
+**Reading steps is not broken.** It succeeded at 21:09 on 09-11 and 21:17 on 09-12, both during night
+check-ins — both with the app in the **foreground**. The rollover runs at 04:00 with no Activity
+alive, and Android 15+ requires a separate `READ_HEALTH_DATA_IN_BACKGROUND` permission for a
+background read. The manifest declares `READ_STEPS` and nothing else, and "from other applications" is
+Health Connect's wording for exactly that restriction: without it, a backgrounded app may read only
+what it wrote itself.
+
+**What it has cost so far: nothing.** Every check-in through 09-13 was answered, so there was nothing
+to mark missed. Three step days are stuck `PROVISIONAL` rather than freezing, which does not change
+how they score (`MeasuredScorer` treats the two alike, deliberately).
+
+**What it will cost.** `runRollover` reads steps as its third of four steps, so the throw aborts the
+run before `checkInsToMiss` and `valuesToFreeze` are applied. `ensureCheckInsExist` runs first, which
+is why rows still exist. The first check-in the user misses will stay `PENDING` for ever instead of
+`MISSED`, and response rate — the primary metric — goes quietly wrong. Recoverable: `RolloverPlanner`
+compares stored state against today rather than assuming one run per day, so a fixed job repairs the
+backlog on its next run.
+
+The app's own safety net works and was about to fire: `HomeViewModel.isRolloverOverdue` trips two days
+after the last success, which would have surfaced on 09-14.
+
+**The fix: no background read at all, the user's call.** Rather than request
+`READ_HEALTH_DATA_IN_BACKGROUND` to keep the 04:15 read, the user proposed reading steps only when a
+check-in opens — always in the foreground. The rollover now makes no call outside local storage, so a
+Health Connect failure cannot reach it. Opening **either** check-in calls `syncRecentSteps`, which
+reads yesterday and today: the morning check-in runs after 04:00, when yesterday is complete, so it is
+a better read than 04:15 ever was. Two rules come with it — a `FROZEN` day is never re-read, because
+reading resets its anchor; and a failed read is logged and skipped per day, so it costs a figure,
+never the check-in. No manifest, permission or schema change.
+
+Trade-offs, accepted: steps walked after the last check-in that reads a day go uncounted, which needs
+both of the next day's check-ins skipped; a day with no check-in opened in its two-day window gets no
+value (excluded, never zero); and a day re-read at the next night's check-in freezes 24 hours after
+*that* read, a little later than before.
+
+Tests: the rollover never reads an available source; with a source that throws for every day it still
+marks missed and freezes; `syncRecentSteps` records both days, leaves a frozen day's state, value and
+anchor untouched, and records one day when the other's read fails. Mutations caught: putting the
+rollover's read back fails two rollover tests; removing the frozen-day skip fails its test.
+
+### What Phase 2 onward must build
+
+- **The clock axis** — a time as minutes since 04:00, tested at the boundary (04:00 is 0; 23:00 comes
+  before 01:30, which comes before 03:59). It must fail when anchored at midnight.
+- **Item detail assembly** over an item's answers, measured values and targets, handling each shape the
+  library has: daily goals, weekly roll-up goals with an open week reading as progress, coffee's two
+  periods, steps with conflicted days excluded, and observations that are never scored.
+- **The derived figures the views need**: weekly counts against target, weekly coffee totals, the shade
+  bucket for an amount (halves rounding down), the rolling average and typical time **over only the
+  nights the filter shows**, and the recording count, which ignores the filter.
+- **The per-item view map**, tested over every seeded item.
+
+**TDD.** Phase 2 carries the risk and the tests. Phases 3–5 are hand-checked in previews — `:app` has no
+tests — using fixtures that include the hard cases.
+
+**Exit criteria.** Every item renders its agreed view; the clock axis respects 04:00 under test; hit rate
+and attainment both display; the table exposes every state; the night filter's average and typical time
+are proven to use only the nights shown.
+
+**Flag for M9, not solved here.** M9 as written "populates Room directly". On the only device that now
+holds real data, that is exactly the hazard M8 avoids by using previews. M9 needs a separate debug
+install (`applicationIdSuffix`), or it must never run on this phone.
 
 ---
 
@@ -1113,6 +1574,21 @@ hand-verified.
 
 **Exit criteria.** Export produces a correct file under test; the picker writes it to a
 user-chosen location on the device; no cloud dependency exists anywhere in the build.
+
+---
+
+## After the plan — settings add-on
+
+**Not a milestone, and deliberately after M11.** Two pieces deferred out of M8 on 2026-09-11, because
+they are settings rather than ways of seeing your data:
+
+- **Item configuration** (spec §5.7) — reword, retarget, retire and add items. Items are versioned and
+  retired, never deleted, so this is the first UI to touch versioning. It also unblocks per-item
+  defaults, such as a bedtime question that doesn't open at 07:00.
+- **Check-in times** (spec §1). Whatever stores them must stay the single source for both the check-in
+  generator and the alarm scheduler, or a row's `scheduled_at` and the alarm that fires will disagree.
+  Changing a time must cancel and re-arm real alarms **and** re-anchor the rollover, because
+  `RolloverScheduler.schedule` is `KEEP` and will not notice a changed value.
 
 ---
 

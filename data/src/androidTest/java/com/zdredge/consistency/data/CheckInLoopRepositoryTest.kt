@@ -12,6 +12,7 @@ import com.zdredge.consistency.data.health.StepSourceStatus
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.MeasuredOrigin
 import com.zdredge.consistency.domain.model.MeasuredState
+import com.zdredge.consistency.domain.model.MeasuredValue
 import com.zdredge.consistency.domain.model.ItemVersionId
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.time.DayResolver
@@ -758,7 +759,70 @@ class CheckInLoopRepositoryTest {
         steps.record(installDay, MeasuredOrigin(PHONE, 11_240.0))
 
         assertNull(repoAt("2026-09-01T21:30").syncSteps(installDay))
+        repoAt("2026-09-01T21:30").syncRecentSteps(installDay)
         assertEquals("the source is never even read", 0, steps.reads)
+    }
+
+    // ---- Steps: read when a check-in opens -------------------------------------------------------
+
+    /**
+     * Both days, because this is now the only read: the morning check-in is the first chance to read
+     * yesterday complete, and the night one shows today.
+     */
+    @Test
+    fun aCheckInOpeningReadsYesterdayAndToday() = runBlocking {
+        val today = installDay.plusDays(1)
+        steps.record(installDay, MeasuredOrigin(PHONE, 11_240.0))
+        steps.record(today, MeasuredOrigin(PHONE, 3_100.0))
+
+        val repo = repoAt("2026-09-02T08:00")
+        repo.syncRecentSteps(today)
+
+        assertEquals(11_240.0, repo.measuredValue(ItemId("steps"), installDay)!!.value, 0.0)
+        assertEquals(3_100.0, repo.measuredValue(ItemId("steps"), today)!!.value, 0.0)
+    }
+
+    /**
+     * Re-reading resets `last_synced_at`, which would make a frozen day look young again. The day is
+     * left exactly as it was: still frozen, same value, same anchor.
+     */
+    @Test
+    fun aFrozenDayIsNotReadAgain() = runBlocking {
+        val today = installDay.plusDays(1)
+        val anchor = Instant.parse("2026-09-01T08:15:00Z")
+        val repo = repoAt("2026-09-02T08:00")
+        repo.recordMeasuredValue(
+            MeasuredValue(
+                itemId = ItemId("steps"),
+                day = installDay,
+                value = 9_000.0,
+                state = MeasuredState.FROZEN,
+                lastSyncedAt = anchor,
+                origins = listOf(MeasuredOrigin(PHONE, 9_000.0)),
+            ),
+        )
+        steps.record(installDay, MeasuredOrigin(PHONE, 12_000.0))
+
+        repo.syncRecentSteps(today)
+
+        val stored = repo.measuredValue(ItemId("steps"), installDay)!!
+        assertEquals(MeasuredState.FROZEN, stored.state)
+        assertEquals(9_000.0, stored.value, 0.0)
+        assertEquals(anchor, stored.lastSyncedAt)
+    }
+
+    /** One failed read loses one figure, not the other day's, and never the check-in that asked. */
+    @Test
+    fun aFailedReadForOneDayStillRecordsTheOther() = runBlocking {
+        val today = installDay.plusDays(1)
+        steps.failingDays = setOf(installDay)
+        steps.record(today, MeasuredOrigin(PHONE, 3_100.0))
+
+        val repo = repoAt("2026-09-02T21:30")
+        repo.syncRecentSteps(today)
+
+        assertNull(repo.measuredValue(ItemId("steps"), installDay))
+        assertEquals(3_100.0, repo.measuredValue(ItemId("steps"), today)!!.value, 0.0)
     }
 
     private fun mealsAnswer(capture: Capture) = Answer(

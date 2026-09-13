@@ -1,7 +1,10 @@
 package com.zdredge.consistency.domain
 
+import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.Answer
+import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.Classification
 import com.zdredge.consistency.domain.model.CheckIn
 import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.Slot
@@ -9,9 +12,16 @@ import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.ItemKind
+import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.ItemVersionId
+import com.zdredge.consistency.domain.model.MeasuredOrigin
+import com.zdredge.consistency.domain.model.MeasuredState
+import com.zdredge.consistency.domain.model.MeasuredValue
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Period
+import com.zdredge.consistency.domain.model.RollUpAggregation
+import com.zdredge.consistency.domain.model.RollUpSpec
+import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Target
 import java.time.Instant
 import java.time.LocalDate
@@ -111,7 +121,88 @@ fun item(
     createdOn: LocalDate = LocalDate.of(2020, 1, 1),
     retiredOn: LocalDate? = null,
     kind: ItemKind = ItemKind.ASKED,
-): Item = Item(id = ItemId(name), kind = kind, createdOn = createdOn, retiredOn = retiredOn)
+    ordinal: Int = 0,
+): Item = Item(id = ItemId(name), kind = kind, createdOn = createdOn, retiredOn = retiredOn, ordinal = ordinal)
+
+/**
+ * The version id matches [answer]'s, so an answer built here is readable under the version built
+ * here without either caller having to say so.
+ */
+fun version(
+    item: String,
+    answerType: AnswerType,
+    slot: Slot = Slot.NIGHT,
+    classification: Classification = Classification.GOAL,
+    prompt: String = item,
+    unitLabel: String? = null,
+    from: LocalDate = ALWAYS,
+): ItemVersion = ItemVersion(
+    id = ItemVersionId("$item-v1"),
+    itemId = ItemId(item),
+    versionNo = 1,
+    prompt = prompt,
+    answerType = answerType,
+    classification = classification,
+    slot = slot,
+    unitLabel = unitLabel,
+    effectiveFrom = from,
+)
+
+fun option(
+    item: String,
+    id: String,
+    ordinal: Int = 0,
+    noOpportunity: Boolean = false,
+    retiredOn: LocalDate? = null,
+): SelectOption = SelectOption(
+    id = OptionId(id),
+    itemId = ItemId(item),
+    label = id,
+    ordinal = ordinal,
+    isNoOpportunity = noOpportunity,
+    retiredOn = retiredOn,
+)
+
+fun measured(
+    item: String = "steps",
+    day: LocalDate = DAY,
+    value: Double,
+    state: MeasuredState = MeasuredState.FROZEN,
+    lastSyncedAt: Instant? = null,
+    origins: List<MeasuredOrigin> = emptyList(),
+): MeasuredValue = MeasuredValue(
+    itemId = ItemId(item),
+    day = day,
+    value = value,
+    state = state,
+    lastSyncedAt = lastSyncedAt,
+    origins = origins,
+)
+
+fun rollUp(item: String, aggregation: RollUpAggregation): RollUpSpec =
+    RollUpSpec(itemId = ItemId(item), sourceItemId = ItemId(item), aggregation = aggregation)
+
+/**
+ * One item's whole history, for the detail tests. The single-version case is the common one; an
+ * item that was reworded passes its versions explicitly.
+ */
+fun history(
+    item: Item,
+    version: ItemVersion,
+    options: List<SelectOption> = emptyList(),
+    targets: List<Target> = emptyList(),
+    rollUp: RollUpSpec? = null,
+    answers: List<Answer> = emptyList(),
+    measured: List<MeasuredValue> = emptyList(),
+): ItemHistory = ItemHistory(
+    item = item,
+    versions = listOf(version),
+    options = options,
+    targets = targets,
+    rollUp = rollUp,
+    answers = answers,
+    measured = measured,
+)
 
 /** The Monday-start week containing [day], as seven dates. */
 fun weekOf(day: LocalDate, resolver: com.zdredge.consistency.domain.time.DayResolver): List<LocalDate> {

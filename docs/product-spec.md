@@ -481,21 +481,54 @@ costume of honesty.
 
 ### 5.4 Item detail view
 
-Chart type is chosen automatically from answer type. Per-item chart configuration is deliberately
-not a setting.
+Chart type is chosen per item, not by the user. Per-item chart configuration is deliberately not a
+setting. **Settled in M8 over three rounds of mockups with the user** (2026-09-11), replacing the
+earlier answer-type defaults (calendar for yes/no and selects, line for numbers, scales and times). No
+item ended up on a line chart: every daily count and scale chose a calendar or bars, and every time
+chose dots.
 
-| Answer type | View | Reason |
+| Item(s) | View | Why |
 |---|---|---|
-| Yes/no, single-select, multi-select | Calendar heatmap | The question is the pattern of days, not the value. A line of 0s and 1s is unreadable. Single-select (took time, the social goals) colours each day by the chosen option, no-opportunity among them. |
-| Number, 1–5 scale | Line chart | These have magnitude; the point is drift over weeks. |
-| Time-of-day | Line chart | **The y-axis is a clock and must respect the 04:00 boundary**, or a 01:30 bedtime plots as the earliest night of the month instead of the latest. |
-| All types | Plain table, always available | The only view exposing backfilled, edited, pending and provisional states, and notes in bulk. |
+| Bedtime, woke up, out of bed | **Dots on a clock axis that starts at 04:00**, later nights higher. A **7-night rolling average** is shown by default, with a switch to hide it. | Each night stands alone; a line from 23:00 to 01:30 implies a bedtime at every minute in between. **The axis must respect the 04:00 boundary**, or a 01:30 bedtime plots as the earliest night of the month instead of the latest. |
+| Before bed | **One row per activity.** Read a book, watched YouTube and watched TV in blue; *scrolled on phone* on its own row at the bottom, in red. | A night can hold several activities, which one calendar square cannot show. The red is the user's call, and is a **new colour** (`#D9645C`): the app's existing red is kept for genuine failure and reads almost grey at this size. |
+| Vitamins | **Calendar.** | A daily yes or no is the pattern of days, not a value. |
+| Worked out, stretched | **Calendar with a weekly count** at the end of each week's row (`4/6`; an open week reads `2 of 6`). | Answered daily but targeted weekly; a calendar alone shows which days, not whether the week was met. |
+| Took time | **Calendar**, with no-opportunity as its own mark. | Leaning on the neutral answer must stay visible (constraint 17). |
+| Meals, water | **Calendar shaded by amount**, in one blue. Meals: four shades — 0–1, 2, 3, 4+ — with the largest step between 2 and 3. Water: three — 0–1, 2, 3+. The key marks where the target starts. A half is shaded as the whole number below it. | Daily counts, where magnitude matters but a bar per day was rejected. Real meal answers cluster at 2 and 3, which is also the target boundary, so that step carries the most contrast. Halves can be typed on the keypad but are not on the quick-pick buttons; shading down means 1.5 bottles can never look like the target of 2 was reached. |
+| Coffee | **Daily bars** with the daily limit as a line, and **each week's total beneath its week** (`12/14`). | Two limits scored separately; they cannot share an axis without one being misread. |
+| Mindset | **Calendar in one blue**, dim for very negative through bright for very positive. | Better at which days and weekday habits. A red-to-blue scale was ruled out: it would paint low days as warnings, and mindset is never scored. |
+| Saw friends, did something fun, invited someone | **One square per week**, the three questions together. | Asked once a week; a day calendar would be six squares in seven empty. |
+| Steps | **Bars** with the daily target as a line. Provisional days in a darker blue; a day two sources reported is an **empty outline** and is not counted. | Both steps-only states stay visible without pretending to be a number. |
+| Every item | **Plain table, always available.** | The only view exposing backfilled, edited, pending, provisional and conflicted states, and notes, in bulk. |
 
-Exact assignment per library item is finalised alongside the library.
+**A missed day is grey, not red.** Only *scrolled on phone* is red, by explicit choice.
 
-**Notes surface here**, attached to the individual data point: tapping a day reveals that day's note.
+**The sleep items can be filtered by night**, with a three-way switch: **Every night · Sun–Thu · Custom**.
+Custom brings up a button per night, starting from whatever was already showing. The chart **opens on
+Sun–Thu every time** rather than remembering the last choice, so a filter set weeks ago can never
+quietly hide nights. The filter works on the night an answer is filed under, and every sleep answer is
+filed under the night the user went to bed (§3.1): Monday morning's wake-up belongs to Sunday night.
+So Sun–Thu means the nights before a weekday for bedtime and waking alike. The rolling average and
+the typical time are computed from the nights shown; the nights-recorded count ignores the filter,
+because it measures answering every night.
 
-**Per-item longest run** is shown here.
+**Range.** The figures — hit rate, attainment, runs — use the same 14 days as the dashboard. The chart
+shows the last **five weeks**, because a 14-day calendar is two rows deep.
+
+**From day one.** Unlike the dashboard (§5.5), an item's view shows its figures — hit rate and runs
+included — from the first day, not after 14. The user's reasoning: watching the rate move while it
+settles is itself worth seeing. §5.5 is unchanged and still governs the dashboard.
+
+**Notes surface here**, attached to the individual data point: tapping a day outlines it and a card
+beneath the chart shows that day's answer, how it was recorded, and its note.
+
+**Marks on the chart:** backfilled days carry a corner notch, deferred days a dashed outline, and days
+with a note a dot. Answers given after the grace window, and edits, are left to the table.
+
+**Per-item longest run** is shown here for goals. **Observations** — bedtime, waking, getting up and
+mindset — have no goal to meet, so they show a **recording count** in its place ("Nights recorded in a
+row"). It must say *recorded*, never *streak*, or it reads as a performance measure on the one kind of
+item deliberately never judged.
 
 **No-opportunity usage is shown here** for goals that carry the option (constraint 17): how often the
 neutral answer was chosen over the window, so leaning on it stays legible rather than hidden.
@@ -560,7 +593,7 @@ permissions prompt and its declined branch (§3.3).
 | O1 | Goal-completion formula for the inner ring. | **Resolved.** Split into a daily ring and a weekly ring, each instance-based within its granularity, never merged. See below and §5.1. |
 | O2 | Multi-select target interaction design | Mechanism accepted; the UI for "must not include *option*" is unbuilt and the user expects it to be fiddly. |
 | O3 | Health integration API surface | Health Connect is the current Android path; the older Fit APIs have been deprecating. **Verify at build time rather than trusting this document.** |
-| O4 | Measured-day finality | **Claude's decision, not the user's:** provisional for 24h after the 04:00 read, then frozen. Chosen because platform step-tracking behaviour is unverified, and this is the option that tolerates late syncing without permanently mis-scoring a day. Reversible in an afternoon; revisit after a week of real data. |
+| O4 | Measured-day finality | **Claude's decision, not the user's:** provisional for 24h after its last read, then frozen. (A read happens when a check-in opens; see architecture §5.) Chosen because platform step-tracking behaviour is unverified, and this is the option that tolerates late syncing without permanently mis-scoring a day. Reversible in an afternoon; revisit after a week of real data. |
 | O5 | Carousel timing | Assumed 8s auto-advance, stops on first swipe. Never confirmed. |
 | O6 | Chart assignment per library item | Finalise with the library. |
 | O7 | Development seed-data fixture | **Now planned as build-order M9.** A debug-only fixture that populates Room directly (not a standalone script). Target volume **~6 months** of generated history including gaps, backfills, retired items and effective-from changes — enough for month-over-month trends and comparisons. This is a testing tool, not a precondition for usefulness: the app works from day one and the dashboard needs 14 days. |

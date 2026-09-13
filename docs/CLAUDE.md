@@ -14,10 +14,13 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M7 are complete, and real data collection began on 2026-09-10.** M8 (item detail views,
-charts, item configuration and check-in times) is next — **and is the first milestone whose work
-happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do not begin a later milestone
-than the one in progress.
+**M0 through M8 are complete, and real data collection began on 2026-09-10.** Every item now has a
+screen with its chart, its figures and its table. The rollover failed every run from 2026-09-11 to
+09-13 because it read steps from the background; it was fixed by reading steps only when a check-in
+opens — see *The rollover defect, fixed* in `build-order.md`. Item configuration and check-in times are deferred to a
+settings add-on after the plan. **M8 is the first milestone whose
+work happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do
+not begin a later milestone than the one in progress.
 
 The two defects M6 left were fixed on 2026-09-09; see *Defects found after M6* in `build-order.md`.
 Confirmed on 2026-09-10: the first morning prompt the app has ever sent arrived at 08:00 on a day
@@ -109,6 +112,11 @@ likely to be broken by well-intentioned code:
   When it was the caller's job to sequence the two, three of five callers got it wrong and the app
   could not prompt at all on a day nobody opened it. M6 fixed one instance of this in `HomeViewModel`
   and left two alive: **fixing an instance is not fixing the class — go and look for the siblings.**
+- **The rollover makes no call outside local storage.** It read steps until 2026-09-13, and Health
+  Connect's refusal of a background read took down the whole job for three days. Steps are read only
+  when a check-in opens (`syncRecentSteps`: yesterday and today, frozen days skipped, failures logged
+  and swallowed). **Do not add a Health Connect or network call to the rollover**, and do not add a
+  step read anywhere that runs without an Activity.
 - **The rollover must land between 04:00 and 08:00**, because it creates the rows the 08:00 prompt is
   armed from. Architecture §4 once said nothing depended on its timing; M6 made that false without
   updating it, and the job silently drifted to 09:47. A periodic request re-anchors to its last run,
@@ -173,12 +181,29 @@ module. This is what makes the whole rulebook testable without an emulator, whic
   not interchangeable (silence costs a check-in, no-opportunity costs nothing).
 - Manual constructor injection via `AppContainer` in `:app`. No DI framework unless the wiring
   becomes genuinely painful, and then ask first.
+- **Navigation is hand-rolled** — `ui/Navigation.kt`, a `BackStack` of a few lines. Settled in M8
+  Phase 3, which is where architecture §T5 said the decision fell due. It is held on the Activity,
+  not in `remember`, because a notification tap arrives through `onNewIntent`, outside composition.
+  Add a navigation library only for a deep link to a screen with arguments, or state that must
+  survive process death — and ask first, as with DI.
 - One answer row per item per day, keyed `(item_id, day_date)`.
 - Enums for `answer_type`, `direction`, `capture`, `slot`, `state`. No magic strings.
 - All Health Connect calls behind a single interface in `:data`, with **one** implementation. The
   interface exists for version pinning, not provider abstraction.
-- Charts: Compose Canvas for the calendar heatmap, Vico for line charts. Time-of-day line charts must
-  respect the 04:00 boundary or a 01:30 bedtime plots as the earliest night of the month.
+- Charts: **each item's view is listed per item in spec §5.4**, agreed with the user in M8, and never
+  a user setting. `ItemViews.derive` works it out from what the item *is* — measured or asked, which
+  slot, its answer type, which periods it has targets in — and a test pins all 16 seeded items to the
+  views that were agreed. Change that rule only by re-deriving §5.4's table, not by special-casing an
+  item. **No item uses a line chart**, so the Vico choice in
+  architecture §4 is under review in M8 Phase 5; draw in Compose Canvas unless that concludes
+  otherwise. Clock times plot on an axis that starts at 04:00, or a 01:30 bedtime plots as the
+  earliest night of the month. A missed day is grey, never red — only *scrolled on phone* is red, by
+  the user's explicit choice.
+- **A day is judged once.** `ItemDetails.assemble` turns one item's history into its chart, its table
+  and its figures, and all three are read off the same `DayCell` list. Computing a figure a second
+  time for a second surface is how a calendar and the hit rate beside it come to disagree about the
+  same fortnight. A blank day is four different things — not active, not arrived, still answerable,
+  unanswered — and only the last is a failure.
 
 ## UI
 

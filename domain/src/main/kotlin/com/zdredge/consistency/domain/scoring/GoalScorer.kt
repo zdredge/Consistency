@@ -35,12 +35,22 @@ object GoalScorer {
         target: Target,
         answer: Answer?,
         noOpportunityOptions: Set<OptionId> = emptySet(),
+        stillResolvable: Boolean = false,
     ): GoalResult {
         if (answer == null) return GoalResult.excluded(ExclusionReason.NO_ANSWER)
 
         // A deferral that was never followed up. Whatever value the row happens to carry is stale:
         // the user actively chose not to answer yet, and then did not come back.
-        if (answer.capture == Capture.PENDING) return GoalResult(GoalOutcome.MISSED)
+        //
+        // **But only once it can no longer be followed up.** A2.1 says a pending answer converts to a
+        // missed goal *at rollover*; until then the user still has the morning to resolve it, and
+        // scoring it as a miss tonight would drop today's hit rate for a promise not yet broken.
+        // [stillResolvable] is the caller's grace check -- it defaults to false so a caller that has
+        // no notion of "now" keeps the old, stricter reading rather than silently forgiving.
+        if (answer.capture == Capture.PENDING) {
+            return if (stillResolvable) GoalResult.excluded(ExclusionReason.PERIOD_OPEN)
+            else GoalResult(GoalOutcome.MISSED)
+        }
 
         if (answer.selections.any { it in noOpportunityOptions }) {
             return GoalResult.excluded(ExclusionReason.NO_OPPORTUNITY)
@@ -66,11 +76,12 @@ object GoalScorer {
         answer: Answer?,
         on: LocalDate,
         noOpportunityOptions: Set<OptionId> = emptySet(),
+        stillResolvable: Boolean = false,
     ): GoalResult =
         if (!ItemLifecycle.isActiveOn(item, on)) {
             GoalResult.excluded(ExclusionReason.NOT_ACTIVE)
         } else {
-            score(target, answer, noOpportunityOptions)
+            score(target, answer, noOpportunityOptions, stillResolvable)
         }
 
     /**

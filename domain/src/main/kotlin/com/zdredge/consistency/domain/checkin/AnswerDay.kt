@@ -32,4 +32,17 @@ object AnswerDay {
         Slot.MORNING -> checkInDay.minusDays(1)
         Slot.NIGHT, Slot.WEEKLY, Slot.NONE -> checkInDay
     }
+
+    /**
+     * The check-in that writes an answer dated [answerDay] — the inverse of [forCheckIn].
+     *
+     * It lives here so the step and its inverse cannot drift apart. Anything asking *whether a day can
+     * still be answered* needs it: grace runs on the check-in's date, so a morning answer for two days
+     * ago is still reachable through yesterday's check-in. Asking `Grace` about the answer's own day
+     * would close a window that is demonstrably still open.
+     */
+    fun checkInDayFor(answerDay: LocalDate, slot: Slot): LocalDate = when (slot) {
+        Slot.MORNING -> answerDay.plusDays(1)
+        Slot.NIGHT, Slot.WEEKLY, Slot.NONE -> answerDay
+    }
 }

@@ -383,12 +383,26 @@ Health lengthens that chain rather than shortening it. The correct response to s
 here is the shortest possible chain, which is Health Connect counting the phone's own steps with no
 source app involved.
 
-### Vico (line charts) and Compose Canvas (calendar heatmap)
-**Why:** a heatmap is a grid of coloured rounded rectangles and needs no dependency. Line charts have
-real work in axes, scales and touch handling.
-**Pro:** minimal dependencies, and full control over the clock-axis problem for bedtime, which no
-chart library handles correctly out of the box.
-**Con:** Vico's ecosystem is small next to web charting; the Canvas code is yours to maintain.
+### Compose Canvas for every chart — **settled in M8 Phase 5, 2026-09-13**
+
+**Vico was never added, and now will not be.** It was chosen here for line charts, and the mockups
+agreed with the user put **no item on a line chart**: every view is a calendar, rows of squares, bars
+or dots on a clock axis (product spec §5.4). All seven are drawn in Compose Canvas, and the whole of
+it is four files.
+
+**Why it turned out to be the easy call.** The charts consume `DayCell`s — days already judged in
+`:domain` — so the drawing code decides nothing and needs no data model of its own, which is most of
+what a charting library sells. What was left was rounded rectangles, a value axis and a path, against
+a library's axis formatting, its own theme, and an interop layer.
+
+**The 04:00 clock axis is the part no library handles**, which was true before this decision and is
+the reason it always leaned this way. `ClockAxis` owns the conversion; the chart plots numbers.
+
+**Con, stated plainly:** the Canvas code is ours to maintain, and the device found three things the
+reasoning did not — duplicate axis labels from fractional ticks, a chip row that drifted out of
+alignment with the plot it labelled, and a chip whose text wrapped mid-word. A library would have got
+the first of those right for free.
+
 **Alternative:** MPAndroidChart. Mature, View-based so it needs interop wrapping in Compose, and
 barely maintained now.
 
@@ -486,10 +500,21 @@ investigated, and nothing reads it as a step count. No records at all writes **n
 walk" and "has not synced" are indistinguishable, and a zero would score a miss the user could not
 have earned.
 
-Two read triggers, one entry point (`ConsistencyRepository.syncSteps`): the rollover reads the day
-that just closed, and opening the night check-in reads today. The rollover reads **only** that one
-day on purpose — re-reading history each night would reset every `last_synced_at` and nothing would
-ever freeze, which is the O4 rule looking present and never firing.
+**One read trigger, and it is always in the foreground.** Opening either check-in calls
+`ConsistencyRepository.syncRecentSteps`, which reads **yesterday and today** through the single write
+path `syncSteps`. The morning check-in is the first read of yesterday once it is complete; the night
+check-in shows today. A day is read at up to three check-ins — its own night, the next morning and the
+next night — and never again, so its `last_synced_at` stops moving and O4's freeze fires. A day
+already `FROZEN` is skipped outright, and a failed read is logged and skipped per day rather than
+breaking the check-in.
+
+**The rollover does not read steps.** Until 2026-09-13 it read the day that had just closed, and every
+run from 09-11 failed: Health Connect refuses a background read without
+`READ_HEALTH_DATA_IN_BACKGROUND`, and the throw aborted the run before it marked anything missed or
+froze anything. The user chose to drop the background read rather than ask for a stronger permission
+(see *The rollover defect, fixed* in `build-order.md`). What that costs: steps walked after the last
+check-in that reads a day are uncounted, which needs both of the next day's check-ins skipped; and a
+day whose two-day window sees no check-in opened gets no value — excluded, never zero.
 
 ### Cross-cutting: one clock, one day resolver
 
@@ -799,4 +824,4 @@ of mind.
 | ~~T2~~ | **Closed by M3.** Typed nullable columns were kept and the mapping did not get ugly: `EntityMappers.kt` is a flat set of one-line conversions with no branching on answer type, because the domain `Answer` carries the same typed nullable fields the table does. A blob would have added a serialiser on both sides and made every numeric query a parse. Revisit only if a new answer type cannot be expressed as a column. |
 | T3 | How to test alarm scheduling and the restore receiver without relying on manual device verification. **Narrowed twice, still open:** which alarms should exist is a pure tested function (`AlarmPlanner`), and *that the rows exist before anything is armed* is now a `:data` instrumented test (`checkInsForAlarms`) rather than a device observation — it was moved there precisely because the untested version of it was wrong for a whole milestone. What is left untestable is only *that a set alarm fires* and *that alarms return after a reboot or an update*. Each has been observed on a real device, but by hand, and nothing guards them against regression. The residue is not theoretical: **three real defects have now lived exactly there**, in the wiring between the tested rule and the platform. |
 | T4 | Whether the rollover job should also pre-compute and cache dashboard figures, or whether scoring on read is fast enough at a few thousand rows. Probably fast enough; worth measuring rather than assuming. |
-| T5 | Compose navigation approach across the five screens — deliberately not decided here. **Evidence from M4.5, still open:** two screens are a sealed `Screen` and a `when`, and the check-in summary was made a *page inside* the check-in rather than a third screen — routing it through `MainActivity` would have put it behind the `exit` flag, which is a live defect (build-order M4.5, defect 1). That defect is itself the argument: navigation currently depends on a state field that outlives the screen setting it, and a one-shot event or a real back stack both fix it. Decide when the item detail view and dashboard make five screens real. |
+| T5 | Compose navigation approach. **Decided in M8: stays hand-rolled**, gaining a small back stack and the system back gesture as the Items and item detail screens arrive. No navigation library: at five screens the whole flow stays readable in one file, and the notification deep-link (`MainActivity.screenFor`) keeps working unchanged. Revisit only if screens multiply well past that. |

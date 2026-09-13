@@ -94,8 +94,11 @@ class GoalCompletionTest {
         val progress = PeriodProgress(observed = 30_000.0, target = 70_000.0, elapsedDays = 3, totalDays = 7)
 
         assertEquals(3, progress.elapsedDays)
-        assertTrue(!progress.closed, "the week is still open")
         assertEquals(30_000.0 / 70_000.0, progress.fractionOfTarget)
+        // Whether the week has closed is deliberately not asked here any more. This type counts
+        // elapsed days, and "closed" is a question about today: the old `elapsedDays >= totalDays`
+        // called a week closed for the whole of Sunday, a day it can still be changed on. The verdict
+        // side of the same case is the assertion above -- scoreClosedPeriod returns PERIOD_OPEN.
     }
 
     @Test

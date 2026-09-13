@@ -1,6 +1,7 @@
 package com.zdredge.consistency.domain.scoring
 
 import com.zdredge.consistency.domain.model.Answer
+import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.ExclusionReason
 import com.zdredge.consistency.domain.model.GoalResult
 import com.zdredge.consistency.domain.model.RollUpAggregation
@@ -40,7 +41,10 @@ object RollUpCalculator {
         aggregation: RollUpAggregation,
     ): RollUp {
         val days = daysInPeriod.toSet()
-        val observed = answers.filter { it.day in days }
+        // A deferral is not an observation. Whatever value a PENDING row carries is stale -- the user
+        // chose not to answer yet -- and GoalScorer has always ignored it. Reading it here let the
+        // same deferral be a miss on the day and a yes in the week (A2.1).
+        val observed = answers.filter { it.day in days && it.capture != Capture.PENDING }
 
         val value = when (aggregation) {
             RollUpAggregation.COUNT_OF_YES -> observed.count { it.valueBool == true }.toDouble()
@@ -64,7 +68,12 @@ object RollUpCalculator {
      * the figure rather than changing the verdict.
      */
     fun score(rollUp: RollUp, target: Target): GoalResult =
-        GoalScorer.scoreValue(target, rollUp.value)
+        // **Silence is not success.** An empty week folds to 0.0, and zero is inside any upper bound,
+        // so a week nobody answered scored as MET against coffee's "at most 14" -- constraint 11
+        // exactly. Nothing observed is nothing to judge (1.13), which is what MeasuredScorer.scoreWeek
+        // already returned for an empty week; now the two agree.
+        if (rollUp.observedDays == 0) GoalResult.excluded(ExclusionReason.NO_ANSWER)
+        else GoalScorer.scoreValue(target, rollUp.value)
 
     /**
      * Scores a period only once it has closed. An open period is EXCLUDED carrying PERIOD_OPEN --
