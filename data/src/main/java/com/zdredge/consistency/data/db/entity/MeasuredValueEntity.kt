@@ -13,7 +13,8 @@ import java.time.LocalDate
  * A value read from Health Connect rather than asked (spec 3.3). Steps is the only one in v1. It
  * carries targets and is scored like any other goal.
  *
- * [state] is provisional for 24 hours after the 04:00 read and then frozen (spec O4). That is
+ * [state] is provisional for 24 hours after its last read and then frozen (spec O4). Reads happen
+ * only when a check-in opens, never in the background, so a day stops being re-read two days on. That is
  * unrelated to an answer's `capture`, which describes how a *person* recorded something; a measured
  * value has no capture state and never will.
  */

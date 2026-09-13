@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zdredge.consistency.data.db.ConsistencyDatabase
+import com.zdredge.consistency.data.health.FakeStepSource
 import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.MeasuredOrigin
@@ -225,8 +226,54 @@ class RolloverRepositoryTest {
         )
     }
 
+    /**
+     * **The cause of the 2026-09-11 failure, kept out.** The rollover runs in the background, where
+     * Health Connect refuses to read without a permission the app does not hold. An available source
+     * is the case that matters: an unavailable one was never read anyway, which is why the default
+     * repository in every other test here could not have caught it.
+     */
+    @Test
+    fun theRolloverNeverReadsSteps() = runBlocking {
+        val steps = FakeStepSource()
+        steps.record(installDay.plusDays(2), MeasuredOrigin("com.android.healthconnect.phone.jf9fc", 9_000.0))
+
+        repoAt("2026-09-04T04:15", steps).runRollover(installDay.plusDays(3))
+
+        assertEquals("the rollover makes no call outside local storage", 0, steps.reads)
+    }
+
+    /**
+     * **The 11 September scenario.** A step read that throws once aborted the run before it marked
+     * anything missed or froze anything. With a source that throws for every day, both still happen.
+     */
+    @Test
+    fun aFailingStepSourceDoesNotStopTheMissOrTheFreeze() = runBlocking {
+        val steps = FakeStepSource()
+        steps.failingDays = (0L..10L).map { installDay.plusDays(it) }.toSet()
+        repoAt("2026-09-01T10:00").ensureCheckInsExist(installDay)
+        val repo = repoAt("2026-09-04T04:15", steps)
+        repo.recordMeasuredValue(
+            MeasuredValue(
+                itemId = ItemId("steps"),
+                day = installDay,
+                value = 11_240.0,
+                state = MeasuredState.PROVISIONAL,
+                lastSyncedAt = Instant.parse("2026-09-02T07:15:00Z"),
+            ),
+        )
+
+        val outcome = repo.runRollover(installDay.plusDays(3))
+
+        assertTrue("a check-in past grace is missed", outcome.checkInsMissed > 0)
+        assertEquals(1, outcome.valuesFrozen)
+        assertEquals(MeasuredState.FROZEN, repo.measuredValue(ItemId("steps"), installDay)!!.state)
+    }
+
     private fun dayResolverAt(local: String) =
         DayResolver(Clock.fixed(LocalDateTime.parse(local).atZone(zone).toInstant(), zone))
 
     private fun repoAt(local: String) = ConsistencyRepository(db, dayResolverAt(local))
+
+    private fun repoAt(local: String, steps: FakeStepSource) =
+        ConsistencyRepository(db, dayResolverAt(local), stepSource = steps)
 }

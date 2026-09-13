@@ -15,11 +15,9 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
    what you may build.
 
 **M0 through M8 are complete, and real data collection began on 2026-09-10.** Every item now has a
-screen with its chart, its figures and its table. **One open defect is outstanding against M8 and is
-the next thing to fix: the rollover has failed every run since 2026-09-11**, because it reads steps in
-the background and the manifest never declared `READ_HEALTH_DATA_IN_BACKGROUND` — see the open-defect
-section in `build-order.md`. The more important half of that fix is that a failing step read must not
-take down the other three quarters of the job. Item configuration and check-in times are deferred to a
+screen with its chart, its figures and its table. The rollover failed every run from 2026-09-11 to
+09-13 because it read steps from the background; it was fixed by reading steps only when a check-in
+opens — see *The rollover defect, fixed* in `build-order.md`. Item configuration and check-in times are deferred to a
 settings add-on after the plan. **M8 is the first milestone whose
 work happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do
 not begin a later milestone than the one in progress.
@@ -114,6 +112,11 @@ likely to be broken by well-intentioned code:
   When it was the caller's job to sequence the two, three of five callers got it wrong and the app
   could not prompt at all on a day nobody opened it. M6 fixed one instance of this in `HomeViewModel`
   and left two alive: **fixing an instance is not fixing the class — go and look for the siblings.**
+- **The rollover makes no call outside local storage.** It read steps until 2026-09-13, and Health
+  Connect's refusal of a background read took down the whole job for three days. Steps are read only
+  when a check-in opens (`syncRecentSteps`: yesterday and today, frozen days skipped, failures logged
+  and swallowed). **Do not add a Health Connect or network call to the rollover**, and do not add a
+  step read anywhere that runs without an Activity.
 - **The rollover must land between 04:00 and 08:00**, because it creates the rows the 08:00 prompt is
   armed from. Architecture §4 once said nothing depended on its timing; M6 made that false without
   updating it, and the job silently drifted to 09:47. A periodic request re-anchors to its last run,

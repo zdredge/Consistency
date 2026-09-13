@@ -193,11 +193,12 @@ class CheckInViewModel(
         viewModelScope.launch {
             val entries = repository.checkInQuestions(day, slot)
 
-            // Read steps before building the drafts, not after. Spec §3.3 wants today's figure
-            // visible "in the moment", and at 21:00 the number read at 04:15 is most of a day stale.
-            // Skipped entirely when nothing measured is on this check-in, so a morning check-in
-            // never touches Health Connect.
-            if (entries.any { it.readOnly }) repository.syncSteps(day)
+            // Read steps before building the drafts, not after, so the night check-in shows today's
+            // figure "in the moment" (spec §3.3). Both check-ins read -- yesterday and today -- because
+            // this is the only place steps are read: the rollover cannot, from the background. The
+            // morning check-in shows no steps, but it is the first read of yesterday once complete.
+            // A failed read is swallowed inside, and never stops the check-in opening.
+            repository.syncRecentSteps()
 
             val questions = entries.map { entry ->
                 QuestionUi(

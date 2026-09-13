@@ -500,10 +500,21 @@ investigated, and nothing reads it as a step count. No records at all writes **n
 walk" and "has not synced" are indistinguishable, and a zero would score a miss the user could not
 have earned.
 
-Two read triggers, one entry point (`ConsistencyRepository.syncSteps`): the rollover reads the day
-that just closed, and opening the night check-in reads today. The rollover reads **only** that one
-day on purpose — re-reading history each night would reset every `last_synced_at` and nothing would
-ever freeze, which is the O4 rule looking present and never firing.
+**One read trigger, and it is always in the foreground.** Opening either check-in calls
+`ConsistencyRepository.syncRecentSteps`, which reads **yesterday and today** through the single write
+path `syncSteps`. The morning check-in is the first read of yesterday once it is complete; the night
+check-in shows today. A day is read at up to three check-ins — its own night, the next morning and the
+next night — and never again, so its `last_synced_at` stops moving and O4's freeze fires. A day
+already `FROZEN` is skipped outright, and a failed read is logged and skipped per day rather than
+breaking the check-in.
+
+**The rollover does not read steps.** Until 2026-09-13 it read the day that had just closed, and every
+run from 09-11 failed: Health Connect refuses a background read without
+`READ_HEALTH_DATA_IN_BACKGROUND`, and the throw aborted the run before it marked anything missed or
+froze anything. The user chose to drop the background read rather than ask for a stronger permission
+(see *The rollover defect, fixed* in `build-order.md`). What that costs: steps walked after the last
+check-in that reads a day are uncounted, which needs both of the next day's check-ins skipped; and a
+day whose two-day window sees no check-in opened gets no value — excluded, never zero.
 
 ### Cross-cutting: one clock, one day resolver
 

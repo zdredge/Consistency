@@ -23,7 +23,7 @@ enum class Capture { IN_WINDOW, BACKFILLED, LATE, PENDING }
 enum class CheckInState { PENDING, ANSWERED, MISSED }
 
 /**
- * Spec O4: provisional for 24h after the 04:00 read, then frozen.
+ * Spec O4: provisional for 24h after its last read, then frozen.
  *
  * [CONFLICTED] is the origin guard's verdict, not part of O4: more than one source reported steps for
  * the day, so the figure cannot be trusted and the day is not scored. It is a state rather than a

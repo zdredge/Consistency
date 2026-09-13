@@ -1397,9 +1397,9 @@ read **"67.0k"**, because the whole-number check ran before rounding.
 Bars also gained the chart marks they lacked — a note dot above the bar, a cap on a backfilled day, and
 a dashed stub for a deferral. Dots show a note; activity rows show selection only.
 
-### Open defect — the rollover has been failing since 2026-09-11
+### The rollover defect, fixed — 2026-09-13
 
-**Found by the Phase 3 device pass, deferred by the user until M8 closes.** Not caused by M8; found
+**Found by the Phase 3 device pass, deferred by the user until M8 closed.** Not caused by M8; found
 because a real database was read for the first time in four days.
 
 Every rollover since 2026-09-11 09:17 has failed, thirteen consecutive runs, all with the same error:
@@ -1427,15 +1427,27 @@ is why rows still exist. The first check-in the user misses will stay `PENDING` 
 compares stored state against today rather than assuming one run per day, so a fixed job repairs the
 backlog on its next run.
 
-Two fixes, and **the second matters more than the first**:
-
-1. Declare and request `READ_HEALTH_DATA_IN_BACKGROUND`, so the 04:00 read works.
-2. **A failing step read must not take down the rollover.** Steps are one of four jobs and the other
-   three do not depend on them. This is precisely the silently-failing rollover architecture §8 rates
-   *High — invisible*, and it failed invisibly for two days.
-
 The app's own safety net works and was about to fire: `HomeViewModel.isRolloverOverdue` trips two days
 after the last success, which would have surfaced on 09-14.
+
+**The fix: no background read at all, the user's call.** Rather than request
+`READ_HEALTH_DATA_IN_BACKGROUND` to keep the 04:15 read, the user proposed reading steps only when a
+check-in opens — always in the foreground. The rollover now makes no call outside local storage, so a
+Health Connect failure cannot reach it. Opening **either** check-in calls `syncRecentSteps`, which
+reads yesterday and today: the morning check-in runs after 04:00, when yesterday is complete, so it is
+a better read than 04:15 ever was. Two rules come with it — a `FROZEN` day is never re-read, because
+reading resets its anchor; and a failed read is logged and skipped per day, so it costs a figure,
+never the check-in. No manifest, permission or schema change.
+
+Trade-offs, accepted: steps walked after the last check-in that reads a day go uncounted, which needs
+both of the next day's check-ins skipped; a day with no check-in opened in its two-day window gets no
+value (excluded, never zero); and a day re-read at the next night's check-in freezes 24 hours after
+*that* read, a little later than before.
+
+Tests: the rollover never reads an available source; with a source that throws for every day it still
+marks missed and freezes; `syncRecentSteps` records both days, leaves a frozen day's state, value and
+anchor untouched, and records one day when the other's read fails. Mutations caught: putting the
+rollover's read back fails two rollover tests; removing the frozen-day skip fails its test.
 
 ### What Phase 2 onward must build
 
