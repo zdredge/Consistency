@@ -1335,6 +1335,34 @@ a list, and a screen per item with its chart, its figures and its table.
 - **Settings and item configuration** remain deferred to the post-plan add-on, with the requirement
   that changing a check-in time must re-arm alarms **and** re-anchor the rollover explicitly.
 
+### After the close — the user's review of the item screen, 2026-09-13
+
+Six notes, all applied. Worth recording because most of them are about the screen's **priorities**
+rather than its correctness, and the correctness was never in question.
+
+- **The chart is now the point of the page.** It takes a fixed share of the screen height with
+  everything else beneath it, where it had been a strip above a long list of numbers. Every chart
+  grows into the height it is given: calendar cells scale (**capped against their own width** — past
+  that a calendar of tall rectangles reads as a bar chart, which the first attempt produced), and the
+  rows, squares, bars and dots all fill their box.
+- **0.55 of the screen, not the 0.6 asked for.** At 0.6 the table's three rows fell below the fold,
+  and a default view you have to scroll to reach is not a default view. The figures were also
+  compacted to one line each — label, its detail, and the value — to buy the difference back.
+- **The table scrolls inside its own box**, three days deep, so reading back through a month does not
+  push the figures off the top of the page.
+- **The shutter on opening an item is gone.** The ViewModel outlives the screen, so tapping an item
+  rendered the *previous* item's chart for a frame, then a blank while the read ran, then the new one
+  — three things in a few hundred milliseconds. The list already knows the prompt and the subtitle, so
+  the header is set before the screen composes and only the body waits.
+- **Headers are title case and a size above their own detail line.** At the same size the two ran
+  together and the screen read as a wall of grey.
+- **The "now 3" beneath a run is dropped**, and "nothing scored yet" is now **N/A**.
+
+One thing the review surfaced that was a real defect rather than a preference: the steps axis ran to
+**40,000 for a peak of 26,963**, because the tick function always added a step of headroom. It now
+adds one only when the data lands exactly on the top tick — which is the case that needed it, a
+full-height bar merging with the frame.
+
 ### Open defect — the rollover has been failing since 2026-09-11
 
 **Found by the Phase 3 device pass, deferred by the user until M8 closes.** Not caused by M8; found

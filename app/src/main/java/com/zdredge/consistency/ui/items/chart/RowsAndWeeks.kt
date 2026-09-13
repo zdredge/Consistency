@@ -2,6 +2,7 @@ package com.zdredge.consistency.ui.items.chart
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,7 +45,12 @@ private val weekLabelFormat = DateTimeFormatter.ofPattern("d MMM")
  */
 @Composable
 internal fun ActivityRowsChart(rows: List<ActivityRow>, days: List<DayCell>, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth()) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    // The strips grow into the height the chart was given. At a fixed 14dp they were a footnote on a
+    // screen whose whole point is the chart.
+    val rowHeight = (maxHeight / rows.size.coerceAtLeast(1) - 10.dp).coerceIn(14.dp, 56.dp)
+
+    Column(Modifier.fillMaxWidth()) {
         rows.forEach { row ->
             Row(
                 Modifier.fillMaxWidth().padding(bottom = if (row.flagged) 0.dp else 6.dp),
@@ -68,7 +74,7 @@ internal fun ActivityRowsChart(rows: List<ActivityRow>, days: List<DayCell>, mod
                         Box(
                             Modifier
                                 .weight(1f)
-                                .height(14.dp)
+                                .height(rowHeight)
                                 .drawBehind {
                                     // A night before the item existed gets a dim dot, the same mark
                                     // the calendar uses. Drawing nothing was tried first and left the
@@ -104,6 +110,7 @@ internal fun ActivityRowsChart(rows: List<ActivityRow>, days: List<DayCell>, mod
             if (row.flagged) Box(Modifier.height(6.dp))
         }
     }
+    }
 }
 
 /**
@@ -115,8 +122,13 @@ internal fun ActivityRowsChart(rows: List<ActivityRow>, days: List<DayCell>, mod
  */
 @Composable
 internal fun WeekSquaresChart(weeks: List<WeekAnswer>, modifier: Modifier = Modifier) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    // Five squares across a phone are limited by width, not height, so this grows only until they
+    // would stop being squares.
+    val squareHeight = (maxHeight - 24.dp).coerceIn(44.dp, maxWidth / 5 + 8.dp)
+
     Row(
-        modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -128,7 +140,7 @@ internal fun WeekSquaresChart(weeks: List<WeekAnswer>, modifier: Modifier = Modi
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .height(squareHeight)
                         .drawBehind { drawCell(week.cell, dayCalendarFill(week.cell)) },
                 )
                 Text(
@@ -140,6 +152,7 @@ internal fun WeekSquaresChart(weeks: List<WeekAnswer>, modifier: Modifier = Modi
                 )
             }
         }
+    }
     }
 }
 

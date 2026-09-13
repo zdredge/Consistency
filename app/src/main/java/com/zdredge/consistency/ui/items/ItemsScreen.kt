@@ -19,7 +19,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.zdredge.consistency.domain.model.ItemId
 
 /**
  * Every item, as a way in to its history.
@@ -33,7 +32,7 @@ import com.zdredge.consistency.domain.model.ItemId
 fun ItemsScreen(
     state: ItemsUiState,
     listState: LazyListState,
-    onOpenItem: (ItemId) -> Unit,
+    onOpenItem: (ItemRow) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -56,7 +55,7 @@ fun ItemsScreen(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onOpenItem(row.itemId) },
+                        .clickable { onOpenItem(row) },
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant,
                     ),

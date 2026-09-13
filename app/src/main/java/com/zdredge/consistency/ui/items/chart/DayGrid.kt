@@ -3,9 +3,11 @@ package com.zdredge.consistency.ui.items.chart
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -27,6 +29,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.DayState
@@ -68,8 +71,24 @@ internal fun DayGrid(
     val showTally = weeks.isNotEmpty()
     val labelWidth = 46.dp
     val tallyWidth = 54.dp
+    val flagged = weeks.any { it.closed && it.incomplete }
 
-    Column(modifier.fillMaxWidth()) {
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+    // The squares grow into whatever height the screen gave the chart -- at a fixed 30dp they were
+    // the smallest thing on a page whose point is the chart. **Capped against their own width**,
+    // because past that they stop being squares: a calendar of tall rectangles reads as a bar chart,
+    // and the first attempt at filling the space produced exactly that.
+    val cellWidth = (maxWidth - labelWidth - (if (showTally) tallyWidth else 0.dp) - 24.dp) / 7
+    val spare = maxHeight - 20.dp - (if (flagged) 22.dp else 0.dp)
+    val cellHeight = (spare / rows.size.coerceAtLeast(1) - 4.dp)
+        .coerceIn(22.dp, cellWidth * 1.1f)
+
+    Column(
+        Modifier.fillMaxWidth().fillMaxHeight(),
+        // Centred, so the leftover sits above and below the grid rather than opening a gap between
+        // the calendar and the key that explains it.
+        verticalArrangement = Arrangement.Center,
+    ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Spacer(Modifier.width(labelWidth))
             DayNames.forEach { name ->
@@ -110,7 +129,7 @@ internal fun DayGrid(
                         Box(
                             Modifier
                                 .weight(1f)
-                                .height(30.dp)
+                                .height(cellHeight)
                                 .drawBehind { drawCell(cell, fillOf(cell)) },
                         )
                     }
@@ -119,13 +138,13 @@ internal fun DayGrid(
                     repeat(7 - week.size) { Spacer(Modifier.weight(1f)) }
                 }
                 if (showTally) {
-                    TallyChip(weeks.getOrNull(index), Modifier.width(tallyWidth))
+                    TallyChip(weeks.getOrNull(index), cellHeight, Modifier.width(tallyWidth))
                 }
             }
         }
 
         // An unexplained glyph is worse than none. Shown only when one is actually on screen.
-        if (weeks.any { it.closed && it.incomplete }) {
+        if (flagged) {
             Text(
                 "○ that week had days nobody answered",
                 style = MaterialTheme.typography.labelSmall,
@@ -133,6 +152,7 @@ internal fun DayGrid(
                 modifier = Modifier.padding(top = 6.dp),
             )
         }
+    }
     }
 }
 
@@ -279,7 +299,7 @@ internal fun DrawScope.drawCell(cell: DayCell, fill: CellFill) {
  * being read as the second thing.
  */
 @Composable
-private fun TallyChip(week: WeekFigure?, modifier: Modifier = Modifier) {
+private fun TallyChip(week: WeekFigure?, height: Dp, modifier: Modifier = Modifier) {
     if (week == null || !week.active || week.value == null) {
         Spacer(modifier)
         return
@@ -297,7 +317,7 @@ private fun TallyChip(week: WeekFigure?, modifier: Modifier = Modifier) {
 
     Box(
         modifier
-            .height(30.dp)
+            .height(height)
             .background(
                 color = if (met) ChartPalette.Tint else Color.Transparent,
                 shape = RoundedCornerShape(6.dp),

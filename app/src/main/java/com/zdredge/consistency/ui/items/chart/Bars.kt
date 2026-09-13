@@ -79,7 +79,9 @@ internal fun BarsChart(
         Box(
             Modifier
                 .fillMaxWidth()
-                .height(150.dp)
+                // The plot takes what is left after the weekly chips, so a taller screen is a taller
+                // chart rather than more empty space beneath one.
+                .weight(1f)
                 .drawBehind {
                     val plot = Plot(
                         area = Rect(

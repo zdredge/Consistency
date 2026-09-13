@@ -243,7 +243,12 @@ class MainActivity : ComponentActivity() {
                                 // Kept in the ViewModel, so coming back from an item returns to
                                 // where the list was rather than to the top of it.
                                 listState = itemsViewModel.listState,
-                                onOpenItem = { backStack.push(Screen.ItemDetail(it)) },
+                                onOpenItem = { row ->
+                                    // The header is set before the screen composes, so opening an
+                                    // item does not flash the previous one's chart on the way in.
+                                    itemDetailViewModel.open(row.prompt, row.subtitle)
+                                    backStack.push(Screen.ItemDetail(row.itemId))
+                                },
                                 onBack = { backStack.pop() },
                                 modifier = Modifier.padding(padding),
                             )

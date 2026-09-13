@@ -145,8 +145,12 @@ internal fun niceTicks(max: Float, wanted: Int = 4, minStep: Float = 0f): List<F
             else -> 10 * magnitude
         },
     )
-    val ticks = generateSequence(0f) { it + step }.takeWhile { it < max - step / 100f }.toList()
-    return ticks + (ticks.last() + step) + (ticks.last() + 2 * step)
+    // Up to the first tick that covers the data, and one step further **only when the data lands
+    // exactly on it**. Always adding a step put the steps axis at 40,000 for a peak of 26,963 and
+    // threw a third of the plot away; never adding one left a full-height bar merged with the frame.
+    val below = generateSequence(0f) { it + step }.takeWhile { it < max }.toList()
+    val top = below.last() + step
+    return if (top - max < step / 100f) below + top + (top + step) else below + top
 }
 
 /** `8000` reads as `8,000`. An axis of bare digits is one the eye has to parse rather than read. */

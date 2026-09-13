@@ -48,51 +48,46 @@ private fun figuresFor(detail: ItemDetail): List<Figure> = buildList {
     // Constraint 17: leaning on the neutral answer stays legible rather than hidden.
     val noOpportunity = (detail.figures.daily ?: detail.figures.weekly)?.summary?.noOpportunityCount ?: 0
     if (noOpportunity > 0) {
-        add(Figure("No opportunity", "$noOpportunity", "chosen in the window"))
+        add(Figure("No Opportunity", "$noOpportunity", "Chosen in the window"))
     }
 
     detail.figures.recording?.let { run ->
         // "Recorded", never "streak". These are the items deliberately never judged, and a streak
         // label would turn the one unscored thing in the app into a performance measure.
         val unit = if (detail.version.slot == Slot.MORNING) "Nights" else "Days"
-        add(Figure("$unit recorded in a row", "${run.longest}", "now ${run.current}"))
+        add(Figure("$unit Recorded in a Row", "${run.longest}"))
     }
 
     detail.figures.typicalMinute?.let {
-        add(Figure("Typical time", it.asClockTime(), "over the nights shown"))
+        add(Figure("Typical Time", it.asClockTime(), "Over the nights shown"))
     }
 
     if (isEmpty()) {
         // An observation with nothing recorded yet, which is most of the library on day three.
-        add(Figure("Nothing to report yet", "—", "figures appear as answers arrive"))
+        add(Figure("Nothing to Report Yet", "—", "Figures appear as answers arrive"))
     }
 }
 
 private fun goalFigures(figures: GoalFigures, unit: String, units: String): List<Figure> {
     val summary = figures.summary
     val scored = summary.met + summary.missed
+    val unitTitle = unit.replaceFirstChar(Char::uppercase)
     return buildList {
         add(
             Figure(
-                label = "Hit rate, by the $unit",
+                label = "Hit Rate by the $unitTitle",
                 value = summary.hitRate.asPercent(),
                 // Never the percentage alone: 2 of 3 and 200 of 300 are the same number and not the
                 // same fact, and on the first fortnight of an item the denominator is the story.
-                detail = if (scored == 0) "nothing scored yet" else "${summary.met} of $scored $units",
+                detail = if (scored == 0) "N/A" else "${summary.met} of $scored $units",
             ),
         )
         if (summary.averageAttainment != null) {
-            add(Figure("Average attainment", summary.averageAttainment.asPercent(), "how close, on average"))
+            add(Figure("Average Attainment", summary.averageAttainment.asPercent(), "How close, on average"))
         }
         // Named by period like the hit rate above it. Coffee and steps show both sets at once, and
-        // two rows reading "Longest run" differ only by the unit on their value.
-        add(
-            Figure(
-                "Longest run, by the $unit",
-                "${figures.run.longest} $units",
-                "now ${figures.run.current}",
-            ),
-        )
+        // two rows reading "Longest Run" would differ only by the unit on their value.
+        add(Figure("Longest Run by the $unitTitle", "${figures.run.longest} $units"))
     }
 }
 

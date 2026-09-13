@@ -73,8 +73,25 @@ class ItemDetailViewModel(
     /** The rolling average is on by default, with a switch to hide it (spec §5.4). */
     private var showTrend: Boolean = true
 
+    /**
+     * Called as the item is tapped, before the screen composes.
+     *
+     * **This is what removes the shutter.** The ViewModel outlives the screen, so opening an item
+     * used to render the *previous* item's chart for a frame, then a blank while the read ran, then
+     * the new one — three different things in a few hundred milliseconds. The list already knows the
+     * prompt and the subtitle, so the header can be right immediately and only the body has to wait.
+     */
+    fun open(prompt: String, subtitle: String) {
+        _state.value = ItemDetailUiState(loading = true, prompt = prompt, subtitle = subtitle)
+    }
+
     suspend fun load(itemId: ItemId) {
-        _state.value = ItemDetailUiState(loading = true)
+        // Whatever `open` put there stays: clearing it here would reintroduce the blank frame.
+        _state.value = ItemDetailUiState(
+            loading = true,
+            prompt = _state.value.prompt,
+            subtitle = _state.value.subtitle,
+        )
 
         val loaded = repository.itemHistory(itemId, dayResolver.today())
         history = loaded
