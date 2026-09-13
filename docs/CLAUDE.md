@@ -14,10 +14,13 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M7 are complete, and real data collection began on 2026-09-10.** M8 (item detail views
-and charts) is in progress, in six phases; Phases 1 to 3 are done — the chart design, the pure core
-in `:domain`, and navigation plus the item screen's figures and table. Phases 4 and 5 draw the
-charts. Item configuration and check-in times are deferred to a settings add-on after the plan. **M8 is the first milestone whose
+**M0 through M8 are complete, and real data collection began on 2026-09-10.** Every item now has a
+screen with its chart, its figures and its table. **One open defect is outstanding against M8 and is
+the next thing to fix: the rollover has failed every run since 2026-09-11**, because it reads steps in
+the background and the manifest never declared `READ_HEALTH_DATA_IN_BACKGROUND` — see the open-defect
+section in `build-order.md`. The more important half of that fix is that a failing step read must not
+take down the other three quarters of the job. Item configuration and check-in times are deferred to a
+settings add-on after the plan. **M8 is the first milestone whose
 work happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do
 not begin a later milestone than the one in progress.
 

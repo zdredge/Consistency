@@ -3,8 +3,10 @@
 **Status:** agreed and in progress. **M0 through M7 are complete**, including the four defects M4.5
 found and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
 cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts) is in progress**:
-Phase 1, the chart design, was agreed with the user on 2026-09-11; Phase 2, the pure core in
-`:domain`, and Phase 3, navigation and the figures, both landed on 2026-09-13. Item configuration and check-in times moved to a settings add-on
+**M8 is complete as of 2026-09-13**, all six phases: the chart design agreed on 2026-09-11, then the
+pure core, navigation and the figures, the grid charts, the plotted charts, and the close-out pass.
+One open defect is recorded against it — the rollover has been failing since 2026-09-11 — and is the
+next thing to fix. Item configuration and check-in times moved to a settings add-on
 after the plan.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
@@ -974,7 +976,7 @@ had gone to plan.
 
 ---
 
-## M8 — Item detail views and charts — **in progress**
+## M8 — Item detail views and charts — **COMPLETE 2026-09-13**
 
 **Why now.** Real data started on 2026-09-10 and there was nowhere to see it: the only screens were
 Home and the check-in, and every figure the scoring engine produces was tested and wired to nothing.
@@ -1010,7 +1012,7 @@ Each phase ends green, is reviewed, and is committed only on approval.
 4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas. **Done 2026-09-13.**
 5. **Bars and dots** — coffee, steps and the sleep times, with the trend line and the night filter.
    **Done 2026-09-13.**
-6. **Device pass and close.**
+6. **Device pass and close.** **Done 2026-09-13.**
 
 ### Phase 1 — chart design — **DONE 2026-09-11**
 
@@ -1300,6 +1302,38 @@ Three more things the device found:
   width while the plot is inset for its axis. That is a chart quietly labelling the wrong week. The
   insets are now one constant, shared.
 - **"Average" wrapped to "Avera/ge".** Four chips do not fit one phone-width row; they wrap now.
+
+### Phase 6 — device pass and close — **DONE 2026-09-13**
+
+All sixteen items opened on the phone, against the real database, and back out again. No crash and
+nothing in logcat from this package. Every one of the seven views was seen rendering real data during
+Phases 3 to 5 rather than in a sweep at the end — the bugs that mattered were found where they were
+introduced.
+
+**domain 341 · data JVM 5 · instrumented 122. All green.**
+
+**Exit criteria, each met:**
+
+| Criterion | How it was met |
+|---|---|
+| Every item renders its agreed view | `SeedLibraryViewsTest` runs the rule over the real seed rows; all sixteen opened on the device |
+| The clock axis respects 04:00 under test | `ClockAxisTest`, and the mutation anchoring it at midnight is caught by 12 tests. On the phone the axis runs 10 PM to 1 AM with **midnight above 11 PM** |
+| Hit rate and attainment both display | Both on screen for water and steps, never merged, with the denominator beside the percentage |
+| The table exposes every state | All ten `DayState`s have a word; the device showed Open, Met, Recorded, and the provisional and backfilled marks |
+| The night filter's average and typical time use only the nights shown | `SleepTrendTest`, the mutation that ignores the filter — M8's stated exit criterion — and on the device, switching to Every night moved the chart from one dot to three |
+
+**What M8 was actually for.** Real data started on 2026-09-10 and there was nowhere to see it: every
+figure the scoring engine produced was tested and wired to nothing. There is now a way in from Home,
+a list, and a screen per item with its chart, its figures and its table.
+
+**Carried forward:**
+
+- **The rollover defect below**, deferred by the user until M8 closed. It is the next thing.
+- **M9's hazard stands.** M9 as written "populates Room directly", and the only device that runs this
+  app holds four days of real answers. M9 needs a separate debug install (`applicationIdSuffix`), or
+  it must never run on this phone.
+- **Settings and item configuration** remain deferred to the post-plan add-on, with the requirement
+  that changing a check-in time must re-arm alarms **and** re-anchor the rollover explicitly.
 
 ### Open defect — the rollover has been failing since 2026-09-11
 
