@@ -3,8 +3,9 @@
 **Status:** agreed and in progress. **M0 through M7 are complete**, including the four defects M4.5
 found and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
 cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts) is in progress**:
-Phase 1, the chart design, was agreed with the user on 2026-09-11. Item configuration and check-in
-times moved to a settings add-on after the plan.
+Phase 1, the chart design, was agreed with the user on 2026-09-11, and Phase 2, the pure core in
+`:domain`, landed on 2026-09-13. Item configuration and check-in times moved to a settings add-on
+after the plan.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -1002,7 +1003,8 @@ Each phase ends green, is reviewed, and is committed only on approval.
 
 1. **Chart design, no code** — mockups agreed with the user. **Done 2026-09-11.**
 2. **The pure core, in `:domain` (TDD)** — the 04:00 clock axis, item detail assembly, the per-item
-   view map, and the small derived figures the views need.
+   view map, and the small derived figures the views need. **Done 2026-09-12**, in two review gates:
+   2a the building blocks, 2b the assembly.
 3. **Getting there** — a hand-rolled back stack, an Items screen from one button on Home, and the
    detail screen with its figures and table but no charts.
 4. **Calendars and rows** — every view that is a grid, drawn in Compose Canvas.
@@ -1045,6 +1047,91 @@ outcomes worth carrying into the build:
   the keypad still accepts a half, and the rule covers both.
 
 **Verified by agreement, not by a build.** Nothing in this phase compiles.
+
+### Phase 2 — the pure core — **DONE 2026-09-13**
+
+Two review gates: **2a** the building blocks, landed 2026-09-12, and **2b** the assembly. `:domain` went from 235 tests to
+341, `:data`'s JVM suite from 3 to 5.
+
+**Everything the item screen decides lives here**, because `:app` has no tests and Phases 3–5 only
+draw. `ItemDetails.assemble` takes one item's history and returns its chart, its table and its
+figures, all read off a single list of `DayCell`s — the rule that stops a calendar and the hit rate
+beside it from describing different fortnights. A `Chart` variant per view keeps `:app`'s `when`
+exhaustive, so a view added later cannot reach the screen undrawn.
+
+**Three real defects, found by tests written to fail first.**
+
+- **A week nobody answered scored as met.** `RollUpCalculator.score` sums an empty coffee week to 0,
+  and 0 is inside a limit of 14. Silence counted as success — constraint 11 exactly — and
+  `MeasuredScorer.scoreWeek` already excluded the same case, so the two scorers simply disagreed.
+- **The weekly roll-up counted a deferral's stale value**, where `GoalScorer` ignores it. The same
+  disagreement, in the other direction.
+- **`NightFilter.OPENING` read `null` at runtime.** A stored `val` in a companion object pointing at
+  a nested `data object`: the companion initialises first and captured the value before it existed.
+  The chart would have opened with no filter at all. A one-line constant that looked too simple to
+  test, caught by its test within a minute of that test being written.
+
+**Two rules the spec had settled and the code had not applied.**
+
+- **A "not yet" is not a miss while it can still be answered.** `GoalScorer` scored every `PENDING`
+  answer as missed, so deferring at 21:00 dropped the day's hit rate before the morning to resolve it
+  had happened. A2.1 converts it at rollover, so it now converts at rollover — `PERIOD_OPEN` inside
+  grace, `MISSED` after, on the boundary the rollover itself uses.
+- **A week is open all of Sunday.** `PeriodProgress.closed` read `elapsedDays >= totalDays`, calling
+  a week finished on the one day it can still be changed. Removed rather than fixed; "closed" is now
+  `today > weekEnd`, in one place.
+
+**Decisions worth carrying forward.**
+
+- **The window ends on the item's latest answerable day**, not on today. A morning item cannot have
+  an answer for tonight, so ending on today would give it thirteen real days and a guaranteed blank.
+  A retired item anchors on its retirement day.
+- **A blank square is four different things** — not active, not yet arrived, still answerable,
+  unanswered — and only the last is a failure. On a five-week chart of an app three days old, almost
+  every square is the first.
+- **A weekly question is judged on its Sunday against the weekly target; a weekly count or total is
+  judged against the target in force on the week's Monday.** Targets were created Thursday
+  2026-09-10, so the first partial week is simply not a goal week for stretching, working out,
+  coffee's weekly cap or steps — it neither extends a run nor breaks one.
+- **Observations show a recording count, and it takes no filter at all** — enforced by
+  `RecordingCount.of`'s signature, so "the count ignores the night filter" cannot be got wrong by a
+  caller. The rolling average and the typical time do follow it, which is the milestone's exit
+  criterion.
+- **Brittle by design:** giving water a weekly target would turn it from a shaded calendar into bars.
+  It follows §5.4's reasoning and it will still surprise — relevant to the settings add-on.
+
+**Bugs introduced and fixed inside this phase**, listed because the mutation runs are what found
+most of them: the shade buckets left zero outside every shade at a target of 2; the trend line drew
+across nights with no answer; a conflicted step day nearly carried the two sources' total as a
+figure. One of the test assertions was also wrong — a week with one answer across three active days
+is incomplete, and the code was right.
+
+**Twelve mutations run, four in 2a and eight in 2b**, each one a rule deliberately broken to see
+whether anything failed. 2a's four were the clock axis anchored at midnight, the shade buckets
+rounding rather than flooring, the trend ignoring the night filter — M8's stated exit criterion — and
+grace asked about the answer day instead of the check-in day. 2b's broke the four kinds of blank, the
+deferral boundary, the weekly question's period, the conflicted day's value, the week's target date,
+the window's last day, the closed-week filter and the flagged activity's position.
+
+**Eleven were caught. The twelfth was not, and the reason was worth knowing:** removing the
+closed-week filter from the weekly figures changed nothing, because `WeeklyFigures` independently
+refuses to score an open week and returns `PERIOD_OPEN`. The running week is kept out twice over,
+which is defence in depth working as intended — and it also meant the filter itself was untested, so
+a week in flight could have started appearing as an *excluded* week, which reads as "set aside"
+rather than "has not happened yet". An assertion on the weekly tally now pins it.
+
+**The mutation harness itself was wrong, and it matters.** It ran the suite and then read whatever
+XML was on disk. A build that fails for any reason other than a test — a compile error, or the
+incremental-compilation storage fault this project hits under `--no-daemon` — leaves the previous
+run's *passing* results in place, so "no failures" was indistinguishable from "nothing ran", and
+three mutations were reported as unproven when the tests do catch all three. The results directory
+is now emptied before each run and an empty one reported as an inconclusive run. Same lesson as
+`SchemaVersionPinTest`: **a check that can read a stale artifact is not a check.**
+
+**A `:data` JVM test runs the view rule over the real `SeedLibrary` rows.** `ItemViewTest` pins all
+sixteen views against a hand-written mirror of the library, which would keep passing if the seed
+changed underneath it; this one fails when it does. It also asserts that a fresh install shows no
+missed day on any of the sixteen — the greeting the user would otherwise get on day three.
 
 ### What Phase 2 onward must build
 

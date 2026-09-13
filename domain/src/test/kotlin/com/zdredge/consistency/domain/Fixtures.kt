@@ -1,5 +1,6 @@
 package com.zdredge.consistency.domain
 
+import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
@@ -180,6 +181,28 @@ fun measured(
 
 fun rollUp(item: String, aggregation: RollUpAggregation): RollUpSpec =
     RollUpSpec(itemId = ItemId(item), sourceItemId = ItemId(item), aggregation = aggregation)
+
+/**
+ * One item's whole history, for the detail tests. The single-version case is the common one; an
+ * item that was reworded passes its versions explicitly.
+ */
+fun history(
+    item: Item,
+    version: ItemVersion,
+    options: List<SelectOption> = emptyList(),
+    targets: List<Target> = emptyList(),
+    rollUp: RollUpSpec? = null,
+    answers: List<Answer> = emptyList(),
+    measured: List<MeasuredValue> = emptyList(),
+): ItemHistory = ItemHistory(
+    item = item,
+    versions = listOf(version),
+    options = options,
+    targets = targets,
+    rollUp = rollUp,
+    answers = answers,
+    measured = measured,
+)
 
 /** The Monday-start week containing [day], as seven dates. */
 fun weekOf(day: LocalDate, resolver: com.zdredge.consistency.domain.time.DayResolver): List<LocalDate> {

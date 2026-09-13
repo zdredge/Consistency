@@ -15,8 +15,9 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
    what you may build.
 
 **M0 through M7 are complete, and real data collection began on 2026-09-10.** M8 (item detail views
-and charts) is in progress, in six phases; Phase 1, the chart design, is done. Item configuration and
-check-in times are deferred to a settings add-on after the plan. **M8 is the first milestone whose
+and charts) is in progress, in six phases; Phase 1, the chart design, and Phase 2, the pure core in
+`:domain`, are done. Item configuration and check-in times are deferred to a settings add-on after
+the plan. **M8 is the first milestone whose
 work happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do
 not begin a later milestone than the one in progress.
 
@@ -187,6 +188,11 @@ module. This is what makes the whole rulebook testable without an emulator, whic
   otherwise. Clock times plot on an axis that starts at 04:00, or a 01:30 bedtime plots as the
   earliest night of the month. A missed day is grey, never red — only *scrolled on phone* is red, by
   the user's explicit choice.
+- **A day is judged once.** `ItemDetails.assemble` turns one item's history into its chart, its table
+  and its figures, and all three are read off the same `DayCell` list. Computing a figure a second
+  time for a second surface is how a calendar and the hit rate beside it come to disagree about the
+  same fortnight. A blank day is four different things — not active, not arrived, still answerable,
+  unanswered — and only the last is a failure.
 
 ## UI
 
