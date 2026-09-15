@@ -96,11 +96,15 @@ object Scenarios {
      * An item retired part-way through, and a question reworded (spec §3.3, scoring-cases 6.x).
      *
      * Stretched retires on day 40, so it must show only in the periods it was active in. Meals is
-     * reworded on day 30, so its earlier answers stay pinned to the version they answered.
+     * reworded on day 50, so its earlier answers stay pinned to the version they answered.
+     *
+     * **Both fall inside the item screen's five weeks.** That screen shows nothing older, so a change
+     * made earlier than about 34 days ago could be proven by the tests and never seen. Found on the
+     * device, where water's day-35 change sat just outside the window.
      */
     val RetiredReversioned: Scenario = scenario(
         id = "retired_reversioned",
-        summary = "Stretched retired on day 40; the meals question reworded on day 30.",
+        summary = "Stretched retired 29 days ago; the meals question reworded 19 days ago.",
     ) {
         HistoryShape(
             days = 70,
@@ -141,12 +145,12 @@ object Scenarios {
 
     /**
      * A target and a container size changed part-way through (spec constraint 2, scoring-cases 5.4).
-     * Water's daily target rises from 2 bottles to 3 on day 35, and the bottle shrinks from 40 oz to
-     * 32 oz the same day. Earlier days must keep scoring against the old values.
+     * Water's daily target rises from 2 bottles to 3 on day 55, and the bottle shrinks from 40 oz to
+     * 32 oz the same day -- inside the item screen's five weeks, so both targets are on it. Earlier days must keep scoring against the old values.
      */
     val EffectiveFrom: Scenario = scenario(
         id = "effective_from",
-        summary = "Water's target raised to 3 bottles and its bottle shrunk to 32 oz on day 35.",
+        summary = "Water's target raised to 3 bottles and its bottle shrunk to 32 oz 14 days ago.",
     ) {
         HistoryShape(
             days = 70,
@@ -198,8 +202,8 @@ object Scenarios {
     internal val SAW_FRIENDS = ItemId("saw_friends")
 
     internal const val RETIRED_ON = 40L
-    internal const val REVERSIONED_ON = 30L
-    internal const val CHANGED_ON = 35L
+    internal const val REVERSIONED_ON = 50L
+    internal const val CHANGED_ON = 55L
     internal const val NO_OPPORTUNITY_DAYS = 42
     internal val CAPTURES_DEFERRED = setOf(4L, 9L, 15L, 20L, 26L)
     internal val GAPPY_SILENT = (14L..20L).toSet() + setOf(30L, 33L, 44L)
