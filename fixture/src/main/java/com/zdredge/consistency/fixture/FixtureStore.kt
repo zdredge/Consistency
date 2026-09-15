@@ -5,6 +5,7 @@ import com.zdredge.consistency.data.ConsistencyRepository
 import com.zdredge.consistency.data.db.createConsistencyDatabase
 import com.zdredge.consistency.data.health.StepSource
 import com.zdredge.consistency.domain.time.DayResolver
+import java.time.Clock
 
 /**
  * The fixture install's one database, shared by the app's repository and the scenario loader.
@@ -15,7 +16,7 @@ import com.zdredge.consistency.domain.time.DayResolver
  * classpath and should not need it.
  *
  * It is the same file name as the real app's, and that is safe only because this runs under a
- * different app id — a separate data directory entirely.
+ * different app id -- a separate data directory entirely.
  */
 class FixtureStore(context: Context) {
 
@@ -23,4 +24,8 @@ class FixtureStore(context: Context) {
 
     fun repository(dayResolver: DayResolver, stepSource: StepSource): ConsistencyRepository =
         ConsistencyRepository(database, dayResolver, stepSource = stepSource)
+
+    /** Generates [scenario] for [clock]'s now and replaces this install's history with it. */
+    suspend fun load(scenario: Scenario, clock: Clock = Clock.systemDefaultZone()): FixtureLoader.Loaded =
+        FixtureLoader(database, DayResolver(clock)).load(scenario.generate(clock))
 }
