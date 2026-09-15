@@ -41,4 +41,6 @@ data class GivenAnswer(
     val answer: Answer,
     val checkInDay: LocalDate,
     val slot: Slot,
+    /** The night a resolved deferral was deferred from, when this answer resolved one. */
+    val carriedOverFrom: LocalDate? = null,
 )

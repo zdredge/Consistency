@@ -29,6 +29,18 @@ internal object AnswerValues {
             else -> byType(base, type, options.sortedBy { it.ordinal }, random)
         }
 
+    /**
+     * The answer with its value changed the way a correction changes it, or null for a select, whose
+     * correction would need a second option and proves nothing the numeric ones do not.
+     */
+    fun corrected(answer: Answer): Answer? = when {
+        answer.valueNumber != null -> answer.copy(valueNumber = answer.valueNumber!! + 1)
+        answer.valueBool != null -> answer.copy(valueBool = !answer.valueBool!!)
+        answer.valueScale != null -> answer.copy(valueScale = if (answer.valueScale!! >= 5) 4 else answer.valueScale!! + 1)
+        answer.valueTime != null -> answer.copy(valueTime = answer.valueTime!!.plusMinutes(15))
+        else -> null
+    }
+
     private fun byType(base: Answer, type: AnswerType, options: List<SelectOption>, random: Random): Answer =
         when (type) {
             AnswerType.BOOL -> base.copy(valueBool = random.nextBoolean())

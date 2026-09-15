@@ -7,6 +7,8 @@ import com.zdredge.consistency.domain.checkin.CheckInTimes
 import com.zdredge.consistency.domain.checkin.Grace
 import com.zdredge.consistency.domain.checkin.RolloverPlanner
 import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.Classification
+import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.scoring.ItemLifecycle
@@ -77,14 +79,57 @@ class HistoryGeneratorTest {
         }
     }
 
+    /**
+     * An answer arrives through an answered check-in at the moment it was answered -- or, if LATE,
+     * after a missed one, which a late answer never repairs (A1.2).
+     */
     @Test
-    fun everyAnswerComesThroughAnAnsweredCheckInOnTheRightDay() = forEachHistory { _, dataset ->
-        val answered = dataset.checkIns.filter { it.state == CheckInState.ANSWERED }.associateBy { it.day to it.slot }
+    fun everyAnswerComesThroughItsCheckInOnTheRightDay() = forEachHistory { clock, dataset ->
+        val today = DayResolver(clock).today()
+        val checkIns = dataset.checkIns.associateBy { it.day to it.slot }
         dataset.answers.forEach { given ->
-            val checkIn = answered[given.checkInDay to given.slot]
-            assertTrue("no answered check-in for $given", checkIn != null)
-            assertEquals(AnswerDay.forCheckIn(given.checkInDay, given.slot), given.answer.day)
-            assertEquals(checkIn!!.answeredAt, given.answer.submittedAt)
+            val checkIn = checkIns[given.checkInDay to given.slot]
+            assertTrue("no check-in for $given", checkIn != null)
+            assertEquals(
+                "answer day for $given",
+                given.carriedOverFrom ?: AnswerDay.forCheckIn(given.checkInDay, given.slot),
+                given.answer.day,
+            )
+            if (given.answer.capture == Capture.LATE) {
+                assertEquals("late answer repaired its check-in: $given", CheckInState.MISSED, checkIn!!.state)
+                assertTrue(Grace.isPastGrace(given.checkInDay, DayResolver(Clock.fixed(given.answer.submittedAt, zone)).today()))
+            } else {
+                assertEquals("check-in state for $given", CheckInState.ANSWERED, checkIn!!.state)
+                assertEquals("answer time for $given", checkIn.answeredAt, given.answer.submittedAt)
+            }
+            assertFalse(given.answer.submittedAt.isAfter(clock.instant()))
+            given.answer.editedAt?.let {
+                assertTrue("edited before given: $given", it.isAfter(given.answer.submittedAt))
+                assertFalse("edited in the future: $given", it.isAfter(clock.instant()))
+            }
+            assertFalse(given.answer.day.isAfter(today))
+        }
+    }
+
+    /** The schema's unique key. A resolved deferral must replace its "not yet", not sit beside it. */
+    @Test
+    fun oneAnswerPerItemPerDay() = forEachHistory { _, dataset ->
+        val keys = dataset.answers.map { it.answer.itemId to it.answer.day }
+        assertEquals(keys.size, keys.toSet().size)
+    }
+
+    /** Only a night goal can be deferred (CheckInContent.canDefer), and a deferral carries no value. */
+    @Test
+    fun onlyNightGoalsAreDeferredAndCarryNoValue() = forEachHistory { _, dataset ->
+        val versions = dataset.versions.associateBy { it.id }
+        dataset.answers.filter { it.answer.capture == Capture.PENDING }.forEach { given ->
+            val version = versions.getValue(given.answer.itemVersionId)
+            assertEquals(Slot.NIGHT, given.slot)
+            assertEquals(Slot.NIGHT, version.slot)
+            assertEquals(Classification.GOAL, version.classification)
+            with(given.answer) {
+                assertTrue("deferral with a value: $given", valueBool == null && valueNumber == null && valueTime == null && valueScale == null && selections.isEmpty())
+            }
         }
     }
 
@@ -104,11 +149,11 @@ class HistoryGeneratorTest {
     /** Asked of `CaptureResolver` at the moment each answer was given, as the check-in screen does. */
     @Test
     fun everyCaptureIsTheOneTheAppWouldHaveRecorded() = forEachHistory { clock, dataset ->
-        dataset.answers.forEach { given ->
+        dataset.answers.filter { it.answer.capture != Capture.PENDING }.forEach { given ->
             val atTheTime = DayResolver(Clock.fixed(given.answer.submittedAt, clock.zone))
             assertEquals(
                 "capture for $given",
-                CaptureResolver(atTheTime).forEntry(given.checkInDay),
+                CaptureResolver(atTheTime).forEntry(given.checkInDay, given.carriedOverFrom),
                 given.answer.capture,
             )
         }
@@ -168,7 +213,7 @@ class HistoryGeneratorTest {
     private fun forEachHistory(check: (Clock, FixtureDataset) -> Unit) {
         clocks.forEach { clock ->
             Scenarios.all.forEach { check(clock, it.generate(clock)) }
-            check(clock, HistoryGenerator(clock, seed = 1, missRate = 0.0, backfillRate = 1.0).generate(5))
+            check(clock, HistoryGenerator(clock, seed = 1).generate(HistoryShape(days = 5, missRate = 0.0, backfillRate = 1.0)))
         }
     }
 
