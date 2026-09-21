@@ -11,6 +11,7 @@ import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.time.ClockAxis
 import com.zdredge.consistency.ui.checkin.asAnswer
 import com.zdredge.consistency.ui.checkin.timeFormat
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 /**
@@ -27,11 +28,19 @@ import java.time.format.DateTimeFormatter
 internal val tableDayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE d MMM")
 
 /**
- * When an item is asked and whether it is scored — "Night · Goal", "Measured · Goal".
+ * When an item is asked and whether it is scored — "Night · Goal", "Measured · Goal" — and, for a
+ * retired item, when it stopped: "Night · Goal · Retired 17 Aug".
  *
  * Shared by the list and the item's own header so the two cannot describe the same item differently.
+ * The retirement is stated because a retired item stays listed (spec §3.3) and was otherwise
+ * indistinguishable from a live one until opened — found loading the M9 fixture.
  */
-internal fun subtitleFor(kind: ItemKind, slot: Slot, classification: Classification): String {
+internal fun subtitleFor(
+    kind: ItemKind,
+    slot: Slot,
+    classification: Classification,
+    retiredOn: LocalDate? = null,
+): String {
     // A measured item has no slot -- it is never asked (spec §3.3) -- so printing "Not asked" for it
     // would be true and useless.
     val asked = if (kind == ItemKind.MEASURED) {
@@ -48,7 +57,8 @@ internal fun subtitleFor(kind: ItemKind, slot: Slot, classification: Classificat
         Classification.GOAL -> "Goal"
         Classification.OBSERVATION -> "Observation"
     }
-    return "$asked · $judged"
+    val retired = retiredOn?.let { " · Retired ${it.format(windowDayFormat)}" }.orEmpty()
+    return "$asked · $judged$retired"
 }
 
 internal val windowDayFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("d MMM")

@@ -82,7 +82,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M6 | Notifications, alarms, boot reschedule | Pure scheduling logic TDD'd; delivery hand-verified | M5 | — |
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
 | M8 | Item detail views and charts, in six reviewable phases (item configuration and check-in times deferred to a post-plan add-on) | Mockups agreed first; `:domain` TDD; charts hand-checked in previews | M3, M4 | M7 |
-| M9 | Seed-data fixture (spec O7) | N/A — it *is* test scaffolding | M3 | M4–M8 |
+| M9 | Seed-data fixture (spec O7), as a separate `fixture` install | Generator JVM-tested against the domain's rules; loader instrumented; scenarios hand-checked on screen | M3 | M4–M8 |
 | M10 | Dashboard | ViewModel TDD against seeded data | M9 | — |
 | M11 | Export | TDD the serialiser; hand-verify the picker | M3 | M10 |
 
@@ -1472,9 +1472,11 @@ are proven to use only the nights shown.
 holds real data, that is exactly the hazard M8 avoids by using previews. M9 needs a separate debug
 install (`applicationIdSuffix`), or it must never run on this phone.
 
+**Settled by M9:** a separate install, chosen by the user — see *As built* under M9.
+
 ---
 
-## M9 — Seed-data fixture (spec O7)
+## M9 — Seed-data fixture (spec O7) — **COMPLETE 2026-09-15**
 
 **Purpose: this is a testing tool, not a precondition for the app being useful.** Worth stating
 plainly, because spec O7 is easy to misread as "the app needs months of data to help anyone". It does
@@ -1512,6 +1514,91 @@ builds cannot; each scenario provably contains the state it is meant to exercise
 
 **Note.** M9 depends only on M3 and can be built any time after it, in parallel with M4–M8. It is
 placed before M10 because the dashboard is its first and biggest consumer.
+
+### As built
+
+**A separate install, not a debug-only feature — the user's call.** The real app on the phone *is* the
+debug build and has held real data since 2026-09-10, so "debug-only" would have put a tool that clears
+the database inside it. A new `fixture` build type (`initWith(debug)`, `applicationIdSuffix =
+".fixture"`) installs beside it as **Consistency Fixture**, with its own database, alarms and
+permissions. `installDebug` is still the real app; `installFixture` is the fixture. The exit criterion's
+"a debug build can load" is met by that build.
+
+**Where the code lives.** A new `:fixture` module, linked by `fixtureImplementation` only. Scanning the
+compiled APKs: debug and release contain no `com.zdredge.consistency.fixture` class; the fixture APK
+contains 80. `:app` gained three seams and nothing fixture-specific: `ConsistencyApp.schedulesPrompts`
+(checked once, in `CheckInAlarmScheduler`, so the fixture install never prompts beside the real app),
+an overridable container, and `AppContainer` factories for the step source and repository. The fixture
+app's steps come from a source that reads nothing, so opening a check-in never overwrites generated
+steps with real ones and no Health Connect prompt is needed. Its launcher has a second entry, **Load
+scenario**, which lists every scenario; one tap replaces the fixture's history and reopens the app.
+
+**The generator restates no rule.** `HistoryGenerator` asks `CheckInPlanner` which check-ins exist,
+`CheckInContent` what each asks (including a deferral carried into the next morning),
+`CaptureResolver` each capture at the moment of answering, `AnswerRevision` what a correction stores,
+`Grace` what is missed, and `StepMapper` / `RolloverPlanner` what a step day is. A scenario says what
+*happened* through a `HistoryShape` — "night 9 was deferred", "the week from day 14 went unanswered" —
+never what state that produced. Deterministic per scenario id and clock.
+
+| Scenario | Days | State |
+|---|---|---|
+| `six_months` | 183 | Baseline: mostly kept habits, ~8% missed check-ins, ~6% backfills, step gaps |
+| `day_13` / `day_14` | 13 / 14 | Either side of first-run suppression. "Days of history" is taken as days since install, today included — M10 settles the rule |
+| `captures` | 28 | Backfilled and late answers; deferrals resolved in-window, one unresolved past grace, one still open |
+| `edited` | 28 | Answers corrected a day later: edit stamp set, original capture and time kept |
+| `retired_reversioned` | 70 | Stretched retired on day 40; meals reworded on day 50 |
+| `multi_origin_steps` | 28 | Five two-origin step days, yesterday among them |
+| `gappy_weeks` | 56 | A fully silent week, three more silent days, days with no steps |
+| `effective_from` | 70 | Water's target 2 → 3 bottles and bottle 40 → 32 oz on day 55 |
+| `no_opportunity` | 42 | Four Sundays in a row answering "no opportunity" to seeing friends |
+
+**Late answers are ahead of the app.** No screen reaches a check-in past its grace, so nothing the user
+can do produces a `LATE` answer yet. The data model, scoring and M8's day cells all support one, so
+`captures` includes them; the limitation is written on `HistoryShape.lateNights`.
+
+**Tests.** 24 JVM tests in `:fixture`: rules every scenario must obey at two clock times (every
+expected check-in exactly once; nothing answered before due or after now; nothing pending past grace;
+one answer per item per day; only night goals deferred, carrying no value; a late answer never repairs
+its missed check-in; every capture the one `CaptureResolver` gives), plus one test per scenario asking
+the app's own calculators — `MeasuredScorer` excludes the conflicted days, `GoalScorer` scores the same
+two bottles met before the change and missed after, `TargetResolver` and `ContainerSizeResolver`
+return the old values for earlier days. 3 instrumented tests load every scenario and read it back
+through `ConsistencyRepository` unchanged, find nothing for the rollover to repair, and prove a load
+replaces rather than merges. **Mutations caught: 17 of 17** — the plan's three and fourteen more across
+the generator, the scenarios and the loader. One was first missed (answers stamped in the future,
+whose trigger the seeds never hit) and caught by adding an all-backfill history.
+
+**Device pass, 2026-09-15.** Both apps installed side by side; the real app's row counts were
+identical before and after every install and load, and it still arms its alarms. On screen: the
+retired item's history stops on its retirement day; the reworded prompt shows; conflicted step days
+draw hollow, read "Two sources" and leave the day hit rate counting 12 of 14; late, backfilled, "Not
+yet" and unresolved deferrals all show in the Daily Log; water's two bottles read Met before the
+change and Missed after.
+
+**Found by the device pass — a scenario that could not be seen.** `effective_from` first changed
+water on day 35 of 70, which the tests proved and the screen could not show: the item screen reaches
+back only five weeks, chart and Daily Log alike. Both dated changes were moved inside that window
+(day 55, and meals' rewording to day 50). **A scenario is not done when its test passes; it is done
+when its state is on a screen.**
+
+**Found in M8's screens by the device pass, fixed 2026-09-15** after M9 closed:
+
+- **"1 weeks".** Goal figures now read "day(s)" and "week(s)" — the user's call, over choosing the word
+  by count.
+- **A retired item was unmarked in the item list**, indistinguishable from an active one until opened.
+  Its subtitle now ends "Retired 17 Aug", in the list and on its own screen.
+- **Every day was drawn against today's target.** On `effective_from`, August's met two-bottle days
+  shaded below "3 target", and a bar chart's limit line would have lain at today's value over days it
+  never applied to. The user chose **per-day targets**: `ItemDetails` now shades each day on the scale
+  of its own day's target (`DayShade`), gives bars one `TargetSpan` per stretch under the same limit,
+  and sets `ItemDetail.earlierTarget` when the target changed on screen, which the screen writes as
+  "Target was 2 bottles until 31 Aug" under the chart. **Found on the device:** shading each day in
+  its own scale's colours still drew a met two-bottle day in the colour the key calls "2", because a
+  target of two has three shades and a target of three has four. Each day is now placed on today's key
+  by where it stood against its own target (`DayShade.keyBucket`), so a day that met the earlier
+  target takes the key's target colour. Six domain tests; five mutations, all caught.
+- **The item screen reached back five weeks and no further.** The chart still does (spec §5.4); the
+  Daily Log now reads `ItemDetail.log`, the item's whole history, so older days are readable somewhere.
 
 ---
 

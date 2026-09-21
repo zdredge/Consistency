@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Named apart from the real app, so the two launcher icons on one phone cannot be confused. -->
+    <string name="app_name">Consistency Fixture</string>
+    <string name="fixture_loader_label">Load scenario</string>
+</resources>

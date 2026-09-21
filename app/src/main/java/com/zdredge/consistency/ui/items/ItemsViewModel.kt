@@ -76,7 +76,7 @@ class ItemsViewModel(
                 ItemRow(
                     itemId = item.id,
                     prompt = version.prompt,
-                    subtitle = subtitleFor(item.kind, version.slot, version.classification),
+                    subtitle = subtitleFor(item.kind, version.slot, version.classification, item.retiredOn),
                 )
             }
 

@@ -2,12 +2,14 @@ package com.zdredge.consistency.ui.items
 
 import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.DayState
+import com.zdredge.consistency.domain.detail.EarlierTarget
 import com.zdredge.consistency.domain.detail.GoalFigures
 import com.zdredge.consistency.domain.detail.ItemDetail
 import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.ui.checkin.asAnswer
 import java.time.LocalDate
 
 /**
@@ -31,13 +33,16 @@ internal fun presentItemDetail(
     return ItemDetailUiState(
         loading = false,
         prompt = detail.version.prompt,
-        subtitle = subtitleFor(detail.item.kind, detail.version.slot, detail.version.classification),
+        subtitle = subtitleFor(
+            detail.item.kind, detail.version.slot, detail.version.classification, detail.item.retiredOn,
+        ),
         windowLabel = "Last ${detail.figures.windowDays.size} days · " +
             "${detail.figures.windowDays.first().format(windowDayFormat)} – " +
             "${detail.figures.windowDays.last().format(windowDayFormat)}",
         chartToCome = detail.view.name(),
         chart = detail.chart,
         days = detail.days,
+        targetNote = detail.earlierTarget?.let { targetNoteFor(it, detail.version.unitLabel) },
         figures = figuresFor(detail),
         rows = rowsFor(detail, labels),
         selectedDay = cell?.day,
@@ -83,8 +88,9 @@ private fun dayCardFor(cell: DayCell, labels: Map<OptionId, String>, measured: B
  * second. Reporting either alone is a lie in one direction or the other.
  */
 private fun figuresFor(detail: ItemDetail): List<Figure> = buildList {
-    detail.figures.daily?.let { addAll(goalFigures(it, "day", "days")) }
-    detail.figures.weekly?.let { addAll(goalFigures(it, "week", "weeks")) }
+    // "day(s)" rather than choosing by count -- the user's call, after "1 weeks" was found on the device.
+    detail.figures.daily?.let { addAll(goalFigures(it, "day", "day(s)")) }
+    detail.figures.weekly?.let { addAll(goalFigures(it, "week", "week(s)")) }
 
     // Constraint 17: leaning on the neutral answer stays legible rather than hidden.
     val noOpportunity = (detail.figures.daily ?: detail.figures.weekly)?.summary?.noOpportunityCount ?: 0
@@ -140,7 +146,9 @@ private fun goalFigures(figures: GoalFigures, unit: String, units: String): List
  * table does not, and thirty rows reading "not active" would bury the three that say something.
  */
 private fun rowsFor(detail: ItemDetail, labels: Map<OptionId, String>): List<HistoryRow> =
-    detail.days
+    // The whole history, not the chart's five weeks: the table is the one place older days can be
+    // read at all (spec §5.4).
+    detail.log
         .asReversed()
         .filterNot { it.state == DayState.NOT_ACTIVE || it.state == DayState.FUTURE }
         .map { cell ->
@@ -152,3 +160,14 @@ private fun rowsFor(detail: ItemDetail, labels: Map<OptionId, String>): List<His
                 note = cell.note,
             )
         }
+
+/**
+ * The line under a chart whose daily target changed on screen: "Target was 2 bottles until 31 Aug".
+ *
+ * Each day is already drawn against its own target; this says why the key's target does not match
+ * the older days.
+ */
+private fun targetNoteFor(earlier: EarlierTarget, unitLabel: String?): String {
+    val amount = earlier.value.asAnswer() + (unitLabel?.let { " $it" }.orEmpty())
+    return "Target was $amount until ${earlier.until.format(windowDayFormat)}"
+}

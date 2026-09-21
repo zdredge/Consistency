@@ -14,8 +14,9 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M8 are complete, and real data collection began on 2026-09-10.** Every item now has a
-screen with its chart, its figures and its table. The rollover failed every run from 2026-09-11 to
+**M0 through M9 are complete, and real data collection began on 2026-09-10.** Every item now has a
+screen with its chart, its figures and its table, and a separate **Consistency Fixture** install loads
+named verification scenarios for M10 to be built against. The rollover failed every run from 2026-09-11 to
 09-13 because it read steps from the background; it was fixed by reading steps only when a check-in
 opens — see *The rollover defect, fixed* in `build-order.md`. Item configuration and check-in times are deferred to a
 settings add-on after the plan. **M8 is the first milestone whose
@@ -254,6 +255,14 @@ build-order section.
   ugly lives in `:domain`; what is left in a ViewModel is assembly and what is left in a composable
   is layout. If you find yourself wanting to test a ViewModel, that is the signal a rule has leaked
   upward — move it down rather than extracting a repository interface to fake.
+- `:fixture` (M9) gets JVM tests over its generator — `.\gradlew.bat :fixture:testDebugUnitTest` —
+  and instrumented tests over its loader — `.\gradlew.bat :fixture:connectedDebugAndroidTest`. Its
+  assertions ask `:domain`'s rules, never restate them.
+- **Two installs share the phone.** `.\gradlew.bat :app:installDebug` is the **real app**, holding
+  real data: never uninstall it, never load a scenario into it. `.\gradlew.bat :app:installFixture`
+  is **Consistency Fixture**, whose Load scenario screen replaces its own history. The loader lives
+  in `:fixture`, linked only by that build type; **never move it, or anything that clears tables, into
+  `src/main` of any module.**
 - **Before trusting a test that guards something important, make it fail.** M3 produced two tests
   that could not: one asserted a drift the build makes impossible, and one read a stale packaged
   asset. Both looked green and guarded nothing. Mutating the code under a new guard costs one run.

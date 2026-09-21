@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Merged over the main manifest for the fixture build only (M9). The application class is swapped
+      for one whose container reads no real steps and whose install arms no prompts, and the scenario
+      loader gets its own launcher entry. Nothing here exists in debug or release.
+    -->
+    <application
+        android:name="com.zdredge.consistency.fixture.FixtureApp"
+        tools:replace="android:name">
+        <activity
+            android:name="com.zdredge.consistency.fixture.FixtureActivity"
+            android:exported="true"
+            android:label="@string/fixture_loader_label"
+            android:taskAffinity="com.zdredge.consistency.fixture.loader"
+            android:theme="@style/Theme.Consistency">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>

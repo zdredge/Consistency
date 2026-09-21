@@ -460,6 +460,7 @@ says ends the product. Still no reason to adopt Hilt.
 | `:domain` | Scoring, runs, roll-ups, derived metrics, target resolution. Pure Kotlin. | Nothing Android |
 | `:data` | Room entities, DAOs, migrations, repository, Health Connect client | `:domain` |
 | `:app` | Compose UI, ViewModels, receivers, workers, scheduler, notifications | `:data`, `:domain` |
+| `:fixture` | Generated verification history and its loader (M9). **Linked only into the `fixture` build type** | `:data` |
 
 The rule that matters: **`:domain` has no Android imports.** If it ever needs one, something has
 been put in the wrong place.
@@ -799,6 +800,9 @@ of mind.
    an adb broadcast. "Write a seed script" and "write a debug-only database fixture behind a build
    flag" are different tasks. Spec O7 now reflects this and targets ~6 months of history; it is
    scheduled as build-order M9.
+   **As built (M9):** not debug-only but a separate `fixture` build type with its own app id
+   (`com.zdredge.consistency.fixture`), because the real app on the phone is the debug build. The
+   loader is a hidden launcher entry in that build, not an adb broadcast. See M9 in `build-order.md`.
 
 ---
 

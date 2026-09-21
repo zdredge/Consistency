@@ -208,10 +208,16 @@ private fun ItemChart(
         // One chart for both. They differ in the states a measured day can be in, which the cells
         // already carry, and in what their weekly chip says.
         is Chart.DailyBars ->
-            BarsChart(state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel, selected, onSelectDay, ground)
+            BarsChart(state.days, chart.dailyTargets, chart.weeks, ::weeklyTotalLabel, selected, onSelectDay, ground)
 
         is Chart.StepBars ->
-            BarsChart(state.days, chart.dailyTarget, chart.weeks, ::weeklyTotalLabel, selected, onSelectDay, ground)
+            BarsChart(state.days, chart.dailyTargets, chart.weeks, ::weeklyTotalLabel, selected, onSelectDay, ground)
+    }
+
+    // Under whichever chart it is: each day is drawn against its own target, and this says why the
+    // older days do not match the target the chart names.
+    state.targetNote?.let {
+        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -51,6 +51,8 @@ data class ItemDetailUiState(
     val chart: Chart? = null,
     /** The five weeks of judged days every view is drawn from. */
     val days: List<DayCell> = emptyList(),
+    /** "Target was 2 bottles until 31 Aug", when the daily target changed within the chart. */
+    val targetNote: String? = null,
     /** Whether the sleep chart's rolling average is drawn. On by default (spec §5.4). */
     val showTrend: Boolean = true,
     val figures: List<Figure> = emptyList(),

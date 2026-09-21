@@ -28,3 +28,5 @@ rootProject.name = "Consistency"
 include(":app")
 include(":data")
 include(":domain")
+// Verification fixture (M9). Consumed only by :app's `fixture` build type -- never debug or release.
+include(":fixture")

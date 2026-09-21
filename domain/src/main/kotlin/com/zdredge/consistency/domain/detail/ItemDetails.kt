@@ -73,11 +73,55 @@ object ItemDetails {
             view = view,
             chart = chart(view, history, chartCells, chartWeekStarts, today, lastDay, weeks, filter),
             days = chartCells,
+            log = cells,
             figures = figures(
                 history, version, slot, cells, windowCells, windowDays, today, lastDay, weeks, filter,
             ),
             lastDay = lastDay,
+            earlierTarget = earlierTarget(history, chartCells.map { it.day }),
         )
+    }
+
+    /**
+     * Where [bucket] on a day's own [scale] sits on today's [key]: the same distance from the target
+     * bucket, clamped to the key's ends. A day's scale and the key are the same scale when the target
+     * never changed, and then this is the bucket itself.
+     */
+    private fun keyBucketOf(bucket: Int, scale: ShadeScale, key: ShadeScale): Int {
+        if (scale == key) return bucket
+        val ownTarget = scale.buckets.indexOfFirst { it.reachesTarget }
+        val keyTarget = key.buckets.indexOfFirst { it.reachesTarget }
+        if (ownTarget < 0 || keyTarget < 0) return bucket.coerceIn(0, key.buckets.lastIndex)
+        return (keyTarget + (bucket - ownTarget)).coerceIn(0, key.buckets.lastIndex)
+    }
+
+    /** The daily target's numeric value on [day], or null where none applied. */
+    private fun dailyTargetOn(history: ItemHistory, day: LocalDate): Double? =
+        history.targetResolver.resolve(history.item.id, Period.DAY, day)?.valueNumber
+
+    /** Consecutive days under the same daily target, skipping days with none. */
+    private fun targetSpans(history: ItemHistory, days: List<LocalDate>): List<TargetSpan> =
+        buildList {
+            for (day in days) {
+                val value = dailyTargetOn(history, day) ?: continue
+                val last = lastOrNull()
+                if (last != null && last.value == value && last.to == day.minusDays(1)) {
+                    set(lastIndex, last.copy(to = day))
+                } else {
+                    add(TargetSpan(day, day, value))
+                }
+            }
+        }
+
+    /**
+     * The latest earlier daily target on these days, if the one in force on the last of them differs.
+     * A goal gaining its first target has nothing earlier to name.
+     */
+    private fun earlierTarget(history: ItemHistory, days: List<LocalDate>): EarlierTarget? {
+        val current = days.lastOrNull()?.let { dailyTargetOn(history, it) } ?: return null
+        val changedAfter = days.lastOrNull { dailyTargetOn(history, it) != current } ?: return null
+        val earlier = dailyTargetOn(history, changedAfter) ?: return null
+        return EarlierTarget(earlier, changedAfter)
     }
 
     /**
@@ -115,8 +159,7 @@ object ItemDetails {
         weeks: DayResolver,
         filter: NightFilter,
     ): Chart {
-        val dailyTarget = history.targetResolver
-            .resolve(history.item.id, Period.DAY, lastDay)?.valueNumber
+        val dailyTargets = targetSpans(history, cells.map { it.day })
         val weekly = weekFigures(history, weekStarts, today, lastDay, weeks)
 
         // Exhaustive with no `else`: a view added without a chart to draw it should stop the build.
@@ -139,12 +182,22 @@ object ItemDetails {
             is ItemView.ShadedCalendar -> Chart.ShadedCalendar(
                 scale = view.scale,
                 shades = cells.mapNotNull { cell ->
-                    shadeable(cell)?.let { cell.day to view.scale.bucketOf(it) }
+                    shadeable(cell)?.let { amount ->
+                        // A target-anchored scale is rebuilt from the target of the cell's own day;
+                        // a fixed scale, like mindset's, has no target to follow.
+                        val scale = if (view.scale.buckets.any { it.reachesTarget }) {
+                            dailyTargetOn(history, cell.day)?.let(ShadeScale::targetAnchored) ?: view.scale
+                        } else {
+                            view.scale
+                        }
+                        val bucket = scale.bucketOf(amount)
+                        cell.day to DayShade(bucket, scale, keyBucketOf(bucket, scale, view.scale))
+                    }
                 }.toMap(),
             )
 
             is ItemView.DailyBars -> Chart.DailyBars(
-                dailyTarget = dailyTarget,
+                dailyTargets = dailyTargets,
                 weeks = if (view.weeklyTotals) weekly else emptyList(),
             )
 
@@ -152,7 +205,7 @@ object ItemDetails {
                 cells.map { WeekAnswer(weeks.weekStart(it.day), it, closed = today.isAfter(it.day)) },
             )
 
-            ItemView.StepBars -> Chart.StepBars(dailyTarget = dailyTarget, weeks = weekly)
+            ItemView.StepBars -> Chart.StepBars(dailyTargets = dailyTargets, weeks = weekly)
         }
     }
 
