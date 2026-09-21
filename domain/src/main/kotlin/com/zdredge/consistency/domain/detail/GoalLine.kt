@@ -1,5 +1,6 @@
 package com.zdredge.consistency.domain.detail
 
+import com.zdredge.consistency.domain.model.Classification
 import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.Period
@@ -8,7 +9,9 @@ import com.zdredge.consistency.domain.model.RollUpSpec
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.Target
+import com.zdredge.consistency.domain.scoring.TargetResolver
 import java.text.NumberFormat
+import java.time.LocalDate
 import java.util.Locale
 
 /**
@@ -54,6 +57,26 @@ object GoalLine {
             Direction.MUST_INCLUDE -> "“${option ?: "?"}”, every $each"
             Direction.MUST_NOT_INCLUDE -> "not “${option ?: "?"}”, every $each"
         }
+    }
+
+    /**
+     * The goal line for an item on [on], or null for an observation or an item with no target.
+     *
+     * The daily target when there is one, else the weekly: the same choice the dashboard makes when
+     * it places a goal on the trend carousel, so the line and the panel describe the same goal.
+     */
+    fun forItem(
+        version: ItemVersion,
+        targets: TargetResolver,
+        options: List<SelectOption>,
+        rollUp: RollUpSpec?,
+        on: LocalDate,
+    ): String? {
+        if (version.classification != Classification.GOAL) return null
+        val target = targets.resolve(version.itemId, Period.DAY, on)
+            ?: targets.resolve(version.itemId, Period.WEEK, on)
+            ?: return null
+        return of(target, version, options.filter { it.itemId == version.itemId }, rollUp)
     }
 
     /**

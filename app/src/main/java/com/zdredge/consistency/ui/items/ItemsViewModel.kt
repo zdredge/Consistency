@@ -4,6 +4,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.lifecycle.ViewModel
 import com.zdredge.consistency.data.ConsistencyRepository
 import com.zdredge.consistency.domain.model.ItemId
+import com.zdredge.consistency.domain.detail.GoalLine
+import com.zdredge.consistency.domain.scoring.TargetResolver
 import com.zdredge.consistency.domain.scoring.inForce
 import com.zdredge.consistency.domain.time.DayResolver
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +25,8 @@ data class ItemRow(
     val prompt: String,
     /** When it is asked and whether it is scored — "Night · Goal", "Measured". */
     val subtitle: String,
+    /** "Goal: at least 2 bottles a day", or null for an observation. Carried so the header never flashes. */
+    val goal: String? = null,
 )
 
 data class ItemsUiState(
@@ -64,6 +68,9 @@ class ItemsViewModel(
     suspend fun refresh() {
         val today = dayResolver.today()
         val versions = repository.versions()
+        val targets = TargetResolver(repository.allTargets())
+        val options = repository.allOptions()
+        val rollUps = repository.rollUpSpecs().associateBy { it.itemId }
 
         val rows = repository.items()
             // Spec §4's listing order, stored as `ordinal` since M4 — the order the questions are
@@ -77,6 +84,7 @@ class ItemsViewModel(
                     itemId = item.id,
                     prompt = version.prompt,
                     subtitle = subtitleFor(item.kind, version.slot, version.classification, item.retiredOn),
+                    goal = GoalLine.forItem(version, targets, options, rollUps[item.id], today)?.let { "Goal: $it" },
                 )
             }
 

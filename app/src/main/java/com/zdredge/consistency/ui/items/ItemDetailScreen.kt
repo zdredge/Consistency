@@ -84,6 +84,14 @@ fun ItemDetailScreen(
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.padding(top = 8.dp),
                 )
+                state.goal?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
                 if (state.subtitle.isNotEmpty()) {
                     Text(
                         state.subtitle,

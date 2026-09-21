@@ -3,6 +3,7 @@ package com.zdredge.consistency.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zdredge.consistency.data.ConsistencyRepository
+import com.zdredge.consistency.domain.dashboard.Dashboard
 import com.zdredge.consistency.domain.model.CheckIn
 import com.zdredge.consistency.domain.time.DayResolver
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -25,6 +26,8 @@ data class HomeUiState(
      * product would ever tell the user, because the failure mode is that everything still looks fine.
      */
     val rolloverOverdue: Boolean = false,
+    /** The dashboard (spec §5.1, M10): first-run progress, or the score and the trends. */
+    val dashboard: DashboardUi? = null,
 )
 
 /**
@@ -80,6 +83,15 @@ class HomeViewModel(
      * more. It stays suspending because the screen's state should still be read after the write that
      * produces it, not because anything else is waiting.
      */
+    /**
+     * Every judgement is `Dashboard.assemble`'s, in `:domain` where it is tested; this reads the
+     * inputs and hands the result to the presenter.
+     */
+    private suspend fun dashboard(today: LocalDate): DashboardUi {
+        val (histories, checkIns) = repository.dashboardInputs(today)
+        return presentDashboard(Dashboard.assemble(histories, checkIns, today, dayResolver))
+    }
+
     suspend fun refresh() {
         val today = dayResolver.today()
         repository.seedLibraryIfEmpty(today)
@@ -91,6 +103,7 @@ class HomeViewModel(
             outstanding = repository.outstandingCheckIns(today),
             itemCount = repository.items().size,
             rolloverOverdue = isRolloverOverdue(today),
+            dashboard = dashboard(today),
         )
     }
 }

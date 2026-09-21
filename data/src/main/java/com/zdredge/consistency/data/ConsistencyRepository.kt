@@ -218,6 +218,20 @@ class ConsistencyRepository(
         )
     }
 
+    /**
+     * Everything the dashboard is assembled from: every item's history, and every check-in since the
+     * first. Reads only.
+     *
+     * One `itemHistory` per item rather than a bespoke query: the dashboard must judge each goal
+     * exactly as its own screen does, and sharing the read is the cheapest way to guarantee that.
+     * Sixteen items and a few hundred check-ins -- well within a single screen load.
+     */
+    suspend fun dashboardInputs(today: LocalDate = dayResolver.today()): Pair<List<ItemHistory>, List<CheckIn>> {
+        val histories = items().mapNotNull { itemHistory(it.id, today) }
+        val checkIns = earliestCheckInDay()?.let { checkIns(it, today) }.orEmpty()
+        return histories to checkIns
+    }
+
     // ---- Check-ins ---------------------------------------------------------------------------
 
     /** The response-rate denominator over a window: every check-in that was expected in it. */
