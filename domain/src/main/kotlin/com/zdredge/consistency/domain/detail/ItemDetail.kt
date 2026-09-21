@@ -64,18 +64,54 @@ sealed interface Chart {
     /** A square per day. [weeks] is empty unless the item is targeted by the week (`4/6`). */
     data class DayCalendar(val weeks: List<WeekFigure>) : Chart
 
-    /** A square per day, shaded by amount. [shades] holds the bucket for every day that has one. */
-    data class ShadedCalendar(val scale: ShadeScale, val shades: Map<LocalDate, Int>) : Chart
+    /**
+     * A square per day, shaded by amount. [shades] holds a shade for every day that has one.
+     *
+     * [scale] is **today's**, for the key. Each shade carries the scale of its own day, because a
+     * target raised mid-chart moves the bands: two bottles reached a target of two and did not reach
+     * a target of three, and shading August by September's target would paint met days as short.
+     */
+    data class ShadedCalendar(val scale: ShadeScale, val shades: Map<LocalDate, DayShade>) : Chart
 
-    /** A bar per day, with the daily limit as a line. [weeks] is empty unless totals are shown. */
-    data class DailyBars(val dailyTarget: Double?, val weeks: List<WeekFigure>) : Chart
+    /**
+     * A bar per day, with the daily limit as a line. [weeks] is empty unless totals are shown.
+     *
+     * [dailyTargets] is one span per stretch of days under the same limit, so a limit changed on
+     * screen draws as a step rather than as today's value laid over days it never applied to.
+     */
+    data class DailyBars(val dailyTargets: List<TargetSpan>, val weeks: List<WeekFigure>) : Chart
 
     /** One square per week, for a question asked once a week. */
     data class WeekSquares(val weeks: List<WeekAnswer>) : Chart
 
     /** Steps: bars, the daily target as a line, and the two states only a measured day has. */
-    data class StepBars(val dailyTarget: Double?, val weeks: List<WeekFigure>) : Chart
+    data class StepBars(val dailyTargets: List<TargetSpan>, val weeks: List<WeekFigure>) : Chart
 }
+
+/**
+ * One day's shade: which bucket, on the scale in force that day, and where that sits on today's key.
+ *
+ * [keyBucket] is what is drawn. A day is placed on the key by **where it stood against its own
+ * target** -- at it, one short, well short, above -- not by its raw bucket, because a target of two
+ * has three shades and a target of three has four, and the same index means different things on each.
+ * Found on the device: shaded by its own scale's colours, a met two-bottle day came out in the colour
+ * the key calls "2", below today's target of three, which is the very misreading this was meant to end.
+ */
+data class DayShade(val bucket: Int, val scale: ShadeScale, val keyBucket: Int = bucket) {
+    /** Whether this day's amount reached the target in force that day. */
+    val reachesTarget: Boolean get() = scale.buckets[bucket].reachesTarget
+}
+
+/** A run of consecutive chart days under the same daily target [value], both ends inclusive. */
+data class TargetSpan(val from: LocalDate, val to: LocalDate, val value: Double)
+
+/**
+ * The daily target that applied before the one in force now, and the last day it did.
+ *
+ * Named under the chart only when the change happened inside it -- a key reading "3 target" over a
+ * fortnight scored against 2 would otherwise go unexplained.
+ */
+data class EarlierTarget(val value: Double, val until: LocalDate)
 
 /**
  * One period's figures for one item: how often the target was met, how close on average, and the run.
@@ -132,7 +168,15 @@ data class ItemDetail(
     val view: ItemView,
     val chart: Chart,
     val days: List<DayCell>,
+    /**
+     * Every day from the item's creation to [lastDay] -- the table's rows (spec §5.4). The chart
+     * stops at five weeks; the table is the one place older history can be read, so it does not.
+     * The last five weeks of it are [days], the same judgements rather than a second pass.
+     */
+    val log: List<DayCell>,
     val figures: ItemFigures,
     /** The latest day this item can have an answer for: today, yesterday, or its retirement day. */
     val lastDay: LocalDate,
+    /** Set when the daily target changed within the chart's days. */
+    val earlierTarget: EarlierTarget? = null,
 )

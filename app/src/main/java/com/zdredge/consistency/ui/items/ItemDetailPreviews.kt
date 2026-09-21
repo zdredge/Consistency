@@ -111,6 +111,43 @@ private fun WaterNearMisses() = Rendered(
 )
 
 /**
+ * A target raised on screen: water from 2 bottles to 3 twelve days ago.
+ *
+ * The two-bottle days before the change shade as reaching the target and the ones after do not, and
+ * the line beneath the key says what the target used to be.
+ */
+@Preview(name = "Water — target raised mid-chart", showBackground = true, heightDp = 1600)
+@Composable
+private fun WaterTargetRaised() = Rendered(
+    ItemHistory(
+        item = item("water"),
+        versions = listOf(version("water", "How much water did you drink? (Bottles)", AnswerType.NUMBER)),
+        targets = listOf(
+            target("water", Direction.AT_LEAST, 2.0),
+            target("water", Direction.AT_LEAST, 3.0, from = today.minusDays(12)),
+        ),
+        answers = (0..30).map { answer("water", today.minusDays(it.toLong()), number = if (it % 3 == 0) 3.0 else 2.0) },
+    ),
+)
+
+/**
+ * Coffee with its daily limit lowered on screen, so the limit line steps down rather than lying flat.
+ */
+@Preview(name = "Coffee — limit lowered mid-chart", showBackground = true, heightDp = 1600)
+@Composable
+private fun CoffeeLimitLowered() = Rendered(
+    ItemHistory(
+        item = item("coffee"),
+        versions = listOf(version("coffee", "How many coffees did you have?", AnswerType.NUMBER)),
+        targets = listOf(
+            target("coffee", Direction.AT_MOST, 3.0),
+            target("coffee", Direction.AT_MOST, 2.0, from = today.minusDays(9)),
+        ),
+        answers = (0..30).map { answer("coffee", today.minusDays(it.toLong()), number = (it % 4).toDouble()) },
+    ),
+)
+
+/**
  * Case 10.5 and the marks: a no-opportunity streak, an unresolved deferral, a backfill with a note.
  *
  * The no-opportunity days cost nothing — no hit rate, and the run is neither extended nor broken —

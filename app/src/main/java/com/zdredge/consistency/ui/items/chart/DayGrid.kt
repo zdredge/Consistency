@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.domain.detail.DayCell
+import com.zdredge.consistency.domain.detail.DayShade
 import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.DayValue
 import com.zdredge.consistency.domain.detail.WeekFigure
@@ -240,11 +241,15 @@ internal fun dayCalendarFill(cell: DayCell): CellFill = when (cell.state) {
  * The shade comes from the domain's bucket, never from the value here: `ShadeScale.bucketOf` floors a
  * half, so 1.5 bottles is shaded as 1 and can never look like the target of 2 was reached.
  */
-internal fun shadedFill(shades: Map<java.time.LocalDate, Int>, ramp: List<Color>): (DayCell) -> CellFill =
+/**
+ * Each day in the key's own ramp, at [DayShade.keyBucket] -- where the day stood against the target
+ * of its own day. So a day that met an earlier, lower target is drawn in the key's target colour.
+ */
+internal fun shadedFill(shades: Map<java.time.LocalDate, DayShade>, ramp: List<Color>): (DayCell) -> CellFill =
     { cell ->
-        val bucket = shades[cell.day]
+        val shade = shades[cell.day]
         when {
-            bucket != null -> CellFill.Solid(ramp.getOrElse(bucket) { ramp.last() })
+            shade != null -> CellFill.Solid(ramp.getOrElse(shade.keyBucket) { ramp.last() })
             else -> dayCalendarFill(cell)
         }
     }

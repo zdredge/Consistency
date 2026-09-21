@@ -31,6 +31,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.domain.detail.DayCell
+import com.zdredge.consistency.domain.detail.TargetSpan
 import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.DayValue
 import com.zdredge.consistency.domain.detail.WeekFigure
@@ -65,7 +66,7 @@ private val AxisWidth = 36.dp
 @Composable
 internal fun BarsChart(
     days: List<DayCell>,
-    dailyTarget: Double?,
+    dailyTargets: List<TargetSpan>,
     weeks: List<WeekFigure>,
     weekLabel: (WeekFigure) -> String,
     selected: LocalDate?,
@@ -76,7 +77,7 @@ internal fun BarsChart(
     val measurer = rememberTextMeasurer()
     val style = axisTextStyle()
     val values = days.mapNotNull { (it.value as? DayValue.Amount)?.value?.toFloat() }
-    val top = maxOf(values.maxOrNull() ?: 0f, dailyTarget?.toFloat() ?: 0f, 1f)
+    val top = maxOf(values.maxOrNull() ?: 0f, dailyTargets.maxOfOrNull { it.value.toFloat() } ?: 0f, 1f)
     // Counts, both of them: coffees and steps. Never a half of either on the axis.
     val ticks = niceTicks(top, minStep = 1f)
     val axisMax = maxOf(ticks.last(), top)
@@ -101,8 +102,24 @@ internal fun BarsChart(
                     val plot = Plot(plotArea(size.width, size.height), 0f, axisMax, days.size)
                     drawPlotFrame(plot, ticks.map { it to it.axisLabel() }, measurer, style, boundaries)
                     drawBars(plot, days, axisMax, selected)
-                    dailyTarget?.let {
-                        drawTargetLine(plot, it.toFloat(), "${it.toFloat().axisLabel()} a day", measurer, style, ground)
+                    // One line per stretch of days under the same limit, labelled only on the latest:
+                    // a limit changed on screen steps, rather than laying today's value over days it
+                    // never applied to.
+                    dailyTargets.forEachIndexed { i, span ->
+                        val from = days.indexOfFirst { it.day == span.from }
+                        val to = days.indexOfLast { it.day == span.to }
+                        if (from < 0 || to < 0) return@forEachIndexed
+                        val value = span.value.toFloat()
+                        drawTargetLine(
+                            plot = plot,
+                            target = value,
+                            label = if (i == dailyTargets.lastIndex) "${value.axisLabel()} a day" else null,
+                            measurer = measurer,
+                            style = style,
+                            ground = ground,
+                            fromX = plot.x(from),
+                            toX = plot.x(to) + plot.slot,
+                        )
                     }
                     drawWeekLabels(plot, boundaries, days.map { it.day }, measurer, style, weekLabelFormat)
                 },

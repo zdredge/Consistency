@@ -437,11 +437,122 @@ class ItemDetailsTest {
 
         val chart = detail.chart as Chart.ShadedCalendar
         assertEquals(4, chart.scale.buckets.size)
-        assertEquals(2, chart.shades[today.minusDays(1)], "three meals is the target shade")
-        assertEquals(1, chart.shades[today.minusDays(2)], "2.5 is shaded as 2")
-        assertEquals(3, chart.shades[today.minusDays(3)])
-        assertTrue(chart.scale.buckets[chart.shades.getValue(today.minusDays(1))].reachesTarget)
-        assertFalse(chart.scale.buckets[chart.shades.getValue(today.minusDays(2))].reachesTarget)
+        assertEquals(2, chart.shades.getValue(today.minusDays(1)).bucket, "three meals is the target shade")
+        assertEquals(1, chart.shades.getValue(today.minusDays(2)).bucket, "2.5 is shaded as 2")
+        assertEquals(3, chart.shades.getValue(today.minusDays(3)).bucket)
+        assertTrue(chart.shades.getValue(today.minusDays(1)).reachesTarget)
+        assertFalse(chart.shades.getValue(today.minusDays(2)).reachesTarget)
+    }
+
+    // ---------------------------------------------------------------- a target that changed
+
+    /** Water raised from 2 bottles to 3 twelve days ago, inside the chart's five weeks. */
+    private val raisedOn = today.minusDays(12)
+
+    private fun waterRaised(answers: List<com.zdredge.consistency.domain.model.Answer>) = history(
+        item = item("water", createdOn = longAgo),
+        version = version("water", AnswerType.NUMBER),
+        targets = listOf(
+            target("water", Direction.AT_LEAST, value = 2.0),
+            target("water", Direction.AT_LEAST, value = 3.0, from = raisedOn),
+        ),
+        answers = answers,
+    )
+
+    @Test
+    @DisplayName("5.4 - a day is shaded against the target in force that day, not today's")
+    fun shadesFollowTheTargetOfTheirDay() {
+        val before = raisedOn.minusDays(2)
+        val after = raisedOn.plusDays(2)
+        val detail = ItemDetails.assemble(
+            waterRaised(listOf(answer("water", day = before, number = 2.0), answer("water", day = after, number = 2.0))),
+            today, weeks,
+        )
+
+        val chart = detail.chart as Chart.ShadedCalendar
+        assertTrue(chart.shades.getValue(before).reachesTarget, "two bottles met the target of two")
+        assertFalse(chart.shades.getValue(after).reachesTarget, "and did not meet the target of three")
+        assertEquals(3, chart.shades.getValue(before).scale.buckets.size, "the scale of a target of two")
+        assertEquals(4, chart.shades.getValue(after).scale.buckets.size, "the scale of a target of three")
+        assertEquals(4, chart.scale.buckets.size, "the key keeps today's scale")
+        // Drawn on today's key by where each day stood against its own target: two bottles against a
+        // target of two is the key's target shade; against a target of three it is one short.
+        assertEquals(chart.scale.buckets.indexOfFirst { it.reachesTarget }, chart.shades.getValue(before).keyBucket)
+        assertEquals(chart.scale.buckets.indexOfFirst { it.reachesTarget } - 1, chart.shades.getValue(after).keyBucket)
+        // The shade and the judgement of the same day cannot disagree.
+        assertEquals(DayState.MET, detail.days.single { it.day == before }.state)
+    }
+
+    @Test
+    @DisplayName("5.4 - a changed target is named under the key, with the last day it applied")
+    fun theEarlierTargetIsNamed() {
+        val detail = ItemDetails.assemble(waterRaised(emptyList()), today, weeks)
+
+        assertEquals(EarlierTarget(value = 2.0, until = raisedOn.minusDays(1)), detail.earlierTarget)
+    }
+
+    @Test
+    @DisplayName("5.4 - a target that changed before the chart began is not news")
+    fun aChangeBeforeTheChartIsNotNamed() {
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("coffee", createdOn = longAgo),
+                version = version("coffee", AnswerType.NUMBER),
+                targets = listOf(
+                    target("coffee", Direction.AT_MOST, value = 3.0),
+                    target("coffee", Direction.AT_MOST, value = 2.0, from = today.minusWeeks(10)),
+                ),
+            ),
+            today, weeks,
+        )
+
+        assertNull(detail.earlierTarget)
+        val chart = detail.chart as Chart.DailyBars
+        assertEquals(listOf(TargetSpan(detail.days.first().day, today, 2.0)), chart.dailyTargets)
+    }
+
+    @Test
+    @DisplayName("5.4 - a daily limit that changed on screen draws as two lines, each over its own days")
+    fun barTargetsStepWhereTheyChanged() {
+        val loweredOn = today.minusDays(9)
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("coffee", createdOn = longAgo),
+                version = version("coffee", AnswerType.NUMBER),
+                targets = listOf(
+                    target("coffee", Direction.AT_MOST, value = 3.0),
+                    target("coffee", Direction.AT_MOST, value = 2.0, from = loweredOn),
+                ),
+            ),
+            today, weeks,
+        )
+
+        val chart = detail.chart as Chart.DailyBars
+        assertEquals(
+            listOf(
+                TargetSpan(detail.days.first().day, loweredOn.minusDays(1), 3.0),
+                TargetSpan(loweredOn, today, 2.0),
+            ),
+            chart.dailyTargets,
+        )
+        assertEquals(EarlierTarget(value = 3.0, until = loweredOn.minusDays(1)), detail.earlierTarget)
+    }
+
+    @Test
+    @DisplayName("5.4 - days before a goal had any target draw no line at all")
+    fun noLineWhereNoTargetApplied() {
+        val setOn = today.minusDays(5)
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("coffee", createdOn = longAgo),
+                version = version("coffee", AnswerType.NUMBER),
+                targets = listOf(target("coffee", Direction.AT_MOST, value = 2.0, from = setOn)),
+            ),
+            today, weeks,
+        )
+
+        assertEquals(listOf(TargetSpan(setOn, today, 2.0)), (detail.chart as Chart.DailyBars).dailyTargets)
+        assertNull(detail.earlierTarget, "a goal gaining its first target has no earlier target to name")
     }
 
     // ---------------------------------------------------------------- windows and ranges
@@ -464,6 +575,27 @@ class ItemDetailsTest {
         assertEquals(weeks.weekStart(today).minusWeeks(4), detail.days.first().day)
         assertEquals(today, detail.days.last().day)
         assertTrue(detail.figures.windowDays.all { day -> detail.days.any { it.day == day } })
+    }
+
+    @Test
+    @DisplayName("5.4 - the table reaches back to the item's first day; the chart stays at five weeks")
+    fun theLogCoversTheWholeHistory() {
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("vitamins", createdOn = longAgo),
+                version = version("vitamins", AnswerType.BOOL),
+                targets = listOf(target("vitamins", Direction.IS_TRUE)),
+                answers = listOf(answer("vitamins", day = longAgo.plusDays(3), bool = true)),
+            ),
+            today, weeks,
+        )
+
+        assertEquals(longAgo, detail.log.first().day)
+        assertEquals(today, detail.log.last().day)
+        assertEquals(DayState.MET, detail.log.single { it.day == longAgo.plusDays(3) }.state)
+        assertEquals(weeks.weekStart(today).minusWeeks(4), detail.days.first().day, "the chart is unchanged")
+        // The same judgements: the log's last five weeks are the chart's cells.
+        assertEquals(detail.days, detail.log.filter { !it.day.isBefore(detail.days.first().day) })
     }
 
     @Test

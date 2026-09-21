@@ -1581,14 +1581,24 @@ back only five weeks, chart and Daily Log alike. Both dated changes were moved i
 (day 55, and meals' rewording to day 50). **A scenario is not done when its test passes; it is done
 when its state is on a screen.**
 
-**Noticed in M8's screens, not fixed here** (M9 builds no UI):
+**Found in M8's screens by the device pass, fixed 2026-09-15** after M9 closed:
 
-- **"1 weeks".** The weekly longest run does not singularise.
-- **A retired item is unmarked in the item list**, indistinguishable from an active one until opened.
-- **The calendar's shade legend uses today's target.** On `effective_from`, August days of two bottles
-  scored Met but are shaded in the band below "3 target".
-- **The item screen reaches back five weeks and no further**, so older history — a retirement, a
-  target change — is not visible anywhere yet.
+- **"1 weeks".** Goal figures now read "day(s)" and "week(s)" — the user's call, over choosing the word
+  by count.
+- **A retired item was unmarked in the item list**, indistinguishable from an active one until opened.
+  Its subtitle now ends "Retired 17 Aug", in the list and on its own screen.
+- **Every day was drawn against today's target.** On `effective_from`, August's met two-bottle days
+  shaded below "3 target", and a bar chart's limit line would have lain at today's value over days it
+  never applied to. The user chose **per-day targets**: `ItemDetails` now shades each day on the scale
+  of its own day's target (`DayShade`), gives bars one `TargetSpan` per stretch under the same limit,
+  and sets `ItemDetail.earlierTarget` when the target changed on screen, which the screen writes as
+  "Target was 2 bottles until 31 Aug" under the chart. **Found on the device:** shading each day in
+  its own scale's colours still drew a met two-bottle day in the colour the key calls "2", because a
+  target of two has three shades and a target of three has four. Each day is now placed on today's key
+  by where it stood against its own target (`DayShade.keyBucket`), so a day that met the earlier
+  target takes the key's target colour. Six domain tests; five mutations, all caught.
+- **The item screen reached back five weeks and no further.** The chart still does (spec §5.4); the
+  Daily Log now reads `ItemDetail.log`, the item's whole history, so older days are readable somewhere.
 
 ---
 

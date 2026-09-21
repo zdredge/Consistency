@@ -513,7 +513,17 @@ the typical time are computed from the nights shown; the nights-recorded count i
 because it measures answering every night.
 
 **Range.** The figures — hit rate, attainment, runs — use the same 14 days as the dashboard. The chart
-shows the last **five weeks**, because a 14-day calendar is two rows deep.
+shows the last **five weeks**, because a 14-day calendar is two rows deep. **The table covers the item's
+whole history** (added 2026-09-15): it is the one place older days can be read, and a table limited to
+the chart's weeks left a retirement or a target change more than five weeks old visible nowhere.
+
+**A day is drawn against the target in force that day** (added 2026-09-15). When a target changes
+inside the chart, a shaded calendar shades each day on the scale of its own target, a bar chart's
+target line steps where the target changed, and one line under the chart names the earlier target and
+the last day it applied ("Target was 2 bottles until 31 Aug"). The key names today's target.
+
+**A retired item says so** wherever it is named — "Night · Goal · Retired 17 Aug" — because it stays
+listed for the periods it was active in.
 
 **From day one.** Unlike the dashboard (§5.5), an item's view shows its figures — hit rate and runs
 included — from the first day, not after 14. The user's reasoning: watching the rate move while it

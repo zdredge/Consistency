@@ -107,7 +107,8 @@ internal fun DrawScope.drawPlotFrame(
 }
 
 /**
- * The target, as a dashed line across the plot, labelled **inside** it at the left.
+ * The target, as a dashed line from [fromX] to [toX] -- the whole plot unless the target changed on
+ * screen -- labelled **inside** it at the left of its own span. A null [label] draws the line alone.
  *
  * The label used to sit in a 44dp gutter to the right of the plot, which cost every bar that width.
  * Inside, it is drawn over a halo of the card's own colour so it stays legible where a bar passes
@@ -116,24 +117,29 @@ internal fun DrawScope.drawPlotFrame(
 internal fun DrawScope.drawTargetLine(
     plot: Plot,
     target: Float,
-    label: String,
+    label: String?,
     measurer: TextMeasurer,
     style: TextStyle,
     ground: Color,
+    fromX: Float = plot.area.left,
+    toX: Float = plot.area.right,
 ) {
     val y = plot.y(target)
     drawLine(
         color = Bone.copy(alpha = 0.8f),
-        start = Offset(plot.area.left, y),
-        end = Offset(plot.area.right, y),
+        start = Offset(fromX, y),
+        end = Offset(toX, y),
         strokeWidth = 1.dp.toPx(),
         pathEffect = PathEffect.dashPathEffect(floatArrayOf(5.dp.toPx(), 4.dp.toPx())),
     )
     // One layout, drawn twice with the colour and stroke given at draw time. Measuring twice with a
     // different colour and stroke in the style does not work: the measurer caches the layout on what
     // affects shape, so both passes came back as the light fill and the halo rendered as white blobs.
+    if (label == null) return
     val laid = measurer.measure(label, style)
-    val topLeft = Offset(plot.area.left + 6.dp.toPx(), y - 6.dp.toPx() - laid.size.height)
+    // Kept inside the plot when the span starts near its right edge.
+    val left = minOf(fromX + 6.dp.toPx(), plot.area.right - laid.size.width - 6.dp.toPx())
+    val topLeft = Offset(maxOf(left, plot.area.left), y - 6.dp.toPx() - laid.size.height)
     drawText(laid, color = ground, topLeft = topLeft, drawStyle = Stroke(width = 4.dp.toPx()))
     // Fill must be stated: the stroke from the pass above stays on the paragraph's paint otherwise,
     // and the light text is drawn as a 4dp outline too.
