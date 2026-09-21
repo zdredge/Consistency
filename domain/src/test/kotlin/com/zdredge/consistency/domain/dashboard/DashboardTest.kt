@@ -88,7 +88,7 @@ class DashboardTest {
     }
 
     @Test
-    @DisplayName("M10 - trends appear at 28 days and not at 27")
+    @DisplayName("9.5a - trends appear at 28 days and not at 27")
     fun trendsAtTwentyEight() {
         val histories = listOf(water(waterTrend(metNow = 5, metBefore = 11)))
         assertNull(Dashboard.assemble(histories, checkIns(27), today, weeks).trends)
@@ -192,7 +192,7 @@ class DashboardTest {
     }
 
     @Test
-    @DisplayName("M10 - exactly 10 points down is slipping; 8.5 points down is holding")
+    @DisplayName("9.1a/9.2a - exactly 10 points down is slipping; 8.5 points down is holding")
     fun theSlippingBoundary() {
         // 10 scored each side (4 silent days), 7 met before and 6 now: exactly 10 points.
         assertEquals(Trend.SLIPPING, trendOf(waterTrend(metNow = 6, metBefore = 7, scoredEach = 10)))
@@ -203,13 +203,13 @@ class DashboardTest {
     }
 
     @Test
-    @DisplayName("M10 - exactly 10 points up is improving")
+    @DisplayName("9.3a - exactly 10 points up is improving")
     fun theImprovingBoundary() {
         assertEquals(Trend.IMPROVING, trendOf(waterTrend(metNow = 7, metBefore = 6, scoredEach = 10)))
     }
 
     @Test
-    @DisplayName("M10 - a goal with no earlier fortnight has no trend")
+    @DisplayName("9.4a - a goal with no earlier fortnight has no trend")
     fun noEarlierFortnight() {
         val trends = Dashboard.assemble(listOf(water((0..13).associateWith { 2.0 })), checkIns(30), today, weeks).trends!!
         assertTrue(trends.isEmpty())

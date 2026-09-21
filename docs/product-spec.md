@@ -429,7 +429,14 @@ backfilling in place. It does not block access to the dashboard, because trappin
 is what teaches them not to open it.
 
 **The score element.** One large donut, **three concentric rings**: response rate outer, **daily goal
-completion** middle, **weekly goal completion** inner. Never one blended number — see constraints 7
+completion** middle, **weekly goal completion** inner. **Settled in the M10 review (2026-09-21):**
+concentric rings over half-ring gauges, in blue `#3987E5`, amber `#C98500` and teal `#199E70` (three
+shades of blue were too hard to tell apart; these pass colour-blind and normal-vision separation on
+the card). Each figure's percentage and count sit in a legend beside the rings, never inside one.
+
+**Response rate counts only closed check-ins** (M10): answered ÷ (answered + missed) over the window.
+A check-in still inside its grace is neither, so the ring does not dip every morning and recover every
+night -- the same "progress, not scored" rule §5.3 applies to an open week. Never one blended number — see constraints 7
 and 8. Response rate is the primary metric and stays the outer, most prominent ring; it is the same
 thing the run counts, so the top of the screen still tells one coherent story.
 
@@ -441,36 +448,46 @@ active-on-answered-days; the weekly ring is met weekly-goal instances over the w
 **closed** in the window (the current partial week is progress, not scored — §5.3). Both are unweighted
 and neither is mixed into the other. This resolves O1 (§6).
 
-**Ring geometry is a visual choice, not a metric one — settle it in the dashboard build.** Full
-concentric rings are the working default, but a **half-ring / arc gauge** (each figure a semicircular
-sweep) may read more cleanly and should be prototyped alongside them at M10. Whichever is chosen, the
-three figures stay separate and unblended; the geometry does not touch the numbers.
+**Ring geometry was settled at M10** (above): both were drafted, and the concentric rings chosen. The
+three figures stay separate and unblended.
 
 **Longest run**, beside the donut, as a static historical fact that only ever increases. Never a live
 counter that can break. Definition in §3.5.
 
-**Three rotating panels** in a horizontal carousel: going badly, going well, middling. Each holds up
-to three items with a progress bar showing hit rate over the window, plus a secondary line showing
-**average attainment** whenever it is materially higher than the hit rate. That secondary line is
-what stops "1.5 of 2 bottles every single day" from reading as unqualified failure.
+**Trend panels: Slipping, Holding, Improving.** *Replaced the level panels (going badly / middling /
+going well at 60% and 80%) in the M10 review, 2026-09-21.* The user's reasoning: what the section
+exists to show is which habits are **slipping**, and a level does not say that -- a habit at 50% for
+months is stuck, not slipping, and one that fell from 90% to 65% is slipping while still "middling".
 
-- The **badly** panel loads first and is the default position. This is an accountability product and
-  the bad news must not be the thing the user waits for.
-- The carousel **auto-advances and is swipe-driven.** Assumption unless corrected: auto-advance
-  every ~8 seconds, rotation stops permanently once the user swipes, so it never moves under a
-  finger.
-- Panel membership is **automatic by hit rate.** Fewer than three items shown when fewer qualify;
-  an empty panel is hidden rather than padded.
+- **The trend** is a goal's hit rate over the last 14 days against the 14 before: down 10 points or
+  more is **Slipping**, up 10 or more is **Improving**, anything between is **Holding**. A goal with a
+  daily target is judged on its days (coffee and steps included); a weekly-only goal on its last two
+  closed weeks against the two before. A goal with no scored earlier period has no trend and is left
+  out.
+- **Each goal is its question plus a generated goal line** -- "How much water did you drink? · Goal:
+  at least 2 bottles a day". The user did not connect a question to the goal behind it, so the goal is
+  spelled out from the target's direction, number, unit, option and slot. Nothing is stored or
+  hand-written, and an item added later gets its line by the same rules. The same line sits under the
+  question on the item's own screen, with the goal's trend.
+- **A goal's card** shows two bars, the fortnight before and the last 14 days, each with its count;
+  "Met on n of the last 14 days" (or "of m days counted in the last 14" when some did not count); and
+  for an at-least goal the average on missed days, or for a weekly goal the week so far.
+- **A two-tier carousel**: one goal at a time, every goal in a trend, trend by trend -- Slipping
+  first, because the bad news must not be the thing the user waits for. Story segments along the top,
+  one per goal and grouped by trend, the current one filling over **6 seconds**. A tap on either half
+  or a swipe steps; **any touch stops the rotation for good**, so nothing moves under a finger. An
+  empty trend is skipped.
 
 ### 5.2 Thresholds and windows
 
 | Thing | Value |
 |---|---|
 | Rolling window, all dashboard figures | 14 days, one window everywhere |
-| Comparison baseline | Two-week average. No comparison shown until two weeks of history exist. |
-| Going well | Hit rate ≥ 80% |
-| Middling | 60% ≤ hit rate < 80% |
-| Going badly | Hit rate < 60% |
+| Trend comparison | The 14 days before the window. Weekly goals: two closed weeks against the two before. |
+| Slipping | Hit rate down ≥ 10 points on the fortnight before |
+| Holding | Within 10 points either way |
+| Improving | Hit rate up ≥ 10 points |
+| *Superseded at M10* | *Going well ≥ 80%, middling 60–80%, going badly < 60% — level panels, replaced by the trend* |
 
 ### 5.3 Partial periods
 
@@ -554,6 +571,11 @@ Before then the dashboard shows today's status and a plain count of check-ins an
 explicit line stating that trends appear after two weeks. A chart drawn through four points is worse
 than no chart.
 
+**"Days of history"** is days since install, today included, where install is the first generated
+check-in (settled at M10). **The trend panels wait longer, until day 28**, because a trend compares a
+fortnight with the one before: from day 14 the rings appear, and a Trends card says how long until the
+panels do.
+
 ### 5.6 Check-in screen
 
 Tap-first, keyboard only for the optional note, under 60 seconds. Pending items carried from the
@@ -604,7 +626,7 @@ permissions prompt and its declined branch (§3.3).
 | O2 | Multi-select target interaction design | Mechanism accepted; the UI for "must not include *option*" is unbuilt and the user expects it to be fiddly. |
 | O3 | Health integration API surface | Health Connect is the current Android path; the older Fit APIs have been deprecating. **Verify at build time rather than trusting this document.** |
 | O4 | Measured-day finality | **Claude's decision, not the user's:** provisional for 24h after its last read, then frozen. (A read happens when a check-in opens; see architecture §5.) Chosen because platform step-tracking behaviour is unverified, and this is the option that tolerates late syncing without permanently mis-scoring a day. Reversible in an afternoon; revisit after a week of real data. |
-| O5 | Carousel timing | Assumed 8s auto-advance, stops on first swipe. Never confirmed. |
+| O5 | Carousel timing | **Resolved at M10.** A two-tier carousel, 6 s per goal, stopping for good on any touch — see §5.1. |
 | O6 | Chart assignment per library item | Finalise with the library. |
 | O7 | Development seed-data fixture | **Now planned as build-order M9.** A debug-only fixture that populates Room directly (not a standalone script). Target volume **~6 months** of generated history including gaps, backfills, retired items and effective-from changes — enough for month-over-month trends and comparisons. This is a testing tool, not a precondition for usefulness: the app works from day one and the dashboard needs 14 days. |
 

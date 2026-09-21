@@ -14,9 +14,10 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M9 are complete, and real data collection began on 2026-09-10.** Every item now has a
-screen with its chart, its figures and its table, and a separate **Consistency Fixture** install loads
-named verification scenarios for M10 to be built against. The rollover failed every run from 2026-09-11 to
+**M0 through M10 are complete, and real data collection began on 2026-09-10.** Home is the
+dashboard: rings from day 14, and from day 28 a carousel of goals that are slipping, holding or
+improving. Every item has a screen with its chart, figures, goal line and full log, and a separate
+**Consistency Fixture** install loads named verification scenarios. M11 (export) remains. The rollover failed every run from 2026-09-11 to
 09-13 because it read steps from the background; it was fixed by reading steps only when a check-in
 opens — see *The rollover defect, fixed* in `build-order.md`. Item configuration and check-in times are deferred to a
 settings add-on after the plan. **M8 is the first milestone whose
@@ -234,8 +235,9 @@ build-order section.
 - `:domain` gets fast JVM unit tests covering every case in `docs/scoring-cases.md`. This is not
   optional; scoring failures are silent and produce plausible wrong numbers rather than crashes.
   **As of M2 this is complete**: all 77 in-scope cases are proven, and every test display name leads
-  with its case ID so coverage can be checked mechanically against the document. The six absences are
-  the rendering and first-run-suppression cases belonging to M10.
+  with its case ID so coverage can be checked mechanically against the document. M10 covered the six
+  it left (first-run suppression and the one window, in `DashboardTest`), and **replaced 9.1–9.4**:
+  the level panels became trend panels in the M10 review, with the trend's boundary cases as 9.1a–9.5a.
   **JUnit 5 (Jupiter)**; `@ParameterizedTest` maps onto the scoring-cases tables, one test per table
   rather than one per row.
 - **Test naming: conventional camelCase identifiers plus `@DisplayName`.** Put the doc-faithful text
