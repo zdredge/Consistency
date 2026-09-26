@@ -657,6 +657,143 @@ class CheckInLoopRepositoryTest {
         )
     }
 
+    // ---- Reaching an answered check-in while it is in grace --------------------------------------
+
+    /**
+     * One answer marks a check-in answered and takes it off the banner, so before this list existed a
+     * question skipped inside a finished check-in could never be reached again -- although spec §3.2
+     * keeps it answerable until the end of the next day.
+     */
+    @Test
+    fun anAnsweredCheckInIsReviewableWithItsUnansweredCount() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+        repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+
+        val asked = repo.checkInQuestions(installDay, Slot.NIGHT).count { !it.readOnly }
+        val night = repo.reviewableCheckIns(installDay).single { it.checkIn.slot == Slot.NIGHT }
+
+        assertEquals("every question but meals was skipped", asked - 1, night.unanswered)
+        assertTrue(
+            "it is off the banner, which is why this list exists",
+            repo.outstandingCheckIns(installDay).none { it.slot == Slot.NIGHT },
+        )
+    }
+
+    /** An unanswered check-in belongs to the banner, not here. */
+    @Test
+    fun anUnansweredCheckInIsNotReviewable() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+
+        assertTrue(repo.reviewableCheckIns(installDay).isEmpty())
+    }
+
+    /**
+     * Listed through the end of the next day and not after -- the same `Grace` boundary as the banner
+     * and the rollover, so none of the three can drift from the others.
+     */
+    @Test
+    fun anAnsweredCheckInStopsBeingReviewableWhenGraceCloses() = runBlocking {
+        val first = repoAt("2026-09-01T21:30")
+        first.ensureCheckInsExist(installDay)
+        first.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+        first.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+
+        val nextDay = repoAt("2026-09-02T10:00")
+        assertTrue(
+            "yesterday's is still reviewable",
+            nextDay.reviewableCheckIns(installDay.plusDays(1)).any { it.checkIn.day == installDay },
+        )
+
+        val dayAfter = repoAt("2026-09-03T10:00")
+        assertTrue(
+            "two days on, it is past grace",
+            dayAfter.reviewableCheckIns(installDay.plusDays(2)).none { it.checkIn.day == installDay },
+        )
+    }
+
+    /**
+     * Filling in a question that was skipped is its first answer, never an edit -- there was nothing
+     * to correct. Captured against the check-in it is given in, so the next day it is a backfill.
+     */
+    @Test
+    fun fillingInASkippedQuestionLaterIsAFirstAnswerNotAnEdit() = runBlocking {
+        val first = repoAt("2026-09-01T21:30")
+        first.ensureCheckInsExist(installDay)
+        first.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+        first.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+        val before = first.reviewableCheckIns(installDay).single { it.checkIn.slot == Slot.NIGHT }
+
+        val nextDay = repoAt("2026-09-02T19:00")
+        nextDay.recordAnswer(
+            vitaminsAnswer(Capture.BACKFILLED),
+            installDay,
+            Slot.NIGHT,
+            revisiting = true,
+        )
+
+        val stored = nextDay.answer(ItemId("vitamins"), installDay)!!
+        assertEquals(Capture.BACKFILLED, stored.capture)
+        assertNull("a skipped question filled in is not a correction", stored.editedAt)
+        assertEquals(
+            before.unanswered - 1,
+            nextDay.reviewableCheckIns(installDay.plusDays(1))
+                .single { it.checkIn.day == installDay && it.checkIn.slot == Slot.NIGHT }
+                .unanswered,
+        )
+    }
+
+    /**
+     * Changing an answer already given, after the check-in was finished, **is** an edit -- even
+     * through the same check-in. The user's call: it is a correction after the fact, which is the one
+     * thing `edited_at` is for. The capture and the moment it was first given are kept (3.4).
+     */
+    @Test
+    fun changingAnAnswerAfterReopeningAFinishedCheckInIsAnEdit() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+        repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+
+        repo.recordAnswer(
+            mealsAnswer(Capture.IN_WINDOW).copy(
+                valueNumber = 4.0,
+                submittedAt = Instant.parse("2026-09-02T03:00:00Z"),
+            ),
+            installDay,
+            Slot.NIGHT,
+            revisiting = true,
+        )
+
+        val stored = repo.answer(ItemId("meals"), installDay)!!
+        assertEquals(4.0, stored.valueNumber!!, 0.0)
+        assertNotNull("a correction after finishing is an edit", stored.editedAt)
+        assertEquals(Capture.IN_WINDOW, stored.capture)
+        assertEquals(Instant.parse("2026-09-02T01:30:00Z"), stored.submittedAt)
+    }
+
+    /**
+     * The in-window-only response rate dates a check-in by `answered_at`, so finishing it again the
+     * next day must not restamp it -- or an in-window check-in quietly becomes a backfilled one.
+     */
+    @Test
+    fun finishingAnAnsweredCheckInAgainKeepsItsFirstAnsweredAt() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        repo.recordAnswer(mealsAnswer(Capture.IN_WINDOW), installDay, Slot.NIGHT)
+        repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+
+        repoAt("2026-09-02T19:00").markCheckInAnsweredIfAnswered(
+            installDay,
+            Slot.NIGHT,
+            Instant.parse("2026-09-02T23:00:00Z"),
+        )
+
+        assertEquals(at, repo.checkIn(installDay, Slot.NIGHT)!!.answeredAt)
+    }
+
     // ---- Steps: the declined branch and the origin guard ---------------------------------------
 
     /**
@@ -832,6 +969,15 @@ class CheckInLoopRepositoryTest {
         capture = capture,
         submittedAt = Instant.parse("2026-09-02T01:30:00Z"),
         valueNumber = if (capture == Capture.PENDING) null else 3.0,
+    )
+
+    private fun vitaminsAnswer(capture: Capture) = Answer(
+        itemId = ItemId("vitamins"),
+        itemVersionId = ItemVersionId("vitamins.v1"),
+        day = installDay,
+        capture = capture,
+        submittedAt = Instant.parse("2026-09-02T23:00:00Z"),
+        valueBool = true,
     )
 
     /**
