@@ -1688,6 +1688,57 @@ as 23 of 25. The real app shows "Day 12 of 14 · 22 of 22 answered", its data un
 is carried from the list to stop it flashing and trimming it after load would bring the flash back.
 Comparison baselines (§5.2) beyond the trend itself were not built -- §5.1 names none.
 
+### After M10 — reaching an answered check-in, 2026-09-25
+
+**The gap, found by the user in real use.** A question skipped inside a finished check-in could not
+be reached again. One answer marks a check-in `ANSWERED` (`markCheckInAnsweredIfAnswered`, correctly
+-- completing a check-in has never required answering everything), the banner lists only check-ins
+that are not answered, and nothing else opens one: the notification is cancelled on leaving and the
+item screens are read-only. So spec §3.2's backfill-until-the-end-of-the-next-day held for a check-in
+left untouched and not for a question left blank inside one. No milestone had owned a way back in.
+
+**The fix, the user's choice of three.** Home lists answered check-ins still in grace beneath the
+banner, with how many questions have no answer ("2 not answered", nothing when there are none), and
+**Review** opens the check-in on its summary, which already names every skip and corrects in place.
+Two decisions came with it: changing an answer already given after reopening is an **edit**, even
+through the same check-in (filling in a skip is a first answer); and the count is stated plainly,
+never as a warning.
+
+- **`CheckInCompleteness`** (`:domain`) is now the one definition of "this question has an answer",
+  read by both the Home count and marking a check-in answered, so the two cannot disagree.
+- **`reviewableCheckIns`** reads the same `Grace` boundary as the banner and the rollover.
+- **`recordAnswer(..., revisiting)`** tells `AnswerRevision` the sitting is a later one; the rule
+  itself is unchanged.
+
+**A second defect this exposed, fixed with it.** `markCheckInAnswered` restamped `answered_at` every
+time. Harmless while a finished check-in could not be reopened; now finishing one again the next day
+would have moved it out of the in-window-only response rate, which dates by that timestamp. An
+answered check-in keeps its first `answered_at`.
+
+**Known edge, left alone.** A deferral still pending on yesterday's night check-in, answered by
+reopening that check-in today, records `BACKFILLED`; answered through this morning's check-in it is
+`IN_WINDOW` (3.3). That is the existing capture rule — 3.3 is specific to the next morning's
+check-in — so it is recorded rather than special-cased.
+
+**Tests.** `CheckInCompletenessTest`, 7 in `:domain` (377 total); 6 instrumented in
+`CheckInLoopRepositoryTest` (133 total on the Pixel, all green). **Mutations caught: 4 of 4** --
+counting read-only entries as questions (3 tests), ignoring the revisit flag, dropping the
+`answered_at` guard, and widening the list past `Grace` (one targeted test each).
+
+The mutation harness failed first: it grepped for a `<failure>` on the same line as its
+`<testcase>`, where the report puts it on the next, so all three `:data` mutations read as
+surviving. Reading the report with an XML parser showed each was caught. Same lesson as M8's harness
+-- **check the checker before believing a mutation survived.**
+
+**Device check, 2026-09-25, on the fixture install**, verified by reading the rows after each step.
+Tonight's night check-in answered 2 of 8 and finished: Home listed it under *Answered, still open to
+changes* with "6 not answered", and Review opened on the summary headed "Already recorded". Water
+filled in from there stored `IN_WINDOW` with no edit stamp; meals changed 3 → 2 kept `IN_WINDOW` and
+its first `submitted_at` and gained `edited_at`; the count fell to 5; `answered_at` did not move.
+Yesterday's night check-in answered 1 of 8 showed "7 not answered" and the backfill line, and
+vitamins filled in through Review stored `BACKFILLED` with no edit stamp. No crash. The real app's
+rows were identical before and after (31 check-ins, 193 answers, 16 step days, 33 rollover runs).
+
 ---
 
 ## M11 — Export

@@ -428,6 +428,15 @@ Deliberately simple. Top to bottom:
 backfilling in place. It does not block access to the dashboard, because trapping the user on open
 is what teaches them not to open it.
 
+**Answered check-ins still in grace are listed beneath it** (added 2026-09-25), each with how many
+of its questions have no answer ("2 not answered", omitted when there are none), and open on their
+summary. One answer marks a check-in answered and takes it off the banner, so without this a
+question skipped inside a finished check-in could not be reached again, although §3.2 keeps it
+answerable until the end of the next day. The count is a plain fact, never a warning: skips are
+shown, not scolded (§5.6). A question filled in this way is a first answer, captured against its
+check-in like any other; changing an answer already given after the check-in was finished is an
+edit.
+
 **The score element.** One large donut, **three concentric rings**: response rate outer, **daily goal
 completion** middle, **weekly goal completion** inner. **Settled in the M10 review (2026-09-21):**
 concentric rings over half-ring gauges, in blue `#3987E5`, amber `#C98500` and teal `#199E70` (three
