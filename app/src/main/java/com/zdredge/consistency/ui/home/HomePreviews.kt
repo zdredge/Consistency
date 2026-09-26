@@ -2,6 +2,7 @@ package com.zdredge.consistency.ui.home
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
+import com.zdredge.consistency.domain.checkin.ReviewableCheckIn
 import com.zdredge.consistency.domain.dashboard.Dashboard
 import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.Answer
@@ -38,7 +39,12 @@ private val resolver = DayResolver(Clock.systemDefaultZone())
 private val longAgo = LocalDate.of(2026, 6, 1)
 
 @Composable
-private fun Rendered(histories: List<ItemHistory>, days: Int, missed: Set<Int> = emptySet()) {
+private fun Rendered(
+    histories: List<ItemHistory>,
+    days: Int,
+    missed: Set<Int> = emptySet(),
+    reviewable: List<ReviewableCheckIn> = emptyList(),
+) {
     val figures = Dashboard.assemble(histories, checkIns(days, missed), today, resolver)
     ConsistencyTheme {
         HomeScreen(
@@ -46,6 +52,7 @@ private fun Rendered(histories: List<ItemHistory>, days: Int, missed: Set<Int> =
                 loading = false,
                 today = today,
                 outstanding = listOf(CheckIn(today.minusDays(1), Slot.NIGHT, CheckInState.PENDING)),
+                reviewable = reviewable,
                 itemCount = histories.size,
                 dashboard = presentDashboard(figures),
             ),
@@ -69,6 +76,22 @@ private fun TrendsWaiting() = Rendered(goals(), days = 18, missed = setOf(6))
 @Preview(name = "Dashboard — an ordinary fortnight", showBackground = true, heightDp = 1400)
 @Composable
 private fun Ordinary() = Rendered(goals(), days = 60, missed = setOf(3, 9, 30))
+
+/**
+ * Answered check-ins still in grace: yesterday morning's with two questions skipped, which carries
+ * the backfill line, and this morning's with everything answered, which carries no count at all.
+ */
+@Preview(name = "Home — answered check-ins still open to changes", showBackground = true, heightDp = 1400)
+@Composable
+private fun Reviewable() = Rendered(
+    goals(),
+    days = 60,
+    missed = setOf(3, 9, 30),
+    reviewable = listOf(
+        ReviewableCheckIn(CheckIn(today.minusDays(1), Slot.MORNING, CheckInState.ANSWERED), unanswered = 2),
+        ReviewableCheckIn(CheckIn(today, Slot.MORNING, CheckInState.ANSWERED), unanswered = 0),
+    ),
+)
 
 // ---- Invented goals: water slipping, coffee improving, vitamins holding, workouts slipping. -------
 
