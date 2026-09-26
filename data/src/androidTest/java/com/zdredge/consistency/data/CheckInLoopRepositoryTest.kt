@@ -681,6 +681,44 @@ class CheckInLoopRepositoryTest {
         )
     }
 
+    /**
+     * Only a check-in with something left is listed -- the user's call. Listing every answered
+     * check-in pushed the dashboard off the screen with cards that had nothing in them.
+     */
+    @Test
+    fun aFullyAnsweredCheckInIsNotListedButOneSkipIsEnough() = runBlocking {
+        val repo = repoAt("2026-09-01T21:30")
+        repo.ensureCheckInsExist(installDay)
+        val asked = repo.checkInQuestions(installDay, Slot.NIGHT).filterNot { it.readOnly }
+        asked.forEach { entry ->
+            repo.recordAnswer(
+                Answer(
+                    itemId = entry.item.id,
+                    itemVersionId = entry.version.id,
+                    day = installDay,
+                    capture = Capture.IN_WINDOW,
+                    submittedAt = Instant.parse("2026-09-02T01:30:00Z"),
+                    valueNumber = 1.0,
+                ),
+                installDay,
+                Slot.NIGHT,
+            )
+        }
+        repo.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, at)
+
+        assertTrue(
+            "nothing left to answer, so nothing to list",
+            repo.reviewableCheckIns(installDay).none { it.checkIn.slot == Slot.NIGHT },
+        )
+
+        repo.deleteAnswer(asked.last().item.id, installDay)
+
+        assertEquals(
+            1,
+            repo.reviewableCheckIns(installDay).single { it.checkIn.slot == Slot.NIGHT }.unanswered,
+        )
+    }
+
     /** An unanswered check-in belongs to the banner, not here. */
     @Test
     fun anUnansweredCheckInIsNotReviewable() = runBlocking {

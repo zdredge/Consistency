@@ -54,8 +54,8 @@ data class CheckInCompleteness(
 }
 
 /**
- * An answered check-in still inside its backfill window, and how many of its questions have no
- * answer.
+ * An answered check-in still inside its backfill window with questions that have no answer, and how
+ * many.
  *
  * Answering one question marks a check-in answered, which takes it off the outstanding banner -- so
  * before this existed a question skipped inside a finished check-in could not be reached again, even

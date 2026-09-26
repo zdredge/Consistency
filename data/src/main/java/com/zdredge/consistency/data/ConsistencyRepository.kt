@@ -350,11 +350,16 @@ class ConsistencyRepository(
         ).map { it.toDomain() }
 
     /**
-     * Answered check-ins still inside the grace window, each with how many questions have no answer.
+     * Answered check-ins still inside the grace window that have questions with no answer, and how
+     * many.
      *
      * The other half of [outstandingCheckIns]. Answering one question marks a check-in answered and
      * takes it off that list, so without this a question skipped inside a finished check-in could not
      * be reached again -- although spec §3.2 keeps it answerable until the end of the next day.
+     *
+     * **A fully answered check-in is left out** -- the user's call, 2026-09-25. Listing every
+     * answered check-in pushed the dashboard below the fold with cards that had nothing left in them;
+     * this list is for what is still outstanding, and a general review surface is later work.
      *
      * Same [Grace] boundary as the banner and the rollover, for the same reason: restating
      * "yesterday" here would let the three drift.
@@ -364,6 +369,7 @@ class ConsistencyRepository(
             .map { it.toDomain() }
             .filter { it.state == CheckInState.ANSWERED }
             .map { ReviewableCheckIn(it, completeness(it.day, it.slot).unanswered) }
+            .filter { it.unanswered > 0 }
 
     /** How much of a check-in has an answer. The rule is `CheckInCompleteness`'s; this reads rows. */
     private suspend fun completeness(day: LocalDate, slot: Slot): CheckInCompleteness {

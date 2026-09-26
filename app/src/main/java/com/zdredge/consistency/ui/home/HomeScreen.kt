@@ -104,8 +104,9 @@ fun HomeScreen(
         if (state.reviewable.isNotEmpty()) {
             // Answering one question marks a check-in answered and takes it off the banner above,
             // so this is the only way back to a question skipped inside a finished check-in while
-            // it is still in grace (spec §3.2). The count is stated and nothing more: a skip is a
-            // real answer, shown and never scolded.
+            // it is still in grace (spec §3.2). Only check-ins with something left are listed, so
+            // the dashboard is not pushed below cards with nothing in them. The count is stated and
+            // nothing more: a skip is a real answer, shown and never scolded.
             Text(
                 "Answered, still open to changes",
                 style = MaterialTheme.typography.titleMedium,
@@ -116,7 +117,7 @@ fun HomeScreen(
                     reviewable.checkIn,
                     state.today,
                     action = "Review",
-                    detail = reviewable.unanswered.takeIf { it > 0 }?.let { "$it not answered" },
+                    detail = "${reviewable.unanswered} not answered",
                     // Only what is filled in now is a backfill; answers already given keep the
                     // capture they were recorded with.
                     backfillNote = "Late — anything filled in now will be recorded as backfilled.",

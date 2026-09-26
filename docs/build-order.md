@@ -1739,6 +1739,16 @@ Yesterday's night check-in answered 1 of 8 showed "7 not answered" and the backf
 vitamins filled in through Review stored `BACKFILLED` with no edit stamp. No crash. The real app's
 rows were identical before and after (31 check-ins, 193 answers, 16 step days, 33 rollover runs).
 
+**Narrowed the same evening, after the real install.** On real data every answered check-in in grace
+was listed -- four cards, three of them complete -- and the dashboard sat below them. The user's
+call: **list a check-in only when something in it is still unanswered**, and leave a general review
+surface for later. `reviewableCheckIns` now drops a check-in with nothing left, and the Home card
+always carries its count. The consequence, accepted: changing an answer in a fully answered
+check-in has no way in again until that review surface exists. The edit rule for a reopened
+check-in stands for the ones that are listed. Guarded by
+`aFullyAnsweredCheckInIsNotListedButOneSkipIsEnough` (134 instrumented, all green); removing the
+filter fails it.
+
 ---
 
 ## M11 — Export

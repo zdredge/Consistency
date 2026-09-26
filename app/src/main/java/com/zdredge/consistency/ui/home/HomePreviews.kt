@@ -78,8 +78,8 @@ private fun TrendsWaiting() = Rendered(goals(), days = 18, missed = setOf(6))
 private fun Ordinary() = Rendered(goals(), days = 60, missed = setOf(3, 9, 30))
 
 /**
- * Answered check-ins still in grace: yesterday morning's with two questions skipped, which carries
- * the backfill line, and this morning's with everything answered, which carries no count at all.
+ * Answered check-ins still in grace with questions left: yesterday morning's, which carries the
+ * backfill line, and this morning's. A fully answered check-in is never listed.
  */
 @Preview(name = "Home — answered check-ins still open to changes", showBackground = true, heightDp = 1400)
 @Composable
@@ -89,7 +89,7 @@ private fun Reviewable() = Rendered(
     missed = setOf(3, 9, 30),
     reviewable = listOf(
         ReviewableCheckIn(CheckIn(today.minusDays(1), Slot.MORNING, CheckInState.ANSWERED), unanswered = 2),
-        ReviewableCheckIn(CheckIn(today, Slot.MORNING, CheckInState.ANSWERED), unanswered = 0),
+        ReviewableCheckIn(CheckIn(today, Slot.MORNING, CheckInState.ANSWERED), unanswered = 1),
     ),
 )
 

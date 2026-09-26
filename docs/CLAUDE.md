@@ -41,7 +41,7 @@ Two rules the M4.5 defect fixes settled, both worth knowing before touching answ
   a retraction would turn it into a met goal.
 - **An edit is a change made through a different check-in** than the one that first recorded the
   answer, **or after reopening a check-in that was already answered** (Home lists those while in
-  grace). Corrections while giving a check-in — including from its summary — are part of that
+  grace, and only when a question is still unanswered). Corrections while giving a check-in — including from its summary — are part of that
   answering, and filling in a skipped question is a first answer, never an edit. `AnswerRevision`
   in `:domain` owns this; do not set `submitted_at`, `capture` or `edited_at` from a caller — a
   caller only says whether it is revisiting (`recordAnswer(..., revisiting)`).
