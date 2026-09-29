@@ -9,6 +9,7 @@ import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.CheckInState
 import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.SelectOption
@@ -128,6 +129,12 @@ data class CheckInUiState(
      * already finished.
      */
     val fromSummary: Boolean = false,
+    /**
+     * The check-in was already answered when this sitting opened it -- reached from Home's list of
+     * answered check-ins still in grace. It opens on the summary, which names every skip, and a change
+     * to an answer already given counts as an edit (`ConsistencyRepository.recordAnswer`).
+     */
+    val revisiting: Boolean = false,
 ) {
     val current: QuestionUi? get() = questions.getOrNull(index)
     val isFirst: Boolean get() = index == 0
@@ -213,12 +220,18 @@ class CheckInViewModel(
                 )
             }
 
+            // An answered check-in opens on its summary: what the user is back for is the list of
+            // what was given and what was skipped, each correctable in place, not question one.
+            val revisiting = repository.checkIn(day, slot)?.state == CheckInState.ANSWERED
+
             _state.value = CheckInUiState(
                 loading = false,
                 checkInDay = day,
                 slot = slot,
                 answersDay = AnswerDay.forCheckIn(day, slot),
                 questions = questions,
+                onSummary = revisiting && questions.isNotEmpty(),
+                revisiting = revisiting,
             )
         }
     }
@@ -413,7 +426,7 @@ class CheckInViewModel(
             return
         }
 
-        repository.recordAnswer(question.toAnswer(day, slot), day, slot)
+        repository.recordAnswer(question.toAnswer(day, slot), day, slot, current.revisiting)
         _state.update { state ->
             state.copy(
                 questions = state.questions.map {

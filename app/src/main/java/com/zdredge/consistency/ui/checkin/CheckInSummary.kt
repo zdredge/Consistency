@@ -55,7 +55,9 @@ fun CheckInSummary(
     ) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 20.dp)) {
             Text(
-                "That's everything",
+                // Reopened from Home, this is the first thing on screen rather than the end of a set,
+                // so "That's everything" would describe a set the user has not just walked through.
+                if (state.revisiting) "Already recorded" else "That's everything",
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
@@ -64,7 +66,7 @@ fun CheckInSummary(
             Text(
                 // Past tense deliberately: by the time this shows, `finish` has already marked the
                 // check-in answered. The button below is an acknowledgement, not the act.
-                "Recorded. Tap anything to change it.",
+                if (state.revisiting) "Tap anything to change it." else "Recorded. Tap anything to change it.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,

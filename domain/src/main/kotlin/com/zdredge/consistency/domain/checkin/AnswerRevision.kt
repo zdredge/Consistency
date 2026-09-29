@@ -24,6 +24,11 @@ import java.time.Instant
  * stamped `edited_at`, the flag would fire on ordinary use and stop meaning "this was corrected
  * after the fact", which is the only thing it is for.
  *
+ * **Reopening a check-in that was already answered is a later sitting**, even though the check-in is
+ * the same one: changing an answer then is a correction after the fact, and the repository passes
+ * `sameCheckIn = false` for it. Filling in a question that was skipped is untouched by this — with no
+ * existing answer there is nothing to revise, so it is a first recording.
+ *
  * ### Deferrals are not edits
  *
  * A "not yet" is an answer that was never given, so resolving it the next morning is the *first*

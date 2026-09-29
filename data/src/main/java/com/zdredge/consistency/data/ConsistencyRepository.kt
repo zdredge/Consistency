@@ -14,13 +14,14 @@ import com.zdredge.consistency.data.mapper.originEntities
 import com.zdredge.consistency.data.mapper.selectionEntities
 import com.zdredge.consistency.data.mapper.toDomain
 import com.zdredge.consistency.data.mapper.toEntity
-import com.zdredge.consistency.domain.checkin.AnswerDay
 import com.zdredge.consistency.domain.checkin.AnswerRevision
+import com.zdredge.consistency.domain.checkin.CheckInCompleteness
 import com.zdredge.consistency.domain.checkin.CheckInContent
 import com.zdredge.consistency.domain.checkin.CheckInEntry
 import com.zdredge.consistency.domain.checkin.CheckInPlanner
 import com.zdredge.consistency.domain.checkin.CheckInTimes
 import com.zdredge.consistency.domain.checkin.Grace
+import com.zdredge.consistency.domain.checkin.ReviewableCheckIn
 import com.zdredge.consistency.domain.checkin.RolloverPlanner
 import com.zdredge.consistency.domain.checkin.StepMapper
 import com.zdredge.consistency.domain.model.Answer
@@ -349,6 +350,39 @@ class ConsistencyRepository(
         ).map { it.toDomain() }
 
     /**
+     * Answered check-ins still inside the grace window that have questions with no answer, and how
+     * many.
+     *
+     * The other half of [outstandingCheckIns]. Answering one question marks a check-in answered and
+     * takes it off that list, so without this a question skipped inside a finished check-in could not
+     * be reached again -- although spec §3.2 keeps it answerable until the end of the next day.
+     *
+     * **A fully answered check-in is left out** -- the user's call, 2026-09-25. Listing every
+     * answered check-in pushed the dashboard below the fold with cards that had nothing left in them;
+     * this list is for what is still outstanding, and a general review surface is later work.
+     *
+     * Same [Grace] boundary as the banner and the rollover, for the same reason: restating
+     * "yesterday" here would let the three drift.
+     */
+    suspend fun reviewableCheckIns(today: LocalDate): List<ReviewableCheckIn> =
+        db.checkInDao().between(Grace.oldestAnswerableDay(today).toString(), today.toString())
+            .map { it.toDomain() }
+            .filter { it.state == CheckInState.ANSWERED }
+            .map { ReviewableCheckIn(it, completeness(it.day, it.slot).unanswered) }
+            .filter { it.unanswered > 0 }
+
+    /** How much of a check-in has an answer. The rule is `CheckInCompleteness`'s; this reads rows. */
+    private suspend fun completeness(day: LocalDate, slot: Slot): CheckInCompleteness {
+        // A check-in writes to its own day or, for the morning, the day before -- including the
+        // deferrals it carries, which are dated to that same night. Which of the two each question
+        // uses is `CheckInCompleteness`'s decision, so both days are read and it picks.
+        val rows = answers(day.minusDays(1), day).map { it.itemId to it.day }.toSet()
+        return CheckInCompleteness.of(checkInQuestions(day, slot), day, slot) { itemId, answerDay ->
+            (itemId to answerDay) in rows
+        }
+    }
+
+    /**
      * The questions a check-in asks, resolved through `:domain`.
      *
      * Three reads composed by one pure function, which is why it sits here rather than in a
@@ -500,12 +534,9 @@ class ConsistencyRepository(
      * resolved. This asks whether the user responded, not whether the data is complete.
      */
     suspend fun markCheckInAnsweredIfAnswered(day: LocalDate, slot: Slot, at: Instant): Boolean {
-        val responded = checkInQuestions(day, slot)
-            .filterNot { it.readOnly }
-            .any { entry ->
-                val answersDay = entry.carriedOverFrom ?: AnswerDay.forCheckIn(day, slot)
-                answer(entry.item.id, answersDay) != null
-            }
+        // The same rule the Home count reads (`reviewableCheckIns`), so the two cannot disagree about
+        // whether a check-in has anything in it.
+        val responded = completeness(day, slot).responded
 
         if (responded) markCheckInAnswered(day, slot, at)
         return responded
@@ -516,9 +547,15 @@ class ConsistencyRepository(
      * stays ANSWERED even if the deferral is never resolved, because the user did complete the
      * check-in (scoring-cases A2.2), and a LATE answer must not repair a MISSED one (A1.2). Deriving
      * this state from the answers present would break both.
+     *
+     * **An already-answered check-in keeps its first `answered_at`.** The in-window-only response
+     * rate dates a check-in by that timestamp (`ResponseRate`), so finishing it again the next day --
+     * now possible, since an answered check-in can be reopened inside grace -- would quietly turn an
+     * in-window check-in into a backfilled one.
      */
     suspend fun markCheckInAnswered(day: LocalDate, slot: Slot, at: Instant) {
         val existing = db.checkInDao().onDayInSlot(day.toString(), slot.name) ?: return
+        if (existing.state == CheckInState.ANSWERED && existing.answeredAt != null) return
         db.checkInDao().upsert(
             existing.copy(state = CheckInState.ANSWERED, answeredAt = at),
         )
@@ -571,13 +608,27 @@ class ConsistencyRepository(
      *
      * The consequence is deliberate: abandoning a check-in halfway keeps every answer given and
      * leaves the check-in honestly outstanding.
+     *
+     * [revisiting] is true when the check-in was already answered before this sitting opened it. A
+     * change to an existing answer then counts as an edit even though it arrives through the same
+     * check-in: it is a correction after the check-in was finished, which is what `edited_at` records.
+     * Filling in a question that was skipped is still a first answer -- `AnswerRevision` decides both.
      */
-    suspend fun recordAnswer(answer: Answer, checkInDay: LocalDate, slot: Slot) {
+    suspend fun recordAnswer(
+        answer: Answer,
+        checkInDay: LocalDate,
+        slot: Slot,
+        revisiting: Boolean = false,
+    ) {
         val checkIn = db.checkInDao().onDayInSlot(checkInDay.toString(), slot.name)
-        recordAnswer(answer, checkIn?.id)
+        recordAnswer(answer, checkIn?.id, revisiting)
     }
 
-    suspend fun recordAnswer(answer: Answer, viaCheckInId: String? = null) {
+    suspend fun recordAnswer(
+        answer: Answer,
+        viaCheckInId: String? = null,
+        revisiting: Boolean = false,
+    ) {
         val existing = db.answerDao().forItemOnDay(answer.itemId.value, answer.day.toString())
         val id = existing?.answer?.id ?: newId()
 
@@ -589,8 +640,9 @@ class ConsistencyRepository(
             existing = existing?.toDomain(),
             incoming = answer,
             // Corrections made while giving a check-in are part of that answering. Null on either
-            // side means we cannot claim they are the same sitting, so it is treated as an edit.
-            sameCheckIn = viaCheckInId != null &&
+            // side means we cannot claim they are the same sitting, so it is treated as an edit, and
+            // so is reopening a check-in that was already finished.
+            sameCheckIn = !revisiting && viaCheckInId != null &&
                 viaCheckInId == existing?.answer?.submittedViaCheckinId,
             now = dayResolver.now(),
         )

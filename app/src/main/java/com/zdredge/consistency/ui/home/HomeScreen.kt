@@ -97,7 +97,32 @@ fun HomeScreen(
                 modifier = Modifier.padding(top = 8.dp),
             )
             state.outstanding.forEach { checkIn ->
-                OutstandingCheckInCard(checkIn, state.today, onOpenCheckIn)
+                CheckInCard(checkIn, state.today, action = "Answer", onOpen = onOpenCheckIn)
+            }
+        }
+
+        if (state.reviewable.isNotEmpty()) {
+            // Answering one question marks a check-in answered and takes it off the banner above,
+            // so this is the only way back to a question skipped inside a finished check-in while
+            // it is still in grace (spec §3.2). Only check-ins with something left are listed, so
+            // the dashboard is not pushed below cards with nothing in them. The count is stated and
+            // nothing more: a skip is a real answer, shown and never scolded.
+            Text(
+                "Answered, still open to changes",
+                style = MaterialTheme.typography.titleMedium,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            state.reviewable.forEach { reviewable ->
+                CheckInCard(
+                    reviewable.checkIn,
+                    state.today,
+                    action = "Review",
+                    detail = "${reviewable.unanswered} not answered",
+                    // Only what is filled in now is a backfill; answers already given keep the
+                    // capture they were recorded with.
+                    backfillNote = "Late — anything filled in now will be recorded as backfilled.",
+                    onOpen = onOpenCheckIn,
+                )
             }
         }
 
@@ -137,15 +162,25 @@ fun HomeScreen(
     }
 }
 
+/**
+ * One check-in on Home: an outstanding one to answer, or an answered one still in grace to review.
+ *
+ * [detail] is a plain fact about the check-in -- how many questions were left unanswered -- in the
+ * same quiet style as the backfill line, never an error colour.
+ */
 @Composable
-private fun OutstandingCheckInCard(
+private fun CheckInCard(
     checkIn: CheckIn,
     today: LocalDate?,
+    action: String,
     onOpen: (LocalDate, Slot) -> Unit,
+    detail: String? = null,
+    backfillNote: String = "Late — this will be recorded as backfilled.",
 ) {
     // Yesterday's check-in is still answerable but will record as a backfill, and the record says so
     // permanently (spec §3.2). Saying it up front is not a warning, it is the honesty the product is
-    // built on -- the metric is not for sale, and the user should know before they tap.
+    // built on -- the metric is not for sale, and the user should know before they tap. It holds for
+    // a reviewed check-in too: a skipped question filled in today is a backfill.
     val isBackfill = today != null && checkIn.day.isBefore(today)
 
     Card(
@@ -167,14 +202,21 @@ private fun OutstandingCheckInCard(
                 style = MaterialTheme.typography.titleSmall,
             )
             Text(checkIn.day.format(dayFormat), style = MaterialTheme.typography.bodyMedium)
-            if (isBackfill) {
+            detail?.let {
                 Text(
-                    "Late — this will be recorded as backfilled.",
+                    it,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Button(onClick = { onOpen(checkIn.day, checkIn.slot) }) { Text("Answer") }
+            if (isBackfill) {
+                Text(
+                    backfillNote,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(onClick = { onOpen(checkIn.day, checkIn.slot) }) { Text(action) }
         }
     }
 }

@@ -3,6 +3,7 @@ package com.zdredge.consistency.ui.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.zdredge.consistency.data.ConsistencyRepository
+import com.zdredge.consistency.domain.checkin.ReviewableCheckIn
 import com.zdredge.consistency.domain.dashboard.Dashboard
 import com.zdredge.consistency.domain.model.CheckIn
 import com.zdredge.consistency.domain.time.DayResolver
@@ -17,6 +18,11 @@ data class HomeUiState(
     val today: LocalDate? = null,
     /** Check-ins that are due, unanswered and still inside the backfill grace (spec §3.2). */
     val outstanding: List<CheckIn> = emptyList(),
+    /**
+     * Answered check-ins still inside the same grace, with how many questions have no answer. Without
+     * these, a question skipped in a finished check-in could not be reached again.
+     */
+    val reviewable: List<ReviewableCheckIn> = emptyList(),
     val itemCount: Int = 0,
     /**
      * The 04:00 job has not run in too long, so every figure derived from check-ins is drifting.
@@ -101,6 +107,7 @@ class HomeViewModel(
             loading = false,
             today = today,
             outstanding = repository.outstandingCheckIns(today),
+            reviewable = repository.reviewableCheckIns(today),
             itemCount = repository.items().size,
             rolloverOverdue = isRolloverOverdue(today),
             dashboard = dashboard(today),
