@@ -83,7 +83,7 @@ on the device, isolate it so there is nothing left in it to get wrong.
 | M7 | Health Connect steps | TDD the mapping; hand-verify the read | M3 (M0 cleared) | M4–M6 |
 | M8 | Item detail views and charts, in six reviewable phases (item configuration and check-in times deferred to a post-plan add-on) | Mockups agreed first; `:domain` TDD; charts hand-checked in previews | M3, M4 | M7 |
 | M9 | Seed-data fixture (spec O7), as a separate `fixture` install | Generator JVM-tested against the domain's rules; loader instrumented; scenarios hand-checked on screen | M3 | M4–M8 |
-| M10 | Dashboard | ViewModel TDD against seeded data | M9 | — |
+| M10 | Dashboard | `Dashboard` TDD in `:domain`; screens from reviewed mockups, hand-checked on the fixture | M9 | — |
 | M11 | Export | TDD the serialiser; hand-verify the picker | M3 | M10 |
 
 ---
@@ -1602,7 +1602,7 @@ when its state is on a screen.**
 
 ---
 
-## M10 — The dashboard
+## M10 — The dashboard — **COMPLETE 2026-09-21**
 
 **Depends on M9 for test data. O1 is resolved (no longer a gate).**
 
@@ -1640,6 +1640,53 @@ confirm and is hand-checked.
 **Exit criteria.** All three rings render separately and none is blended (constraint 8); the daily and
 weekly goal-completion figures are traceable to specific behaviours; panels populate correctly at the
 threshold boundaries under test; first-run suppression works; mid-week weeks show as progress.
+
+### As built
+
+**Six rounds of mockups before any code**, on one review page with the user's picks saved to it:
+
+1. Concentric rings over half-ring gauges; progress-bar panels -- but three blues were too hard to
+   tell apart, and the panels "just aren't clear about what is being displayed".
+2. Ring colours: blue `#3987E5`, amber `#C98500`, teal `#199E70`, each validated on the card surface
+   `#191C21` (colour-blind separation 8.4 at worst, normal-vision 19.8). Blue-violet-teal failed
+   outright; orange was rejected for sitting near the app's one reserved red.
+3. **The panels were rethought.** The user wanted to see which habits are *slipping*, and did not
+   connect a question to the goal behind it. So the panels became **trends** -- Slipping, Holding,
+   Improving at ±10 points on the fortnight before -- and each goal gained a **generated goal line**.
+   A stored or hand-written label was declined; the line is built from the target alone.
+4. The question leads and the goal line sits under it.
+5. A final rendering of everything together. The user's note: too much at once.
+6. **A two-tier carousel**: one goal at a time, trend by trend, story segments in the app blue filling
+   over 6 seconds; any touch stops it.
+
+**Decisions made in planning**, before the mockups: response rate counts only closed check-ins; a
+goal with both a daily and a weekly target (coffee, steps) is placed by its daily rate; O5 confirmed.
+
+**Where it lives.** `domain/.../dashboard/Dashboard.kt` assembles everything, and every figure goes
+through `ItemDetails.assemble` -- the item screens' own assembly -- so a goal cannot read one way on the
+dashboard and another when opened; a test proves the two agree. `ItemDetail` gained each closed week's
+result and the open week's progress, which a weekly goal's trend needs. `GoalLine` writes a target in
+words. `:app` has `DashboardPresenter`, `DashboardCards` (Canvas rings, a frame-counted carousel so a
+phone with animations off does not race through it) and `HomePreviews`, one per state.
+
+**Tests.** 23 in `:domain`: 13 vs 14 days, 27 vs 28, open check-ins not counted, one window, the rings
+summed and pending, the exact 10-point boundaries, no earlier fortnight, coffee by the day, a weekly
+goal by closed weeks with its open week, ordering, and the dashboard agreeing with the item screen;
+`GoalLine` against every approved wording. **Mutations caught: 5 of 5** -- counting open check-ins,
+coffee by the week, including the open week, showing figures a day early, a strict 10-point boundary.
+
+**Device pass, 2026-09-21**, on the fixture: `six_months` (rings, legend counts, the carousel advancing
+and stopping on a tap), `day_13` (first run), `day_14` (rings and the Trends wait card), the water item
+screen ("Goal: at least 2 bottles a day · Slipping", its 8 of 11 matching the carousel). Response rate
+cross-checked against the fixture database: 23 answered, 2 missed and 2 pending in the window, shown
+as 23 of 25. The real app shows "Day 12 of 14 · 22 of 22 answered", its data unchanged.
+
+**Found on the device and fixed:** "Met on 8 of the last 11 days" misstated the window -- it now reads
+"8 of 11 days counted in the last 14"; and "1 bottles".
+
+**Left as they are, deliberately:** the item screen keeps "(Bottles)" in its title, because the header
+is carried from the list to stop it flashing and trimming it after load would bring the flash back.
+Comparison baselines (§5.2) beyond the trend itself were not built -- §5.1 names none.
 
 ---
 

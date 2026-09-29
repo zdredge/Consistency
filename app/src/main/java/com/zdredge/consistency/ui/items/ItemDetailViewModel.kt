@@ -43,6 +43,11 @@ data class ItemDetailUiState(
     val missing: Boolean = false,
     val prompt: String = "",
     val subtitle: String = "",
+    /**
+     * "Goal: at least 2 bottles a day", under the question -- so the question and the goal it is
+     * scored against are read together (M10 review). Once loaded it also carries the goal's trend.
+     */
+    val goal: String? = null,
     /** The 14 days every figure covers, spelled out, because §5.2 says they all cover the same ones. */
     val windowLabel: String = "",
     /** What the chart is, for the views that are not drawn yet. */
@@ -101,8 +106,8 @@ class ItemDetailViewModel(
      * the new one — three different things in a few hundred milliseconds. The list already knows the
      * prompt and the subtitle, so the header can be right immediately and only the body has to wait.
      */
-    fun open(prompt: String, subtitle: String) {
-        _state.value = ItemDetailUiState(loading = true, prompt = prompt, subtitle = subtitle)
+    fun open(prompt: String, subtitle: String, goal: String?) {
+        _state.value = ItemDetailUiState(loading = true, prompt = prompt, subtitle = subtitle, goal = goal)
     }
 
     suspend fun load(itemId: ItemId) {
@@ -111,6 +116,7 @@ class ItemDetailViewModel(
             loading = true,
             prompt = _state.value.prompt,
             subtitle = _state.value.subtitle,
+            goal = _state.value.goal,
         )
 
         val loaded = repository.itemHistory(itemId, dayResolver.today())

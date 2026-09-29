@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -22,10 +24,8 @@ import java.time.format.DateTimeFormatter
 private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 
 /**
- * The landing screen.
- *
- * **This is not the dashboard** — that is M10, with its three rings, panels and run. This screen
- * exists so a check-in can be reached, and it should not grow toward the dashboard in the meantime.
+ * The landing screen, and since M10 the dashboard (spec §5.1): the outstanding banner, then the score
+ * card and the trend carousel -- or, before there is enough history, how long until there is.
  *
  * The outstanding check-ins are listed here rather than blocking the way in. Spec §5.1 is explicit
  * that the banner must be persistent and *not* modal: trapping the user on open is what teaches them
@@ -43,7 +43,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
+        modifier = modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Consistency", style = MaterialTheme.typography.headlineSmall)
@@ -101,9 +101,16 @@ fun HomeScreen(
             }
         }
 
-        // One button, and the whole of M8's way in. Not a dashboard and not a summary -- the
-        // figures live on an item's own screen, where a hit rate can sit beside the attainment that
-        // keeps it honest. This screen is still the thing that gets you to a check-in.
+        state.dashboard?.let { dashboard ->
+            Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                dashboard.firstRun?.let { FirstRunCard(it) }
+                dashboard.score?.let { ScoreCard(it) }
+                dashboard.trendsWaiting?.let { TrendsWaitingCard(it) }
+                if (dashboard.trends.isNotEmpty()) TrendCarousel(dashboard.trends)
+            }
+        }
+
+        // Every item's own screen, where the figures sit beside the chart and the full log.
         Button(onClick = onOpenItems, modifier = Modifier.padding(top = 20.dp)) {
             Text("Items and history")
         }

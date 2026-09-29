@@ -247,7 +247,7 @@ class MainActivity : ComponentActivity() {
                                 onOpenItem = { row ->
                                     // The header is set before the screen composes, so opening an
                                     // item does not flash the previous one's chart on the way in.
-                                    itemDetailViewModel.open(row.prompt, row.subtitle)
+                                    itemDetailViewModel.open(row.prompt, row.subtitle, row.goal)
                                     backStack.push(Screen.ItemDetail(row.itemId))
                                 },
                                 onBack = { backStack.pop() },

@@ -138,10 +138,15 @@ Computed from the three sleep/wake **time** items only. Never persisted.
 
 | # | Given | Then |
 |---|---|---|
-| 9.1 | hit rate 80% | going well |
-| 9.2 | hit rate 79% | middling |
-| 9.3 | hit rate 60% | middling |
-| 9.4 | hit rate 59% | going badly |
+| 9.1 | ~~hit rate 80%~~ | ~~going well~~ — *superseded at M10 by the trend panels (spec §5.1); `Panel` still proves it* |
+| 9.2 | ~~hit rate 79%~~ | ~~middling~~ — *superseded* |
+| 9.3 | ~~hit rate 60%~~ | ~~middling~~ — *superseded* |
+| 9.4 | ~~hit rate 59%~~ | ~~going badly~~ — *superseded* |
+| 9.1a | hit rate exactly 10 points below the fortnight before | slipping |
+| 9.2a | 8.5 points below | holding |
+| 9.3a | exactly 10 points above | improving |
+| 9.4a | no scored instances in the fortnight before | no trend; the goal is on no panel |
+| 9.5a | 27 days of history | the trend panels are suppressed; the rings are shown |
 | 9.5 | 13 days of history | all figures, panels and comparisons suppressed |
 | 9.6 | 14 days of history | figures appear |
 | 9.7 | Wednesday of a Monday-start week; weekly steps target 70,000; 30,000 over three elapsed days | shown as progress against elapsed days. **Not** scored as missed. The week is only marked met or missed once Sunday closes. |

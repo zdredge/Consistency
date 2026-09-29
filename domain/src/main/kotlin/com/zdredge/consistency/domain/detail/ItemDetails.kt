@@ -3,6 +3,7 @@ package com.zdredge.consistency.domain.detail
 import com.zdredge.consistency.domain.checkin.Answerability
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Classification
+import com.zdredge.consistency.domain.model.GoalResult
 import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.OptionId
@@ -79,7 +80,42 @@ object ItemDetails {
             ),
             lastDay = lastDay,
             earlierTarget = earlierTarget(history, chartCells.map { it.day }),
+            weeklyResults = weeklyResults(history, slot, cells, today, lastDay, weeks),
+            openWeek = if (history.hasTargetIn(Period.WEEK) && slot != Slot.WEEKLY) {
+                weekFigures(history, listOf(weeks.weekStart(lastDay)), today, lastDay, weeks)
+                    .single().takeIf { !it.closed }?.progress
+            } else {
+                null
+            },
         )
+    }
+
+    /**
+     * Every closed week's goal result, keyed by Monday: the same judgements [weeklyFigures] counts,
+     * over the whole history rather than the window. A weekly question is its Sunday's answer; a
+     * weekly count or total is its roll-up against the Monday's target.
+     */
+    private fun weeklyResults(
+        history: ItemHistory,
+        slot: Slot,
+        cells: List<DayCell>,
+        today: LocalDate,
+        lastDay: LocalDate,
+        weeks: DayResolver,
+    ): Map<LocalDate, GoalResult> {
+        if (!history.hasTargetIn(Period.WEEK)) return emptyMap()
+        if (slot == Slot.WEEKLY) {
+            return cells.filter { today.isAfter(it.day) }
+                .mapNotNull { cell -> cell.result?.let { weeks.weekStart(cell.day) to it } }
+                .toMap()
+        }
+        val closedWeeks = generateSequence(weeks.weekStart(history.item.createdOn)) { it.plusWeeks(1) }
+            .takeWhile { !it.isAfter(weeks.weekStart(lastDay)) }
+            .filter { today.isAfter(weeks.weekEnd(it)) }
+            .toList()
+        return weekFigures(history, closedWeeks, today, lastDay, weeks)
+            .mapNotNull { week -> week.result?.let { week.weekStart to it } }
+            .toMap()
     }
 
     /**

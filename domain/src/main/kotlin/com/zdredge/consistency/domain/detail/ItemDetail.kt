@@ -4,7 +4,9 @@ import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.SelectOption
+import com.zdredge.consistency.domain.model.GoalResult
 import com.zdredge.consistency.domain.scoring.ItemSummary
+import com.zdredge.consistency.domain.scoring.PeriodProgress
 import com.zdredge.consistency.domain.scoring.RunSummary
 import java.time.LocalDate
 
@@ -179,4 +181,12 @@ data class ItemDetail(
     val lastDay: LocalDate,
     /** Set when the daily target changed within the chart's days. */
     val earlierTarget: EarlierTarget? = null,
+    /**
+     * Every **closed** week's result over the item's whole history, keyed by its Monday -- the weekly
+     * goal instances the dashboard's trend compares, two weeks against the two before. Empty for an
+     * item with no weekly target. Weeks that were not goal instances are absent.
+     */
+    val weeklyResults: Map<LocalDate, GoalResult> = emptyMap(),
+    /** The running week's progress against a weekly count or total, when it has one (§5.3). */
+    val openWeek: PeriodProgress? = null,
 )

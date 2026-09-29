@@ -457,7 +457,7 @@ says ends the product. Still no reason to adopt Hilt.
 
 | Module | Contains | Depends on |
 |---|---|---|
-| `:domain` | Scoring, runs, roll-ups, derived metrics, target resolution. Pure Kotlin. | Nothing Android |
+| `:domain` | Scoring, runs, roll-ups, derived metrics, target resolution, item detail and the dashboard (`dashboard/`, M10). Pure Kotlin. | Nothing Android |
 | `:data` | Room entities, DAOs, migrations, repository, Health Connect client | `:domain` |
 | `:app` | Compose UI, ViewModels, receivers, workers, scheduler, notifications | `:data`, `:domain` |
 | `:fixture` | Generated verification history and its loader (M9). **Linked only into the `fixture` build type** | `:data` |

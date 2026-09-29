@@ -1,9 +1,12 @@
 package com.zdredge.consistency.ui.items
 
+import com.zdredge.consistency.domain.dashboard.Dashboard
+import com.zdredge.consistency.domain.dashboard.Trend
 import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.EarlierTarget
 import com.zdredge.consistency.domain.detail.GoalFigures
+import com.zdredge.consistency.domain.detail.GoalLine
 import com.zdredge.consistency.domain.detail.ItemDetail
 import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.ItemKind
@@ -36,6 +39,7 @@ internal fun presentItemDetail(
         subtitle = subtitleFor(
             detail.item.kind, detail.version.slot, detail.version.classification, detail.item.retiredOn,
         ),
+        goal = goalFor(history, detail),
         windowLabel = "Last ${detail.figures.windowDays.size} days · " +
             "${detail.figures.windowDays.first().format(windowDayFormat)} – " +
             "${detail.figures.windowDays.last().format(windowDayFormat)}",
@@ -170,4 +174,21 @@ private fun rowsFor(detail: ItemDetail, labels: Map<OptionId, String>): List<His
 private fun targetNoteFor(earlier: EarlierTarget, unitLabel: String?): String {
     val amount = earlier.value.asAnswer() + (unitLabel?.let { " $it" }.orEmpty())
     return "Target was $amount until ${earlier.until.format(windowDayFormat)}"
+}
+
+/**
+ * The goal line under the question, with the goal's trend once it has one: "Goal: at least 2 bottles
+ * a day · Slipping". The same line and the same trend the dashboard shows for this goal.
+ */
+private fun goalFor(history: ItemHistory, detail: ItemDetail): String? {
+    val line = GoalLine.forItem(detail.version, history.targetResolver, history.options, history.rollUp, detail.lastDay)
+        ?: return null
+    val trend = Dashboard.trendOf(history, detail)?.trend?.let {
+        when (it) {
+            Trend.SLIPPING -> " · Slipping"
+            Trend.HOLDING -> " · Holding"
+            Trend.IMPROVING -> " · Improving"
+        }
+    }.orEmpty()
+    return "Goal: $line$trend"
 }
