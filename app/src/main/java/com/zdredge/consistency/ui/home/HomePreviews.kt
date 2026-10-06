@@ -59,6 +59,7 @@ private fun Rendered(
             notificationsEnabled = true,
             exportStatus = null,
             onExport = {},
+            onCopyDatabase = {},
             onOpenCheckIn = { _, _ -> },
             onOpenItems = {},
         )
