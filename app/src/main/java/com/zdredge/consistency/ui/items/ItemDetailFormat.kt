@@ -1,5 +1,6 @@
 package com.zdredge.consistency.ui.items
 
+import com.zdredge.consistency.domain.detail.ContainerAmount
 import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.DayValue
@@ -8,11 +9,14 @@ import com.zdredge.consistency.domain.model.Classification
 import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.domain.scoring.SleepMetric
 import com.zdredge.consistency.domain.time.ClockAxis
 import com.zdredge.consistency.ui.checkin.asAnswer
 import com.zdredge.consistency.ui.checkin.timeFormat
+import java.time.Duration
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import kotlin.math.roundToInt
 
 /**
  * How an item's history is written down.
@@ -83,10 +87,35 @@ internal fun DayState.label(): String = when (this) {
     DayState.CONFLICTED -> "Two sources"
 }
 
+/**
+ * The answer and what was derived from it, for the log and the tapped day: "2 · 80 oz", "8:30 AM ·
+ * 9h 00m asleep". The chart and the key stay in the item's own unit; this is where the rest is read.
+ */
+internal fun DayCell.valueText(labels: Map<OptionId, String>, metric: SleepMetric?): String {
+    val answer = value.text(labels)
+    val night = derived?.let { span ->
+        when (metric) {
+            SleepMetric.SLEEP_DURATION -> "${span.asSpan()} asleep"
+            SleepMetric.LINGERING -> "${span.asSpan()} lingering"
+            null -> null
+        }
+    }
+    return listOfNotNull(answer.ifEmpty { null }, night).joinToString(" · ")
+}
+
+/** "9h 00m"; under an hour, "22 min". */
+internal fun Duration.asSpan(): String {
+    val minutes = toMinutes()
+    return if (minutes < 60) "$minutes min" else "${minutes / 60}h ${"%02d".format(minutes % 60)}m"
+}
+
+/** "80 oz". Whole units: a fraction of an ounce is precision nobody measured. */
+internal fun ContainerAmount.text(): String = "${amount.roundToInt().toDouble().asAnswer()} $unitLabel"
+
 /** The answer itself. Empty when the day has none, or when it has one that must not be drawn. */
 internal fun DayValue?.text(labels: Map<OptionId, String>): String = when (this) {
     null -> ""
-    is DayValue.Amount -> value.asAnswer()
+    is DayValue.Amount -> listOfNotNull(value.asAnswer(), container?.text()).joinToString(" · ")
     is DayValue.YesNo -> if (value) "Yes" else "No"
     is DayValue.TimeOfDay -> value.format(timeFormat)
     is DayValue.Rating -> value.toString()

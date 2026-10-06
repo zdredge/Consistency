@@ -190,7 +190,9 @@ private fun ItemChart(
         is Chart.ShadedCalendar -> {
             val ramp = ChartPalette.rampOf(chart.scale.buckets.size)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                DayGrid(state.days, shadedFill(chart.shades, ramp), emptyList(), selected, onSelectDay)
+                // Mindset's weekly average sits beside its rows; meals and water declare no roll-up,
+                // so their weeks are empty and the column does not appear.
+                DayGrid(state.days, shadedFill(chart.shades, ramp), chart.weeks, selected, onSelectDay)
                 // The key is what makes the ramp mean something rather than merely vary.
                 ShadeKey(chart.scale.keyLabels(), ramp, chart.scale.targetBucket())
             }

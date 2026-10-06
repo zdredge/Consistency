@@ -52,6 +52,9 @@ data class WeekFigure(
  */
 object WeeklyFigures {
 
+    /** Aggregations that describe the values seen rather than accumulate them. */
+    private val OF_VALUES = setOf(RollUpAggregation.AVERAGE, RollUpAggregation.MAX)
+
     /**
      * A week of an asked item: worked out, stretched, coffee.
      *
@@ -95,7 +98,9 @@ object WeeklyFigures {
         return WeekFigure(
             weekStart = weekStart,
             active = days.isNotEmpty(),
-            value = rollUp.value,
+            // A count or a total of nothing is zero; an average or a maximum of nothing is not a
+            // number at all. A silent week of mindset reading "0" would claim the worst week possible.
+            value = if (rollUp.observedDays == 0 && aggregation in OF_VALUES) null else rollUp.value,
             observedDays = rollUp.observedDays,
             expectedDays = rollUp.expectedDays,
             target = target,

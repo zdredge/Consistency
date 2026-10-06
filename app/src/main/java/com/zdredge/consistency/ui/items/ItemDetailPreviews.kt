@@ -9,6 +9,7 @@ import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.Classification
+import com.zdredge.consistency.domain.model.ContainerSize
 import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemId
@@ -24,6 +25,8 @@ import com.zdredge.consistency.domain.model.RollUpSpec
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.Target
+import com.zdredge.consistency.domain.scoring.SleepMetric
+import com.zdredge.consistency.domain.scoring.SleepNights
 import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.ui.theme.ConsistencyTheme
 import java.time.Clock
@@ -127,6 +130,12 @@ private fun WaterTargetRaised() = Rendered(
             target("water", Direction.AT_LEAST, 3.0, from = today.minusDays(12)),
         ),
         answers = (0..30).map { answer("water", today.minusDays(it.toLong()), number = if (it % 3 == 0) 3.0 else 2.0) },
+        // A smaller bottle from six days ago, so the log reads "2 · 80 oz" before it and "2 · 64 oz"
+        // after, and the Average Amount mixes the two honestly (case 5.4).
+        containerSizes = listOf(
+            ContainerSize(ItemId("water"), 40.0, "oz", effectiveFrom = longAgo),
+            ContainerSize(ItemId("water"), 32.0, "oz", effectiveFrom = today.minusDays(6)),
+        ),
     ),
 )
 
@@ -243,6 +252,55 @@ private fun BedtimeObservation() = Rendered(
                 time = if (it % 7 == 0) LocalTime.of(1, 30) else LocalTime.of(23, 10),
             )
         },
+    ),
+)
+
+/**
+ * Woke up, with sleep duration beside it (constraint 13's hardcoded pair).
+ *
+ * Every fifth night has no bedtime, so its sleep is unavailable rather than zero (case 8.4); a 01:30
+ * bedtime is still a short night, not a 22-hour one (8.2). Typical Sleep follows the night filter.
+ */
+@Preview(name = "Woke up — sleep duration", showBackground = true, heightDp = 1600)
+@Composable
+private fun WokeUpWithSleep() {
+    val nights = (1..20).map { today.minusDays(it.toLong()) }
+    val bedtimes = nights.withIndex()
+        .filter { (i, _) -> i % 5 != 4 }
+        .associate { (i, night) -> night to if (i % 7 == 0) LocalTime.of(1, 30) else LocalTime.of(23, 10) }
+    val woke = nights.associateWith { if (it.dayOfWeek.value >= 6) LocalTime.of(8, 45) else LocalTime.of(6, 50) }
+    Rendered(
+        ItemHistory(
+            item = item("woke_at"),
+            versions = listOf(
+                version("woke_at", "What time did you wake up?", AnswerType.TIME, Slot.MORNING, Classification.OBSERVATION),
+            ),
+            answers = woke.map { (night, time) -> answer("woke_at", night, time = time) },
+            sleep = SleepNights(bedtime = bedtimes, wokeAt = woke, gotUpAt = emptyMap()),
+            sleepMetric = SleepMetric.SLEEP_DURATION,
+        ),
+    )
+}
+
+/**
+ * Mindset with its weekly average beside each row (spec §4). One blue, never scored; a week nobody
+ * answered has no chip value rather than a zero, and a closed week with gaps carries the ring.
+ */
+@Preview(name = "Mindset — weekly averages", showBackground = true, heightDp = 1600)
+@Composable
+private fun MindsetAverages() = Rendered(
+    ItemHistory(
+        item = item("mindset"),
+        versions = listOf(
+            version(
+                "mindset", "How positive was your mindset today? (1 - Very Negative, 5 - Very Positive)",
+                AnswerType.SCALE, classification = Classification.OBSERVATION,
+            ),
+        ),
+        rollUp = RollUpSpec(ItemId("mindset"), ItemId("mindset"), RollUpAggregation.AVERAGE),
+        answers = (0..30)
+            .filter { it !in 14..20 && it % 6 != 5 }
+            .map { answer("mindset", today.minusDays(it.toLong()), scale = 1 + (it * 3) % 5) },
     ),
 )
 

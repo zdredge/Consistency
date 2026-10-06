@@ -139,4 +139,14 @@ class RollUpCalculatorTest {
         assertEquals(2.0, RollUpCalculator.weekly(coffees, week, RollUpAggregation.AVERAGE).value)
         assertEquals(3.0, RollUpCalculator.weekly(coffees, week, RollUpAggregation.MAX).value)
     }
+
+    @Test
+    @DisplayName("Spec 4 - average mindset reads the 1-5 scale, not a number column it never fills")
+    fun anAverageOfAScale() {
+        // Mindset is a SCALE item, so its value is in valueScale and valueNumber is always null. Reading
+        // only the number column averaged every week of mindset to zero -- the worst possible week.
+        val moods = listOf(2, 4, 3).mapIndexed { i, n -> answer("mindset", day = week[i], scale = n) }
+        assertEquals(3.0, RollUpCalculator.weekly(moods, week, RollUpAggregation.AVERAGE).value)
+        assertEquals(4.0, RollUpCalculator.weekly(moods, week, RollUpAggregation.MAX).value)
+    }
 }

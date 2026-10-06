@@ -573,6 +573,19 @@ item deliberately never judged.
 **No-opportunity usage is shown here** for goals that carry the option (constraint 17): how often the
 neutral answer was chosen over the window, so leaning on it stays legible rather than hidden.
 
+**The derived figures are shown here** (added 2026-10-06; until then §2 and §4 promised them and no
+surface showed them). Each sits on the item it ends on, as a figure over the window and, for each day,
+beside the answer in the table and the tapped-day card:
+
+- **Sleep duration** on *woke up* ("Typical Sleep"), and **minutes lingering in bed** on *got out of
+  bed* ("Typical Lingering in Bed"). Both are the median over the nights shown, so they follow the
+  night filter exactly as the typical time does. A night missing an end has no value, not zero.
+- **Average mindset** on *mindset*: the window's average, plus each week's average at the end of its
+  calendar row. It is a plain number, never coloured or compared with anything, because it is
+  watched rather than targeted (§4).
+- **A counted container's amount** on *water*: each day reads "2 · 80 oz" at the bottle size in force
+  that day, and an **Average Amount** sits among the figures. The chart and its key stay in bottles.
+
 **Hit rate and average attainment are both shown here, side by side and never merged.** For numeric
 goals the pair is the point: hit rate is how often the target was met, average attainment is how
 close the user came on average over the window.

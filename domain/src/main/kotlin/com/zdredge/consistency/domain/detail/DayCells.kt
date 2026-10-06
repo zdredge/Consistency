@@ -19,6 +19,7 @@ import com.zdredge.consistency.domain.model.Target
 import com.zdredge.consistency.domain.scoring.GoalScorer
 import com.zdredge.consistency.domain.scoring.ItemLifecycle
 import com.zdredge.consistency.domain.scoring.MeasuredScorer
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
 
@@ -68,12 +69,20 @@ enum class DayState {
  * a stale column left by an earlier version of the question be drawn as though it were the answer.
  */
 sealed interface DayValue {
-    data class Amount(val value: Double) : DayValue
+    /**
+     * A number. [container] is what it stood for when the item counts containers (spec §3.3: "2"
+     * records both the count and the absolute amount), resolved against the size in force on that day
+     * so a later change of bottle never rewrites it (case 5.4).
+     */
+    data class Amount(val value: Double, val container: ContainerAmount? = null) : DayValue
     data class YesNo(val value: Boolean) : DayValue
     data class TimeOfDay(val value: LocalTime) : DayValue
     data class Rating(val value: Int) : DayValue
     data class Choices(val options: Set<OptionId>) : DayValue
 }
+
+/** An absolute amount -- 80 oz for two 40 oz bottles. Derived on read, never stored. */
+data class ContainerAmount(val amount: Double, val unitLabel: String)
 
 /**
  * How the answer was recorded, as distinct from what it says.
@@ -111,6 +120,11 @@ data class DayCell(
     val marks: DayMarks = DayMarks(),
     val result: GoalResult? = null,
     val note: String? = null,
+    /**
+     * The night's hardcoded sleep metric, on the one item that shows it (constraint 13). Null when
+     * the item shows none, or when an endpoint is missing -- unavailable, never zero (case 8.4).
+     */
+    val derived: Duration? = null,
 )
 
 /**
@@ -188,7 +202,9 @@ object DayCells {
             )
         }
 
-        val value = valueOf(answer, version)
+        val value = valueOf(answer, version, history, day)
+        // Only on an answer actually given -- a deferral above carries no time to compute from.
+        val derived = history.sleepMetric?.of(history.sleep!!.on(day))
 
         // 5. No opportunity, before any direction is considered (10.7). The target it happens to
         //    carry is irrelevant, and so is whether it has one at all.
@@ -196,18 +212,21 @@ object DayCells {
             return DayCell(
                 day, DayState.NO_OPPORTUNITY, value = value, marks = marks, note = note,
                 result = target?.let { GoalResult.excluded(ExclusionReason.NO_OPPORTUNITY) },
+                derived = derived,
             )
         }
 
         // 6. Recorded, with nothing to judge it against. "Did you stretch?" answered no on a Tuesday
         //    is a recorded no, not a missed goal: stretching is targeted by the week.
         if (target == null || version.classification == Classification.OBSERVATION) {
-            return DayCell(day, DayState.RECORDED, value = value, marks = marks, note = note)
+            return DayCell(day, DayState.RECORDED, value = value, marks = marks, note = note, derived = derived)
         }
 
         // 7. Scored.
         val result = GoalScorer.score(target, answer, history.noOpportunityOptions)
-        return DayCell(day, stateOf(result), value = value, marks = marks, note = note, result = result)
+        return DayCell(
+            day, stateOf(result), value = value, marks = marks, note = note, result = result, derived = derived,
+        )
     }
 
     /**
@@ -273,9 +292,22 @@ object DayCells {
         hasNote = !answer.note.isNullOrBlank(),
     )
 
-    private fun valueOf(answer: Answer, version: ItemVersion): DayValue? = when (version.answerType) {
+    private fun valueOf(
+        answer: Answer,
+        version: ItemVersion,
+        history: ItemHistory,
+        day: LocalDate,
+    ): DayValue? = when (version.answerType) {
         AnswerType.BOOL -> answer.valueBool?.let(DayValue::YesNo)
-        AnswerType.NUMBER -> answer.valueNumber?.let(DayValue::Amount)
+        // The container in force on this day, never today's: changing bottles must not rewrite what an
+        // older count stood for (case 5.4).
+        AnswerType.NUMBER -> answer.valueNumber?.let { count ->
+            DayValue.Amount(
+                count,
+                history.containerResolver.resolve(history.item.id, day)
+                    ?.let { ContainerAmount(count * it.size, it.unitLabel) },
+            )
+        }
         AnswerType.TIME -> answer.valueTime?.let(DayValue::TimeOfDay)
         AnswerType.SCALE -> answer.valueScale?.let(DayValue::Rating)
         // An empty set is a real answer of "none of these" and is drawn as one, which is why this

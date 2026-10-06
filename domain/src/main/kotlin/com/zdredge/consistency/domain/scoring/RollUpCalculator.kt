@@ -48,10 +48,10 @@ object RollUpCalculator {
 
         val value = when (aggregation) {
             RollUpAggregation.COUNT_OF_YES -> observed.count { it.valueBool == true }.toDouble()
-            RollUpAggregation.SUM -> observed.sumOf { it.valueNumber ?: 0.0 }
-            RollUpAggregation.AVERAGE -> observed.mapNotNull { it.valueNumber }
+            RollUpAggregation.SUM -> observed.sumOf { it.amount ?: 0.0 }
+            RollUpAggregation.AVERAGE -> observed.mapNotNull { it.amount }
                 .let { if (it.isEmpty()) 0.0 else it.average() }
-            RollUpAggregation.MAX -> observed.mapNotNull { it.valueNumber }.maxOrNull() ?: 0.0
+            RollUpAggregation.MAX -> observed.mapNotNull { it.amount }.maxOrNull() ?: 0.0
         }
 
         return RollUp(
@@ -85,4 +85,12 @@ object RollUpCalculator {
      */
     fun scoreClosedPeriod(rollUp: RollUp, target: Target, periodClosed: Boolean): GoalResult =
         if (!periodClosed) GoalResult.excluded(ExclusionReason.PERIOD_OPEN) else score(rollUp, target)
+
+    /**
+     * The quantity an answer gives: a number, or a point on the 1-5 scale.
+     *
+     * An answer carries exactly one value, in the column its type uses, so this cannot read two. Mindset
+     * is a SCALE item; reading only `valueNumber` averaged every week of it to zero.
+     */
+    private val Answer.amount: Double? get() = valueNumber ?: valueScale?.toDouble()
 }

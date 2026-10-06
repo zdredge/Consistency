@@ -346,4 +346,6 @@ build-order section.
   the window. Reported beside hit rate, never merged into it. Not meaningful for at-most directions.
 - **Roll-up** — a weekly figure derived from one daily item plus an aggregation.
 - **Derived metric** — sleep duration and lingering minutes, computed from the three sleep/wake time
-  items. Hardcoded, never persisted.
+  items. Hardcoded, never persisted. Shown on the *woke up* and *got out of bed* screens; which item
+  shows which is `SeedLibrary.SLEEP_METRICS`, and that map is constraint 13's hardcoding, not a
+  starting point for generalising it.

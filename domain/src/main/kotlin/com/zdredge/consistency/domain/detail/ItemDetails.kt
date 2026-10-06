@@ -8,9 +8,11 @@ import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Period
+import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.scoring.FiguresWindow
 import com.zdredge.consistency.domain.scoring.ItemSummary
+import com.zdredge.consistency.domain.scoring.RollUpCalculator
 import com.zdredge.consistency.domain.scoring.RunCalculator
 import com.zdredge.consistency.domain.time.DayResolver
 import java.time.LocalDate
@@ -237,6 +239,9 @@ object ItemDetails {
                         cell.day to DayShade(bucket, scale, keyBucketOf(bucket, scale, view.scale))
                     }
                 }.toMap(),
+                // Mindset's weekly average beside its rows (spec §4). Only a declared roll-up earns
+                // the column, so meals and water keep their plain calendars.
+                weeks = if (history.rollUp != null) weekly else emptyList(),
             )
 
             is ItemView.DailyBars -> Chart.DailyBars(
@@ -304,7 +309,40 @@ object ItemDetails {
             } else {
                 null
             },
+            // Read off the same cells the log shows, over the same nights as the typical time.
+            sleep = history.sleepMetric?.let { metric ->
+                SleepFigure(
+                    metric,
+                    SleepTrend.typicalDuration(
+                        cells.mapNotNull { cell -> cell.derived?.let { cell.day to it } }.toMap(),
+                        filter, from = windowDays.first(), to = lastDay,
+                    ),
+                )
+            },
+            average = averageOf(history, windowDays),
+            averageAmount = averageAmountOf(windowCells),
         )
+    }
+
+    /**
+     * The window's mean, for an item whose declared roll-up is an average -- the declaration is what
+     * earns it, never a guess from the answer type (spec §3.4: roll-ups are explicit, not inferred).
+     */
+    private fun averageOf(history: ItemHistory, windowDays: List<LocalDate>): AverageFigure? {
+        if (history.rollUp?.aggregation != RollUpAggregation.AVERAGE) return null
+        val rollUp = RollUpCalculator.weekly(history.answers, windowDays, RollUpAggregation.AVERAGE)
+        return if (rollUp.observedDays == 0) null else AverageFigure(rollUp.value, rollUp.observedDays)
+    }
+
+    /**
+     * The mean amount over the window's answered days, each at the container size of its own day.
+     * Null when no day carries an amount, or when the unit changed within the window -- an average of
+     * ounces and millilitres is a number describing nothing.
+     */
+    private fun averageAmountOf(windowCells: List<DayCell>): AmountFigure? {
+        val amounts = windowCells.mapNotNull { (it.value as? DayValue.Amount)?.container }
+        val unit = amounts.map { it.unitLabel }.distinct().singleOrNull() ?: return null
+        return AmountFigure(ContainerAmount(amounts.map { it.amount }.average(), unit), amounts.size)
     }
 
     /**

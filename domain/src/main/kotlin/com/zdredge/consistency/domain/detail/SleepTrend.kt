@@ -1,8 +1,10 @@
 package com.zdredge.consistency.domain.detail
 
 import com.zdredge.consistency.domain.time.ClockAxis
+import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlin.math.roundToLong
 
 /** One point on the trend line: the night it sits over, and its position on the 04:00 axis. */
 data class TrendPoint(val night: LocalDate, val minute: Double)
@@ -69,11 +71,32 @@ object SleepTrend {
             .filterKeys { !it.isBefore(from) && !it.isAfter(to) && filter.shows(it) }
             .values
             .map { ClockAxis.minuteOf(it).toDouble() }
-            .sorted()
+        return median(minutes)
+    }
 
-        if (minutes.isEmpty()) return null
-        val middle = minutes.size / 2
-        return if (minutes.size % 2 == 1) minutes[middle] else (minutes[middle - 1] + minutes[middle]) / 2
+    /**
+     * The typical night's sleep metric over the nights the filter shows within `from..to` -- the same
+     * nights, and the same median, as [typicalMinute], so the figures beside one chart cannot be
+     * describing different nights. A night missing an endpoint has no value and is left out (8.4).
+     */
+    fun typicalDuration(
+        durationsByNight: Map<LocalDate, Duration>,
+        filter: NightFilter,
+        from: LocalDate,
+        to: LocalDate,
+    ): Duration? {
+        val seconds = durationsByNight
+            .filterKeys { !it.isBefore(from) && !it.isAfter(to) && filter.shows(it) }
+            .values
+            .map { it.seconds.toDouble() }
+        return median(seconds)?.let { Duration.ofSeconds(it.roundToLong()) }
+    }
+
+    private fun median(values: List<Double>): Double? {
+        if (values.isEmpty()) return null
+        val sorted = values.sorted()
+        val middle = sorted.size / 2
+        return if (sorted.size % 2 == 1) sorted[middle] else (sorted[middle - 1] + sorted[middle]) / 2
     }
 
     /**

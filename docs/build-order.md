@@ -1859,6 +1859,44 @@ weekly goal, and the item screen's figures for a retired goal. All four failed b
 **Mutations caught: 3 of 3** -- the window anchored on retirement (4 tests), the weekly trend by
 `takeLast` (1), and inactive weeks scored as silent (1).
 
+### The derived figures had no surface
+
+**The gap.** Spec §2 and §4 put four derived figures in v1: sleep duration, minutes lingering in bed,
+average mindset, and a counted container's absolute amount. §5 never said where they appear, and none
+did. `DerivedMetrics` and `ContainerSizeResolver` were tested and called only by their tests.
+
+**Where they go, the user's call.**
+- **Sleep:** Typical Sleep on *woke up* and Typical Lingering in Bed on *got out of bed*, following
+  the night filter like Typical Time. Each night's value goes in the Daily Log and the day card.
+- **Mindset:** an Average figure, plus each week's average in the chip column that worked out and
+  stretched already use.
+- **Containers:** "2 · 80 oz" in water's log and day card at that day's bottle size, plus Average
+  Amount.
+
+Spec §5.4 now records all of this.
+
+**A defect found on the way.** `RollUpCalculator` summed, averaged and maxed only `valueNumber`, but
+mindset is a SCALE item whose value is in `valueScale`. Its seeded AVERAGE roll-up would have
+reported every week as 0, the worst week possible, the moment anything displayed it. It now reads
+whichever of the two columns the answer uses. A related fix: a week with nothing observed has *no*
+average rather than an average of 0. Silence is not a zero.
+
+**Constraint 13 holds.** `SeedLibrary.SLEEP_METRICS` names the two items and their metric beside the
+ids they belong to. The repository reads the three times from their own items and hands them to an
+`ItemHistory` *beside* its answers, never mixed in, because the calculators trust an item's answers to
+be its own.
+
+**Tests.** 6 new in `:domain` (387 total) and 2 instrumented. All six domain tests failed before the
+code existed. **Mutations caught: 4 of 4**:
+- the roll-up reading only numbers (2 tests)
+- the container resolved at today's size (1)
+- Typical Sleep ignoring the filter (1)
+- a silent week averaging 0 (1)
+
+**One harness misfire, again:** an incremental build left a stale class in place, so mutation 3
+reported the *container* test failing. A clean build attributed it correctly. Same lesson as M8 and
+M11: check the checker.
+
 ---
 
 ## After the plan — settings add-on

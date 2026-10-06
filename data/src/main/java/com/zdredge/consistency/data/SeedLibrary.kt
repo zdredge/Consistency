@@ -14,6 +14,7 @@ import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.domain.scoring.SleepMetric
 import java.time.Instant
 import java.time.LocalDate
 
@@ -42,11 +43,25 @@ import java.time.LocalDate
 object SeedLibrary {
 
     // Sleep items. Observations, not goals: they carry no targets and exist to be recorded and to
-    // feed the two hardcoded derived metrics (spec constraint 13).
-    private const val BEDTIME = "bedtime"
-    private const val WOKE_AT = "woke_at"
-    private const val GOT_UP_AT = "got_up_at"
+    // feed the two hardcoded derived metrics (spec constraint 13). Public, like STEPS, because the
+    // repository has to know which three items those metrics are computed from.
+    const val BEDTIME = "bedtime"
+    const val WOKE_AT = "woke_at"
+    const val GOT_UP_AT = "got_up_at"
     private const val PRE_SLEEP = "pre_sleep"
+
+    /**
+     * Which sleep item's screen shows which derived metric -- the user's call, 2026-10-06: sleep
+     * duration beside waking, lingering beside getting up.
+     *
+     * **This is constraint 13's hardcoding, and it lives here on purpose**, beside the ids it names.
+     * Both metrics are wired to these three seeded time items and to nothing a user creates; making
+     * it general would need a type system, validation and retired-source handling for two known uses.
+     */
+    val SLEEP_METRICS: Map<String, SleepMetric> = mapOf(
+        WOKE_AT to SleepMetric.SLEEP_DURATION,
+        GOT_UP_AT to SleepMetric.LINGERING,
+    )
 
     private const val MEALS = "meals"
     private const val VITAMINS = "vitamins"

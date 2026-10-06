@@ -42,6 +42,7 @@ import com.zdredge.consistency.domain.model.RollUpSpec
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.Target
+import com.zdredge.consistency.domain.scoring.SleepNights
 import com.zdredge.consistency.domain.time.DayResolver
 import java.io.File
 import java.io.OutputStream
@@ -203,6 +204,7 @@ class ConsistencyRepository(
         val item = item(itemId) ?: return null
         val versions = versions(itemId)
         if (versions.isEmpty()) return null
+        val sleepMetric = SeedLibrary.SLEEP_METRICS[itemId.value]
 
         return ItemHistory(
             item = item,
@@ -217,6 +219,26 @@ class ConsistencyRepository(
             } else {
                 emptyList()
             },
+            containerSizes = containerSizes(itemId),
+            sleep = sleepMetric?.let { sleepNights(item.createdOn, today) },
+            sleepMetric = sleepMetric,
+        )
+    }
+
+    /**
+     * The three sleep/wake times by night, for the two hardcoded metrics (constraint 13). Read from
+     * their own items, which is why they travel beside an item's history rather than inside it. A
+     * deferral carries no time; the morning items cannot be deferred anyway.
+     */
+    private suspend fun sleepNights(from: LocalDate, to: LocalDate): SleepNights {
+        suspend fun times(id: String) = answers(ItemId(id), from, to)
+            .filter { it.capture != Capture.PENDING }
+            .mapNotNull { answer -> answer.valueTime?.let { answer.day to it } }
+            .toMap()
+        return SleepNights(
+            bedtime = times(SeedLibrary.BEDTIME),
+            wokeAt = times(SeedLibrary.WOKE_AT),
+            gotUpAt = times(SeedLibrary.GOT_UP_AT),
         )
     }
 
