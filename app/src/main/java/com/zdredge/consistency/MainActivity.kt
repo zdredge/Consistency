@@ -26,6 +26,8 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.data.export.SnapshotSummary
+import com.zdredge.consistency.export.ExportToDocument
 import com.zdredge.consistency.export.ExportToDownloads
 import com.zdredge.consistency.data.health.StepPermissions
 import com.zdredge.consistency.data.health.StepSourceStatus
@@ -124,6 +126,35 @@ class MainActivity : ComponentActivity() {
             // Deliberately empty. See above: the answer is re-read, never cached.
         }
 
+    /**
+     * The JSON export's destination, chosen in the system picker (M11). Registered here with the
+     * other launchers so a result delivered after the Activity is recreated still has somewhere to
+     * land.
+     *
+     * A null URI is the user backing out of the picker, and is reported as exactly that: nothing
+     * was written, and the line says so rather than leaving the last export's result on screen.
+     */
+    private val createExport =
+        registerForActivityResult(ActivityResultContracts.CreateDocument(ExportToDocument.MIME_TYPE)) { uri ->
+            if (uri == null) {
+                exportStatus = "Export cancelled. Nothing was saved."
+                return@registerForActivityResult
+            }
+            exportStatus = "Exporting…"
+            lifecycleScope.launch {
+                exportStatus = when (val outcome = ExportToDocument.run(this@MainActivity, uri)) {
+                    is ExportToDocument.Outcome.Saved ->
+                        "Saved ${outcome.name ?: "the export"} — ${describe(outcome.summary)}"
+                    ExportToDocument.Outcome.FailedAndRemoved -> "Export failed. Nothing was saved."
+                    ExportToDocument.Outcome.FailedAndLeftBehind ->
+                        "Export failed partway. The file it started is incomplete — don't rely on it."
+                }
+            }
+        }
+
+    private fun describe(summary: SnapshotSummary) =
+        "${summary.checkIns} check-ins, ${summary.answers} answers, ${summary.measuredValues} step days"
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Forced dark, not system-following. The app has one scheme (M4.5), so letting the
@@ -170,13 +201,14 @@ class MainActivity : ComponentActivity() {
                                 notificationsEnabled = notificationsEnabled,
                                 exportStatus = exportStatus,
                                 onExport = {
-                                    exportStatus = "Exporting…"
+                                    createExport.launch(ExportToDocument.suggestedName(this@MainActivity))
+                                },
+                                onCopyDatabase = {
+                                    exportStatus = "Copying…"
                                     lifecycleScope.launch {
                                         val summary = ExportToDownloads.run(this@MainActivity)
-                                        exportStatus = summary?.let {
-                                            "Saved to Downloads — ${it.checkIns} check-ins, " +
-                                                "${it.answers} answers, ${it.measuredValues} step days"
-                                        } ?: "Export failed. Nothing was saved."
+                                        exportStatus = summary?.let { "Database file copied to Downloads — ${describe(it)}" }
+                                            ?: "Copy failed. Nothing was saved."
                                     }
                                 },
                                 onOpenCheckIn = { day, slot -> backStack.push(Screen.CheckIn(day, slot)) },

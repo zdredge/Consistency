@@ -5,6 +5,7 @@ import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.temporal.TemporalAdjusters
 
@@ -49,6 +50,13 @@ class DayResolver(private val clock: Clock) {
      * reaching for `Instant.now()` and quietly escaping the test clock.
      */
     fun now(): Instant = clock.instant()
+
+    /**
+     * The zone every day here is resolved in. Read-only, for a record that must say which zone its
+     * dates belong to -- the export writes it, so a `day_date` can be read back against the right
+     * 04:00. Nothing should resolve a day from it directly; that is this class's job.
+     */
+    val zone: ZoneId get() = clock.zone
 
     /** The instant [day] begins — 04:00 local. */
     fun startOfDay(day: LocalDate): Instant =

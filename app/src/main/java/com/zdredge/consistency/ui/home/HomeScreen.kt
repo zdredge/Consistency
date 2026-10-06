@@ -38,6 +38,7 @@ fun HomeScreen(
     notificationsEnabled: Boolean,
     exportStatus: String?,
     onExport: () -> Unit,
+    onCopyDatabase: () -> Unit,
     onOpenCheckIn: (LocalDate, Slot) -> Unit,
     onOpenItems: () -> Unit,
     modifier: Modifier = Modifier,
@@ -146,10 +147,17 @@ fun HomeScreen(
             modifier = Modifier.padding(top = 8.dp),
         )
 
-        // The only way data leaves this app. Plain and unglamorous on purpose -- it is not a feature
-        // to be encouraged toward, it is the thing that means one lost phone is not the whole record.
+        // The only ways data leaves this app. Plain and unglamorous on purpose -- not a feature to be
+        // encouraged toward, but the thing that means one lost phone is not the whole record.
+        //
+        // Export is the full JSON snapshot (M11), written wherever the system picker is pointed --
+        // Drive included, with no Drive API behind it. The database file copy stays beside it: until
+        // an importer exists, it is the file that can be dropped straight back in.
         TextButton(onClick = onExport, modifier = Modifier.padding(top = 4.dp)) {
-            Text("Export a copy to Downloads")
+            Text("Export")
+        }
+        TextButton(onClick = onCopyDatabase) {
+            Text("Copy the database file to Downloads")
         }
 
         exportStatus?.let {

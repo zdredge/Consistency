@@ -6,6 +6,7 @@ import com.zdredge.consistency.data.db.LOCAL_USER_ID
 import com.zdredge.consistency.data.db.entity.CheckInEntity
 import com.zdredge.consistency.data.db.entity.RolloverRunEntity
 import com.zdredge.consistency.data.export.DatabaseSnapshot
+import com.zdredge.consistency.data.export.JsonExport
 import com.zdredge.consistency.data.export.SnapshotSummary
 import com.zdredge.consistency.data.health.StepSource
 import com.zdredge.consistency.data.health.StepSourceStatus
@@ -678,6 +679,17 @@ class ConsistencyRepository(
      */
     suspend fun writeSnapshotTo(databaseFile: File, out: OutputStream): SnapshotSummary =
         withContext(Dispatchers.IO) { DatabaseSnapshot.writeTo(db, databaseFile, out) }
+
+    /**
+     * Writes the full-database JSON export to [out] (spec §2, build-order M11). The caller owns and
+     * closes [out] -- in the app, a document the user chose through the system picker.
+     *
+     * Dated by the injected clock and stamped with its zone, so the file says which 04:00 its
+     * `day_date`s were resolved against. On `Dispatchers.IO` for the same reason as
+     * [writeSnapshotTo]: it reads through the open helper directly and streams to a file.
+     */
+    suspend fun writeJsonExportTo(out: OutputStream): SnapshotSummary =
+        withContext(Dispatchers.IO) { JsonExport.writeTo(db, dayResolver.now(), dayResolver.zone, out) }
 
     // ---- Measured values ---------------------------------------------------------------------
 
