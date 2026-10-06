@@ -72,7 +72,8 @@ class ItemsViewModel(
         val options = repository.allOptions()
         val rollUps = repository.rollUpSpecs().associateBy { it.itemId }
 
-        val rows = repository.items()
+        // Steps is left out while it cannot be read (spec §3.3); the repository owns that rule.
+        val rows = repository.listedItems()
             // Spec §4's listing order, stored as `ordinal` since M4 — the order the questions are
             // asked in, which is chronological through the night rather than alphabetical by id.
             .sortedBy { it.ordinal }

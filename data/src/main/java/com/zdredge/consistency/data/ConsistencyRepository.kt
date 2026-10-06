@@ -122,6 +122,20 @@ class ConsistencyRepository(
 
     suspend fun items(): List<Item> = db.itemDao().allItems().map { it.toDomain(dayResolver) }
 
+    /**
+     * The items the user is shown in the Items list.
+     *
+     * Spec §3.3: when health permission is declined, steps is **hidden** -- never left on screen as an
+     * empty row, which reads as an invitation to manual entry (permanently out of scope, §2). The same
+     * rule as the check-in's ([checkInQuestions]), asked fresh each time for the same reason: the
+     * permission can be revoked in system settings without the app being told. Hidden is not deleted;
+     * the history stays and the item returns when steps can be read again.
+     */
+    suspend fun listedItems(): List<Item> {
+        val measuredShown = stepSource.status() == StepSourceStatus.Available
+        return items().filter { it.kind != ItemKind.MEASURED || measuredShown }
+    }
+
     suspend fun item(itemId: ItemId): Item? =
         db.itemDao().item(itemId.value)?.toDomain(dayResolver)
 

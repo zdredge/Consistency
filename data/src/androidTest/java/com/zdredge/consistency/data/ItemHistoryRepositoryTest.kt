@@ -4,6 +4,8 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zdredge.consistency.data.db.ConsistencyDatabase
+import com.zdredge.consistency.data.health.FakeStepSource
+import com.zdredge.consistency.data.health.StepSourceStatus
 import com.zdredge.consistency.domain.detail.ItemDetails
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
@@ -162,6 +164,22 @@ class ItemHistoryRepositoryTest {
         val water = repo.itemHistory(ItemId("water"), today)!!
         assertEquals(40.0, water.containerResolver.resolve(ItemId("water"), today)!!.size, 0.0)
         assertTrue(repo.itemHistory(ItemId("meals"), today)!!.containerSizes.isEmpty())
+    }
+
+    @Test
+    fun stepsIsListedOnlyWhileStepsCanBeRead() = runBlocking {
+        // Spec §3.3: declined health permission hides steps -- from the list as well as the check-in.
+        // The default source here is unavailable, which is the declined case.
+        val steps = ItemId(SeedLibrary.STEPS)
+        assertTrue(repo.listedItems().none { it.id == steps })
+        assertEquals(repo.items().size - 1, repo.listedItems().size)
+
+        val missing = ConsistencyRepository(db, dayResolver, stepSource = FakeStepSource(StepSourceStatus.PermissionMissing))
+        assertTrue(missing.listedItems().none { it.id == steps })
+
+        // Granted again: it comes back, history and all -- hidden is not deleted.
+        val granted = ConsistencyRepository(db, dayResolver, stepSource = FakeStepSource(StepSourceStatus.Available))
+        assertTrue(granted.listedItems().any { it.id == steps })
     }
 
     @Test

@@ -1,6 +1,8 @@
 # Habit Accountability App — Product Spec
 
 **Status:** approved; the v1 build plan is complete (build-order M0–M11). Five interview rounds.
+**Not everything in §2's v1 scope is built:** item configuration, check-in times and the setup flow
+are the settings add-on, the next agreed work. §2 lists exactly what that leaves out.
 **Intended repo path:** `docs/product-spec.md`
 **Sole known user:** Zach. **Platform:** Google Pixel (Android).
 
@@ -45,7 +47,8 @@ Interpreting the gap — suggesting a target is too high, proposing a smaller st
 - Two check-ins per day. Deliberately few; notification fatigue is the primary abandonment risk.
 - **Morning** covers last night: bedtime, pre-sleep activity, waking, rising.
 - **Night** covers the day just ending. Time is user-set, chosen so the day is effectively over but
-  the user is still awake. Default 21:00.
+  the user is still awake. Default 21:00. *(As built, both times are fixed at 08:00 and 21:00 until the
+  settings add-on; see §2.)*
 - Both check-ins are retrospective. **No feature may assume the app can influence the outcome it is
   asking about.**
 - One session is roughly 5–10 questions, target under 60 seconds, phone in hand, low attention.
@@ -83,6 +86,24 @@ Interpreting the gap — suggesting a target is too high, proposing a smaller st
   raw copy of the database file to Downloads** (kept at M11, the user's call): until an import exists
   it is the one file that can be restored directly.
 - `user_id` on every record from day one, unused in v1.
+
+### In scope, not yet built: the settings add-on
+
+Recorded 2026-10-06, when a review found this section describing these as built. They are still v1
+scope and are **the next agreed work** (build-order, *After the plan*). Nothing here is cut.
+
+- **Item configuration.** Choosing items from the library, writing your own, classifying each as
+  goal or observation, and rewording, retargeting or retiring them (§3.3, §5.7). It would be the first
+  UI to create item versions. As built, the §4 library is seeded on first launch, fully pre-classified,
+  and cannot be changed from the app.
+- **Extending a multi-select's options** (§3.3). The option list is the seeded one.
+- **Configuring container sizes** (§3.3). Sizes are stored per period and shown (§5.4); nothing in the
+  app changes them.
+- **Check-in times** (§1). Fixed at 08:00 and 21:00. Changing one must re-arm the alarms *and*
+  re-anchor the rollover; build-order records why both are needed.
+- **The setup flow** (§5.7). As built, first launch seeds the library, then asks for notifications,
+  then for steps.
+- **The "must not include" target UI** (O2), part of item configuration.
 
 ### Deferred (post-v1, not rejected)
 
@@ -214,7 +235,9 @@ than two.
   **read-only** in the night check-in so the user sees it in the moment. They carry targets and are
   scored like any other goal.
 - If health permissions are declined at setup, steps is **hidden**, not downgraded to manual entry.
-  The setup flow therefore has a branch in which a library item disappears.
+  The setup flow therefore has a branch in which a library item disappears. As built, it is hidden
+  from the night check-in and the Items list whenever steps cannot be read, checked each time rather
+  than remembered. Hidden is not deleted: collected history is kept and returns with the permission.
 
 ### 3.4 Targets, scoring and derivation
 
@@ -637,6 +660,9 @@ for the note and nothing else — but a field at the foot of a full-height scree
 keyboard opens, so the user was typing into something they could not see.
 
 ### 5.7 Setup
+
+*Not yet built: part of the settings add-on (§2). As built, first launch seeds the §4 library as-is
+and asks for notifications, then steps.*
 
 Library-first: the user picks from pre-defined items and may add custom ones. Zach's set arrives
 pre-selected, pre-classified and pre-slotted, all editable, skippable in one tap. Includes the health

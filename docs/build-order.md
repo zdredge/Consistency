@@ -1897,6 +1897,29 @@ code existed. **Mutations caught: 4 of 4**:
 reported the *container* test failing. A clean build attributed it correctly. Same lesson as M8 and
 M11: check the checker.
 
+### The spec claimed the settings features were built
+
+**The mismatch.** The spec's status line said v1 was complete, and §2's v1 scope still listed:
+- item configuration (library choice, custom items, classification)
+- extendable options
+- configurable container sizes
+- a user-set night time
+- the §5.7 setup flow
+
+None of these is built. This document and `CLAUDE.md` had moved them to the settings add-on, but the
+spec never said so.
+
+**Resolved in the spec, the user's call.** Nothing is cut. Spec §2 gains *In scope, not yet built:
+the settings add-on*, which lists each piece and what the app does instead. The status line, §1's
+night time and §5.7 point to it.
+
+**One part fixed rather than documented.** Spec §3.3 hides steps when health permission is declined.
+The check-in did; the Items list still showed Steps with an empty chart.
+`ConsistencyRepository.listedItems` now applies the same rule, asked fresh each time. The dashboard
+needed nothing: a day with no step data is already excluded, never missed. The fixture install's step
+source reports available, so its step scenarios are unaffected. Guarded by
+`stepsIsListedOnlyWhileStepsCanBeRead` (instrumented).
+
 ---
 
 ## After the plan — settings add-on
