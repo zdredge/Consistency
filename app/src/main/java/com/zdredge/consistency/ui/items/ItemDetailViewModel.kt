@@ -165,6 +165,8 @@ class ItemDetailViewModel(
         _state.value = presentItemDetail(
             loaded,
             ItemDetails.assemble(loaded, today, dayResolver, filter),
+            today,
+            dayResolver,
             selected,
         ).copy(showTrend = showTrend)
     }

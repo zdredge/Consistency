@@ -12,6 +12,7 @@ import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.ui.checkin.asAnswer
 import java.time.LocalDate
 
@@ -26,6 +27,8 @@ import java.time.LocalDate
 internal fun presentItemDetail(
     history: ItemHistory,
     detail: ItemDetail,
+    today: LocalDate,
+    weeks: DayResolver,
     selected: LocalDate? = null,
 ): ItemDetailUiState {
     val labels = history.options.associate { it.id to it.label }
@@ -39,7 +42,7 @@ internal fun presentItemDetail(
         subtitle = subtitleFor(
             detail.item.kind, detail.version.slot, detail.version.classification, detail.item.retiredOn,
         ),
-        goal = goalFor(history, detail),
+        goal = goalFor(history, detail, today, weeks),
         windowLabel = "Last ${detail.figures.windowDays.size} days · " +
             "${detail.figures.windowDays.first().format(windowDayFormat)} – " +
             "${detail.figures.windowDays.last().format(windowDayFormat)}",
@@ -180,10 +183,10 @@ private fun targetNoteFor(earlier: EarlierTarget, unitLabel: String?): String {
  * The goal line under the question, with the goal's trend once it has one: "Goal: at least 2 bottles
  * a day · Slipping". The same line and the same trend the dashboard shows for this goal.
  */
-private fun goalFor(history: ItemHistory, detail: ItemDetail): String? {
+private fun goalFor(history: ItemHistory, detail: ItemDetail, today: LocalDate, weeks: DayResolver): String? {
     val line = GoalLine.forItem(detail.version, history.targetResolver, history.options, history.rollUp, detail.lastDay)
         ?: return null
-    val trend = Dashboard.trendOf(history, detail)?.trend?.let {
+    val trend = Dashboard.trendOf(history, detail, today, weeks)?.trend?.let {
         when (it) {
             Trend.SLIPPING -> " · Slipping"
             Trend.HOLDING -> " · Holding"

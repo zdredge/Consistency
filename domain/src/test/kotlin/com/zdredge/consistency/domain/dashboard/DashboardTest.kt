@@ -163,6 +163,63 @@ class DashboardTest {
     }
 
     @Test
+    @DisplayName("6.2 - a goal retired before the window is in neither ring nor any trend")
+    fun aGoalRetiredBeforeTheWindowIsLeftOut() {
+        // Answered for four weeks before it was retired 20 days ago -- met throughout its last
+        // fortnight, missed throughout the one before -- and nothing since.
+        val water = water((20..47).associateWith { if (it < 34) 2.0 else 1.0 }).let { history ->
+            history.copy(item = history.item.copy(retiredOn = day(20)))
+        }
+        val vitamins = history(
+            item = item("vitamins"),
+            version = version("vitamins", AnswerType.BOOL),
+            targets = listOf(target("vitamins", Direction.IS_TRUE)),
+            answers = (0..27).map { answer("vitamins", day = day(it), bool = true) },
+        )
+        val dashboard = Dashboard.assemble(listOf(water, vitamins), checkIns(50), today, weeks)
+
+        // Spec §3.4: scoring covers only items active in the period being scored. Water's last
+        // fortnight was entirely met and would otherwise lift the ring for ever.
+        val daily = dashboard.score!!.rings.daily
+        assertEquals(14, daily.met, "vitamins' fortnight alone")
+        assertEquals(0, daily.missed)
+        assertTrue(dashboard.trends!!.values.flatten().none { it.itemId.value == "water" })
+    }
+
+    @Test
+    @DisplayName("6.2 - a goal retired inside the window counts only its active days")
+    fun aGoalRetiredInsideTheWindowCountsItsActiveDays() {
+        val water = water((0..20).associateWith { 2.0 }).let { history ->
+            history.copy(
+                item = history.item.copy(retiredOn = day(5)),
+                answers = history.answers.filter { it.day <= day(5) },
+            )
+        }
+        val daily = Dashboard.assemble(listOf(water), checkIns(30), today, weeks).score!!.rings.daily
+
+        // The window runs from 13 days back to today; water was a goal from 13 back to 5 back.
+        assertEquals(9, daily.met)
+        assertEquals(9, daily.scored)
+    }
+
+    @Test
+    @DisplayName("6.2 - a retired weekly goal leaves the weekly ring and the carousel")
+    fun aRetiredWeeklyGoalIsLeftOut() {
+        val retired = workedOut().let { history ->
+            history.copy(
+                item = history.item.copy(retiredOn = day(25)),
+                answers = history.answers.filter { it.day <= day(25) },
+            )
+        }
+        val dashboard = Dashboard.assemble(listOf(retired), checkIns(40), today, weeks)
+
+        val weekly = dashboard.score!!.rings.weekly
+        assertEquals(0, weekly.scored)
+        assertEquals(0, weekly.excluded, "weeks after retirement are not goal weeks, not silent ones")
+        assertTrue(dashboard.trends!!.isEmpty(), "its last closed weeks are not this fortnight's")
+    }
+
+    @Test
     @DisplayName("M10 - observations are in no ring and no panel")
     fun observationsAreLeftOut() {
         val mindset = history(
@@ -268,7 +325,7 @@ class DashboardTest {
     fun sameAsTheItemScreen() {
         val history = water(waterTrend(5, 11))
         val viaDashboard = Dashboard.assemble(listOf(history), checkIns(30), today, weeks).trends!!.values.flatten().single()
-        val viaItem = Dashboard.trendOf(history, ItemDetails.assemble(history, today, weeks))
+        val viaItem = Dashboard.trendOf(history, ItemDetails.assemble(history, today, weeks), today, weeks)
         assertEquals(viaDashboard, viaItem)
         assertEquals(
             ItemDetails.assemble(history, today, weeks).figures.daily!!.summary.met,

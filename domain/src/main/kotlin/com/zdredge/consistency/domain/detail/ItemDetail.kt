@@ -156,8 +156,11 @@ data class ItemFigures(
  *
  * [days] is the chart's five weeks — the same cells the table draws, and the same judgements the
  * figures are counted from, so the calendar and the numbers beside it cannot tell different stories.
- * The figures cover the last 14 of those days; the runs are computed over the item's whole history,
- * because a run that only looked back a fortnight would reset itself every fortnight.
+ * The figures cover the current 14 days -- the dashboard's -- which for a live item are the last 14 of
+ * those days. A retired item's chart stops at its retirement and its figures do not, so once it has
+ * been retired a fortnight it has nothing left to score (§3.4, 6.2). The runs are computed over the
+ * item's whole history, because a run that only looked back a fortnight would reset itself every
+ * fortnight.
  *
  * One exception: a **weekly question** has one cell per week rather than per day, and the last of them
  * is the running week's Sunday, which is still ahead of [lastDay]. It is drawn as a week not yet

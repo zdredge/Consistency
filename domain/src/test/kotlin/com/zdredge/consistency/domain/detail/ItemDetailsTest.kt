@@ -146,6 +146,35 @@ class ItemDetailsTest {
         assertEquals(14, daily.summary.noOpportunityCount)
     }
 
+    @Test
+    @DisplayName("6.2 - a goal retired a month ago: no figures for this fortnight, its history intact")
+    fun aRetiredGoalHasNoCurrentFigures() {
+        val retired = today.minusDays(30)
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("water", createdOn = longAgo, retiredOn = retired),
+                version = version("water", AnswerType.NUMBER),
+                targets = listOf(target("water", Direction.AT_LEAST, value = 2.0)),
+                answers = (30..60).map { answer("water", day = today.minusDays(it.toLong()), number = 2.0) },
+            ),
+            today, weeks,
+        )
+
+        // Spec §5.4: the figures cover the same 14 days as the dashboard, and the item was not active
+        // in any of them -- so nothing is scored, rather than its final fortnight standing in for now.
+        val daily = detail.figures.daily!!
+        assertEquals(today, detail.figures.windowDays.last())
+        assertEquals(0, daily.summary.met + daily.summary.missed)
+        assertNull(daily.summary.hitRate)
+
+        // The chart, the log and the run still describe the periods it was active in (spec §3.3).
+        assertEquals(retired, detail.lastDay)
+        assertEquals(DayState.MET, detail.log.last().state)
+        assertEquals(retired, detail.log.last().day)
+        assertTrue(detail.days.any { it.state == DayState.MET })
+        assertEquals(31, daily.run.longest)
+    }
+
     // ---------------------------------------------------------------- weekly roll-ups
 
     @Test

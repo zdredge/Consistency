@@ -1826,6 +1826,41 @@ than on screen. **Not done by me: saving to Drive**, which is the user's to try 
 
 ---
 
+## After M11 — review fixes, 2026-10-06
+
+A full review of the code against the spec, worked through with the user one finding at a time.
+
+### Retired goals stayed on the dashboard for ever
+
+**The defect.** `ItemDetails.assemble` ended an item's figures window on its last answerable day
+*clipped to its retirement*, so a goal retired months ago kept its final fortnight as its "current"
+figures. The dashboard sums every goal's figures, so that fortnight went into today's rings
+indefinitely, and the weekly trend took the last two weekly results *that existed*, which kept a
+retired goal on the carousel too. Against spec §3.4 ("scoring covers only items active in the period
+being scored"), case 6.2, and 9.8 (one window everywhere). Latent: nothing in the app can retire an
+item yet, but the `retired_reversioned` fixture does.
+
+**Two decisions, the user's.**
+- **A goal retired inside the window counts its active days**, and drops out once the window passes
+  it -- the same rule as `ItemLifecycle.isActiveInPeriod` and case 6.2.
+- **The item screen uses the dashboard's window too** (spec §5.4: "the same 14 days as the
+  dashboard"). This narrows M8's "a retired item anchors on its retirement day" to the **chart, the
+  Daily Log and the runs**; the figures no longer anchor there, so a long-retired item's hit rate
+  reads N/A while its chart still shows its last five active weeks.
+
+**The fix.** The figures window always ends on the slot's latest answerable day; cells still stop at
+retirement, so the active-days rule needs no code of its own. Weeks an item was not active in are
+dropped from its weekly figures rather than scored as silent. `Dashboard.trendOf` keys the weekly
+comparison on the two most recently closed weeks by date (it now takes `today` and the resolver),
+so a week with no result is simply absent.
+
+**Tests.** 4 new in `:domain` (381 total): retired before the window, retired inside it, a retired
+weekly goal, and the item screen's figures for a retired goal. All four failed before the fix.
+**Mutations caught: 3 of 3** -- the window anchored on retirement (4 tests), the weekly trend by
+`takeLast` (1), and inactive weeks scored as silent (1).
+
+---
+
 ## After the plan — settings add-on
 
 **Not a milestone, and deliberately after M11.** Two pieces deferred out of M8 on 2026-09-11, because

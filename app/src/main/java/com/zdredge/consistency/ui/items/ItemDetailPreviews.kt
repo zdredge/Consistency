@@ -59,7 +59,7 @@ private val longAgo = LocalDate.of(2026, 6, 1)
 private fun Rendered(history: ItemHistory) {
     ConsistencyTheme {
         ItemDetailScreen(
-            state = presentItemDetail(history, ItemDetails.assemble(history, today, resolver)),
+            state = presentItemDetail(history, ItemDetails.assemble(history, today, resolver), today, resolver),
             onBack = {},
         )
     }

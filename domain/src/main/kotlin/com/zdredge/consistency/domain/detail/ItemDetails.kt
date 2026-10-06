@@ -41,16 +41,23 @@ object ItemDetails {
         // yesterday changes which days are answerable today, including days already past.
         val slot = history.latestVersion.slot
 
-        // The window ends on the latest day this item could have an answer for, not on today. A
-        // morning item cannot have an answer for tonight, so ending on today would hand it thirteen
-        // real days and one guaranteed blank. A retired item stops on the day it was retired.
-        val lastDay = minOf(
-            Answerability.latestAnswerDay(today, slot),
-            history.item.retiredOn ?: LocalDate.MAX,
-        )
+        // The latest day this item could have an answer for, not today. A morning item cannot have
+        // an answer for tonight, so ending on today would hand it thirteen real days and one
+        // guaranteed blank.
+        val latestAnswerDay = Answerability.latestAnswerDay(today, slot)
+
+        // The chart, the log and the runs stop on the day a retired item was retired: they describe
+        // the periods it was active in (spec §3.3).
+        val lastDay = minOf(latestAnswerDay, history.item.retiredOn ?: LocalDate.MAX)
         val version = history.versionOn(lastDay) ?: history.latestVersion
 
-        val windowDays = FiguresWindow.days(lastDay)
+        // **The figures do not stop there.** They cover the same 14 days as the dashboard (spec
+        // §5.4, case 9.8), and scoring covers only items active in them (§3.4, 6.2). Anchoring a
+        // retired item's window on its retirement kept its final fortnight standing in for the
+        // current one -- in its own figures, and summed into the dashboard's rings for ever. Days
+        // after retirement have no cells, so a goal retired inside the window counts only the days
+        // it was still a goal.
+        val windowDays = FiguresWindow.days(latestAnswerDay)
         val chartStart = weeks.weekStart(lastDay).minusWeeks((CHART_WEEKS - 1).toLong())
 
         // Runs run over the whole history, so the cells start at whichever came first -- the chart's
@@ -347,7 +354,11 @@ object ItemDetails {
         return GoalFigures(
             period = Period.WEEK,
             summary = ItemSummary.of(
-                weekFigures(history, windowWeeks, today, lastDay, weeks).mapNotNull { it.result },
+                // A week the item was not active in is not a goal week at all (6.1, 6.2) -- not a
+                // silent one, which is what its empty roll-up would otherwise be scored as.
+                weekFigures(history, windowWeeks, today, lastDay, weeks)
+                    .filter { it.active }
+                    .mapNotNull { it.result },
             ),
             // Keyed by Monday, over the weeks that had a target. A week before the goal existed
             // carries no result, so it neither extends the run nor breaks it -- which matters here,
