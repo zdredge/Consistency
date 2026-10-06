@@ -1920,6 +1920,26 @@ needed nothing: a day with no step data is already excluded, never missed. The f
 source reports available, so its step scenarios are unaffected. Guarded by
 `stepsIsListedOnlyWhileStepsCanBeRead` (instrumented).
 
+### The carousel could not be stepped
+
+**Found on the device** while checking the fixes above. Spec §5.1 says a tap on either half of the
+trend carousel, or a swipe, steps to the next goal. Every forward tap landed on the same card: twenty
+taps in a row stayed on "Holding 3 of 6".
+
+**Cause.** `step()` computed the next slide from `current`, a value captured when the composable ran.
+The tap and swipe handlers are installed once by `pointerInput(slides.size)` and keep the `step` from
+that composition, so `current` stayed fixed at whatever was showing on the first touch. It now reads
+the `index` state at the moment of the tap. The M10 device pass recorded "stopping on a tap", which was
+true; the stepping itself was never checked.
+
+**Verified on the device**, fixture install:
+- Four forward taps stepped through four goals in order.
+- Two back taps returned through them.
+- A swipe stepped forward.
+- The rotation stayed stopped afterwards.
+
+`:app` has no tests, so this is the check.
+
 ---
 
 ## After the plan — settings add-on
