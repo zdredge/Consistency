@@ -1,7 +1,7 @@
 # Habit Accountability App — Architecture
 
-**Status:** approved and in build. §2 platform findings were verified on the device in M0;
-§§4–5 record what M1 through M6 actually built, in the "As built" notes.
+**Status:** approved; the build plan (M0–M11) is complete. §2 platform findings were verified on
+the device in M0; §§4–5 record what each milestone actually built, in the "As built" notes.
 **Intended repo path:** `docs/architecture.md`
 **Companion document:** `docs/product-spec.md`, which is the authority on behaviour. Where this
 document and the spec disagree, the spec wins and this document is wrong.
@@ -417,6 +417,31 @@ states, edit timestamps, step origins and notes all survive, and re-importable i
 is ever added. A CSV-per-table convenience export is deferred; the in-app table view (spec §5.4)
 already covers human inspection.
 
+**As built (M11).** `ACTION_CREATE_DOCUMENT` through `ActivityResultContracts.CreateDocument`, writing
+`application/json` to whatever the picker returns; **no Drive API, no account, and no cloud
+dependency** in the debug, release or fixture runtime classpath, checked by scanning each. The file is
+the database in its **stored form** -- enums by name, dates as ISO-8601 text, instants as epoch millis
+-- with a header naming the format, schema version, identity hash, export time and zone.
+
+- **Generic, not per-entity.** `SnapshotReader` lists the tables from `sqlite_master` and reads every
+  column as stored, so a table or column added later is exported without anyone remembering to add
+  it. Lossless by construction rather than by maintenance.
+- **No checkpoint.** Unlike the raw file copy (`DatabaseSnapshot`, below), the reads go through the
+  SQLite connection, which sees the write-ahead log. And all of them sit inside one transaction, so
+  the file is a single moment even if the rollover fires mid-export.
+- **A hand-written writer, not a library.** `JsonSnapshot` is five value types and a dozen lines of
+  escaping, pinned byte for byte by JVM tests; a serialisation library would have been a new
+  dependency for less control over the part that matters. It refuses rather than guesses: a NaN, a
+  blob, or a row the wrong width throws, naming the table and column.
+- **Shown restorable, not believed to be.** `JsonExportTest` parses an export, inserts every row into
+  a fresh database, checks every reference resolves and compares every table cell for cell. That test
+  alone would not catch a REAL written as text -- SQLite's affinity turns "1.5" back into 1.5 on the
+  way in -- so the file is also checked value-and-type against the source directly.
+
+**The raw `.db` copy stays beside it**, as "Copy the database file to Downloads": until an importer
+exists it is the file that can be dropped straight back in. It still needs its checkpoint
+(`CLAUDE.md`).
+
 ### A separate pure-Kotlin domain module — scoring engine
 **Why:** the scoring rulebook is the part of this app that fails *silently*. A wrong target direction
 or a target resolved from the wrong period doesn't crash; it produces a plausible wrong number.
@@ -699,8 +724,6 @@ has.
 
 ## 6. Component communication
 
-Also available as a standalone file at `docs/architecture.mermaid`.
-
 ```mermaid
 flowchart TB
 
@@ -740,8 +763,9 @@ flowchart TB
     DOM -->|"scores, runs, hit rates"| VM
 
     WM -->|"wakes the app"| RW
-    RW -->|"close the day, create tomorrow's expected checkins, freeze provisional steps"| REPO
-    RW -->|"read yesterday's steps"| HC
+    RW -->|"close the day, create today's expected checkins, freeze provisional steps"| REPO
+    RW -->|"arm the day's prompts"| SCH
+    REPO -->|"read yesterday's and today's steps, only when a check-in opens"| HC
 
     BOOT --> BR
     BR -->|"alarms were wiped, set them again"| SCH
@@ -771,7 +795,10 @@ most heavily tested.
 **The rollover job is the only thing that writes without the user.** Once a day it closes the
 previous day, generates any expected check-ins that do not yet exist **through today** — not the next
 day's; nothing generates ahead, and this line claimed otherwise for two milestones — arms that day's
-prompts, freezes the provisional step count from two days prior, and re-reads yesterday's. If it never runs, the app looks fine and every number is
+prompts, and freezes provisional step values past their 24 hours. **It reads nothing from Health
+Connect** -- until 2026-09-13 it re-read yesterday's steps, and the background read was refused and
+took the whole job down for three days; steps are now read only when a check-in opens. If it never
+runs, the app looks fine and every number is
 subtly wrong. It should be the first thing logged and the first thing checked when something looks
 off.
 

@@ -1,14 +1,14 @@
 # Habit Accountability App — Product Spec
 
-**Status:** approved and in build. Five interview rounds.
+**Status:** approved; the v1 build plan is complete (build-order M0–M11). Five interview rounds.
 **Intended repo path:** `docs/product-spec.md`
 **Sole known user:** Zach. **Platform:** Google Pixel (Android).
 
 **For a later session picking this up:** read §1 and the appendix before anything else. §1 explains
 why nearly every other choice was made, and the appendix lists decisions that look like
 inefficiencies and are not. §6 lists what is genuinely still open. The stack is chosen and
-recorded in `docs/architecture.md`; implementation is under way — see `docs/build-order.md` for
-which milestone is current.
+recorded in `docs/architecture.md`; the build plan is complete, and `docs/build-order.md` records
+what each milestone built and what comes next.
 
 ---
 
@@ -79,7 +79,9 @@ Interpreting the gap — suggesting a target is too high, proposing a smaller st
 - Dashboard as specified in §5.
 - Local storage plus plain export to a user-chosen location via the system document picker
   (`ACTION_CREATE_DOCUMENT`), as a full-database JSON snapshot. Not the Google Drive API; the user
-  picks Drive from the system sheet if they want it there (architecture §4, §7).
+  picks Drive from the system sheet if they want it there (architecture §4, §7). **Alongside it, a
+  raw copy of the database file to Downloads** (kept at M11, the user's call): until an import exists
+  it is the one file that can be restored directly.
 - `user_id` on every record from day one, unused in v1.
 
 ### Deferred (post-v1, not rejected)

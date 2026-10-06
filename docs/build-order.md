@@ -1,13 +1,8 @@
 # Build Order
 
-**Status:** agreed and in progress. **M0 through M7 are complete**, including the four defects M4.5
-found and the two M6 left — no prompt armed on a day nobody opens the app, and an app update
-cancelling the alarms — both fixed 2026-09-09. **M8 (item detail views and charts) is in progress**:
-**M8 is complete as of 2026-09-13**, all six phases: the chart design agreed on 2026-09-11, then the
-pure core, navigation and the figures, the grid charts, the plotted charts, and the close-out pass.
-One open defect is recorded against it — the rollover has been failing since 2026-09-11 — and is the
-next thing to fix. Item configuration and check-in times moved to a settings add-on
-after the plan.
+**Status:** **complete. M0 through M11 are built**, M11 on 2026-10-06. Each milestone records its
+outcome in place below, including the defects found along the way and fixed. The next agreed work is
+the settings add-on (item configuration and check-in times), at the end of this document.
 **Intended repo path:** `docs/build-order.md`
 **Companion documents:** `docs/product-spec.md` (authority on behaviour), `docs/architecture.md`
 (how it is built), `docs/scoring-cases.md` (the `:domain` test spec).
@@ -1769,6 +1764,65 @@ hand-verified.
 
 **Exit criteria.** Export produces a correct file under test; the picker writes it to a
 user-chosen location on the device; no cloud dependency exists anywhere in the build.
+
+### As built — **COMPLETE 2026-10-06**
+
+**Both exports, the user's call.** JSON through the picker became **Export**; the Day-0 raw copy
+stays as **"Copy the database file to Downloads"**, because until an importer exists it is the one
+file that can be dropped straight back in, and it is the copy taken before every install over the
+real app.
+
+**Four phases, each reviewed before the next.**
+
+1. **The writer** (`JsonSnapshot`, pure, JVM, test-first): 11 tests written and failing before it
+   existed. Tables in name order, rows in rowid order, one row per line, so two exports of an
+   unchanged database diff cleanly. Escapes exactly what JSON requires, plus lone surrogates; refuses
+   NaN, blobs and malformed rows, naming the table and column. Hand-written: no new dependency.
+2. **The reader and a real restore** (`SnapshotReader`, `JsonExport`, instrumented). Generic over
+   `sqlite_master` rather than per-entity, so a new table or column is exported without anyone
+   remembering to; one transaction; no checkpoint, since it reads through the connection. Six tests
+   on a file-backed database, including **a restore actually performed** -- every row inserted into a
+   fresh database, every reference resolving, every table equal cell for cell.
+3. **The picker** (`ExportToDocument`, `MainActivity`, Home). The suggested name comes from the
+   injected clock. A cancel says "Export cancelled. Nothing was saved."; a failure deletes the file it
+   started, and if the provider will not allow that, says the file is incomplete rather than claiming
+   nothing was saved.
+4. **Docs.** This entry, architecture §4 and CLAUDE.md -- and two stale lines fixed while there: the
+   architecture §6 diagram still had the rollover reading steps (removed 2026-09-13), and pointed at
+   a standalone `docs/architecture.mermaid` that never existed.
+
+**`DayResolver.zone`** was added, read-only, so the file can say which zone's 04:00 its dates belong
+to.
+
+**Tests.** `:data` JVM 16 (11 new); instrumented 140 (6 new); `:domain` unchanged. **Mutations
+caught: 6 of 6** -- control characters unescaped, a lone surrogate passed through, tables unsorted,
+3.0 written as 3, a table dropped from the reader (4 tests), a REAL read as text (1 test).
+
+Two findings worth keeping:
+
+- **The restore alone would not have caught a REAL written as text.** SQLite's column affinity turns
+  the text "1.5" back into the number 1.5 on the way in, so the restored database is perfect. Only the
+  direct check of each value's type against the source fails. A round trip proves less than it looks
+  when the far end is forgiving.
+- **My mutation harness misfired once more.** A text substitution matched the first
+  `cell.value.toString()` in the file -- the integer branch -- so "3.0 written as 3" looked like it
+  survived. Aimed at the REAL line, it failed two tests. Third time this project: **check the checker
+  before believing a mutation survived.**
+
+**Not tested, by design:** the single transaction. Proving it needs the rollover to write at the exact
+moment of an export, and any test of that would be timing, not a guard. It stays, explained in the
+code.
+
+**No cloud dependency**, checked by scanning the debug, release and fixture runtime classpaths for
+Firebase, Play services and Google API clients: none.
+
+**Device pass, 2026-10-06, on the fixture install.** Export opened the system picker in Downloads
+suggesting `consistency-2026-10-06-1459.json`; saving reported "Saved consistency-2026-10-06-1459.json —
+57 check-ins, 151 answers, 14 step days". The file, parsed with Python and compared with a fresh copy
+of the database, matched in all 12 tables, every row, value and type, with schema 3 and the pinned
+identity hash. Backing out of the picker said so and added no file; the database-file copy still
+works. The fixture has no notes, so a note with punctuation was proven by the restore test rather
+than on screen. **Not done by me: saving to Drive**, which is the user's to try from the picker.
 
 ---
 

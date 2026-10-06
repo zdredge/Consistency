@@ -14,10 +14,13 @@ backend, no accounts, no cloud services. Native Kotlin and Jetpack Compose.
 4. `docs/build-order.md` — the agreed phased build plan. Which milestone is in progress governs
    what you may build.
 
-**M0 through M10 are complete, and real data collection began on 2026-09-10.** Home is the
-dashboard: rings from day 14, and from day 28 a carousel of goals that are slipping, holding or
-improving. Every item has a screen with its chart, figures, goal line and full log, and a separate
-**Consistency Fixture** install loads named verification scenarios. M11 (export) remains. The rollover failed every run from 2026-09-11 to
+**M0 through M11 are complete: the build plan is done. Real data collection began on 2026-09-10.**
+Home is the dashboard: rings from day 14, and from day 28 a carousel of goals that are slipping,
+holding or improving. Every item has a screen with its chart, figures, goal line and full log, and a
+separate **Consistency Fixture** install loads named verification scenarios. Export (M11) writes the
+whole database as JSON wherever the system picker points, beside a raw `.db` copy to Downloads. **The
+next agreed work is the settings add-on** (`build-order.md`, *After the plan*); anything beyond it is
+a new decision, so ask. The rollover failed every run from 2026-09-11 to
 09-13 because it read steps from the background; it was fixed by reading steps only when a check-in
 opens — see *The rollover defect, fixed* in `build-order.md`. Item configuration and check-in times are deferred to a
 settings add-on after the plan. **M8 is the first milestone whose
@@ -59,6 +62,22 @@ system document picker (`ACTION_CREATE_DOCUMENT`). **Do not build a Google Drive
 there is no cloud project, no OAuth, and no budget for one; the user picks Drive from the system sheet
 if they want it there. This was previously a spec/architecture conflict (spec §2 once said "optionally
 to Drive"); it is now resolved and applied in the spec (spec §2, architecture §4 and §7).
+
+**As built (M11)** -- details in architecture §4:
+
+- **The JSON export is generic.** `SnapshotReader` reads every table in `sqlite_master` and every
+  column as stored, so **a new table or column is exported with no change to the export** -- do not
+  replace it with per-entity mapping, which is how a field silently stops being exported.
+  `JsonExportTest` fails if any table or column is missing.
+- **Values go out in their stored form** (enums by name, ISO-8601 dates, epoch-millis instants), and
+  the file's header says so. Do not "prettify" them on the way out: that is a second encoding an
+  importer would have to undo.
+- **`JsonSnapshot` is hand-written on purpose** and refuses NaN, blobs and malformed rows rather than
+  guessing. A serialisation library is a new dependency -- ask first.
+- **Two exports, both kept.** JSON through the picker (`ExportToDocument`) is the export; "Copy the
+  database file to Downloads" (`ExportToDownloads` + `DatabaseSnapshot`) stays because, until an
+  importer exists, it is the file that can be dropped straight back in -- and it is the copy to take
+  before installing over the real app.
 
 ## Hard rules
 
@@ -143,11 +162,12 @@ likely to be broken by well-intentioned code:
 - **A check-in counts as answered only if something was recorded for it.** Response rate is the
   primary metric and counts that state, so an opened-and-closed check-in used to inflate it. A
   deferral counts (A2.2: "not yet" is a response); a step value does not (steps are read, not given).
-- **Any copy of the database must checkpoint the WAL first.** Room auto-checkpoints around 4 MB, which
-  this database will not reach for years, so `consistency.db` on its own can be days behind — measured
-  at 5 check-ins against 9, and without the checkpoint an exported file loses even the `checkins`
-  table. `DatabaseSnapshot` is the only sanctioned way out; **auto-backup is off** precisely because
-  it would have taken that stale copy silently.
+- **Any copy of the database *file* must checkpoint the WAL first.** Room auto-checkpoints around 4 MB,
+  which this database will not reach for years, so `consistency.db` on its own can be days behind —
+  measured at 5 check-ins against 9, and without the checkpoint an exported file loses even the
+  `checkins` table. `DatabaseSnapshot` is the only sanctioned file copy; **auto-backup is off**
+  precisely because it would have taken that stale copy silently. The JSON export needs no checkpoint
+  — it reads through the connection, which sees the log — and reads every table in one transaction.
 - **`Grace` is the one backfill boundary.** Both the outstanding-check-in banner and the rollover
   read it. Restating "yesterday" in either place lets a check-in fall between them: no longer
   offered, never missed, and response rate wrong with nothing on screen to show it.
