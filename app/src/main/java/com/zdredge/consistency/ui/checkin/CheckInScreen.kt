@@ -444,7 +444,7 @@ private fun ReadOnlyValue(question: QuestionUi) {
         // failure the origin guard exists to make visible (architecture §5).
         when {
             question.measuredConflicted -> "More than one source reported today. Not counted."
-            question.draft.valueNumber != null -> "%,.0f".format(question.draft.valueNumber)
+            question.draft.valueNumber != null -> question.draft.valueNumber.asAnswer()
             else -> "Not available yet"
         },
         style = MaterialTheme.typography.headlineSmall,

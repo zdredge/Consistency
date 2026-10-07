@@ -38,6 +38,7 @@ import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.DayValue
 import com.zdredge.consistency.domain.detail.WeekFigure
 import com.zdredge.consistency.domain.model.GoalOutcome
+import com.zdredge.consistency.ui.checkin.asAnswer
 import com.zdredge.consistency.ui.theme.Accent
 import com.zdredge.consistency.ui.theme.Ash
 import com.zdredge.consistency.ui.theme.Bone
@@ -334,10 +335,10 @@ private fun TallyChip(week: WeekFigure?, height: Dp, modifier: Modifier = Modifi
     val value = week.value ?: return
     val target = week.target?.valueNumber
     val text = when {
-        target == null -> value.short()
+        target == null -> value.asAnswer()
         // A closed week is a verdict and reads as one; an open week is progress and says so.
-        week.closed -> "${value.short()}/${target.short()}"
-        else -> "${value.short()} of ${target.short()}"
+        week.closed -> "${value.asAnswer()}/${target.asAnswer()}"
+        else -> "${value.asAnswer()} of ${target.asAnswer()}"
     }
     val met = week.result?.outcome == GoalOutcome.MET
 
@@ -377,6 +378,3 @@ private fun TallyChip(week: WeekFigure?, height: Dp, modifier: Modifier = Modifi
         )
     }
 }
-
-private fun Double.short(): String =
-    if (this % 1.0 == 0.0) "%.0f".format(this) else "%.1f".format(this)

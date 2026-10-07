@@ -17,6 +17,7 @@ import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.scoring.SleepMetric
 import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.ui.checkin.asAnswer
+import com.zdredge.consistency.ui.checkin.asPercent
 import com.zdredge.consistency.ui.items.chart.isSelectable
 import java.time.LocalDate
 
@@ -153,7 +154,7 @@ private fun figuresFor(detail: ItemDetail): List<Figure> = buildList {
     // Spec §4: the derived average is mindset's signal, watched rather than targeted -- so a plain
     // number, with no colour and no comparison to anything.
     detail.figures.average?.let {
-        add(Figure("Average", "%.1f".format(it.value), "Over ${it.days} day(s) recorded"))
+        add(Figure("Average", it.value.asAnswer(), "Over ${it.days} day(s) recorded"))
     }
 
     detail.figures.averageAmount?.let {

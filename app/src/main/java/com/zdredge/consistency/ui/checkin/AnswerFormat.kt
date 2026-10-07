@@ -1,6 +1,10 @@
 package com.zdredge.consistency.ui.checkin
 
+import java.math.RoundingMode
+import java.text.NumberFormat
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import kotlin.math.roundToInt
 
 /*
  * How an answer is written down, in the one place both the inputs and the summary read it from.
@@ -20,11 +24,27 @@ import java.time.format.DateTimeFormatter
 internal val timeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("h:mm a")
 
 /**
- * `2.0` reads as "2"; a half from the keypad reads as "1.5". A trailing `.0` is noise.
+ * **Every number the app shows is written here**, in one convention: grouped thousands, at most one
+ * decimal, no trailing zero. `2.0` reads "2", a half from the keypad "1.5", a step count "18,191", and
+ * an average of 1, 1 and 2 bottles "1.3" -- not "1.3333333333333333", which is what a bare `toString()`
+ * printed on the dashboard.
  *
- * Grouped, because this formats step counts too: `18191` is a number to decode and `18,191` is one to
- * read, and spec §5.4 writes the step figures that way. It changes nothing for an answer anyone types
- * into a check-in, none of which reach four digits.
+ * **Always the US convention, never the phone's locale.** The keypad types a "." and parses one, and
+ * `GoalLine` in `:domain` writes "8,000" the same way. A screen that switched to "1,5" on a comma
+ * locale would disagree with both, and the keypad would no longer read back what it showed. Dates
+ * still follow the phone; numbers do not.
+ *
+ * Half up, so 2.25 reads "2.3" as a person would round it, not "2.2" by banker's rounding.
  */
-internal fun Double.asAnswer(): String =
-    if (this % 1.0 == 0.0) "%,.0f".format(this) else this.toString()
+internal fun Double.asAnswer(): String = NumberWriter.get().format(this)
+
+/** A fraction as a whole percentage -- "75%" -- or a dash when there is nothing to report (10.5, 11.7). */
+internal fun Double?.asPercent(): String = this?.let { "${(it * 100).roundToInt()}%" } ?: "—"
+
+/** `NumberFormat` is not thread-safe, so each thread gets its own; they are all configured alike. */
+private val NumberWriter: ThreadLocal<NumberFormat> = ThreadLocal.withInitial {
+    NumberFormat.getNumberInstance(Locale.US).apply {
+        maximumFractionDigits = 1
+        roundingMode = RoundingMode.HALF_UP
+    }
+}

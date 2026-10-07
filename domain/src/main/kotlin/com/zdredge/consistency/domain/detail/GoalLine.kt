@@ -10,6 +10,7 @@ import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.Target
 import com.zdredge.consistency.domain.scoring.TargetResolver
+import java.math.RoundingMode
 import java.text.NumberFormat
 import java.time.LocalDate
 import java.util.Locale
@@ -86,9 +87,15 @@ object GoalLine {
      */
     fun question(prompt: String): String = prompt.replace(Regex("""\s*\([^()]*\)\s*$"""), "").trim()
 
-    /** 8000.0 as "8,000"; 2.5 as "2.5". */
+    /**
+     * 8000.0 as "8,000"; 2.5 as "2.5". The same convention as `:app`'s `AnswerFormat.asAnswer` --
+     * US, grouped, one decimal at most, half up -- so a goal line and the figure beside it agree.
+     */
     private fun number(value: Double): String {
-        val format = NumberFormat.getNumberInstance(Locale.US).apply { maximumFractionDigits = 1 }
+        val format = NumberFormat.getNumberInstance(Locale.US).apply {
+            maximumFractionDigits = 1
+            roundingMode = RoundingMode.HALF_UP
+        }
         return format.format(value)
     }
 }

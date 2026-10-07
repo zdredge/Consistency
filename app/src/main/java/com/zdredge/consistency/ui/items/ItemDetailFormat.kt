@@ -106,7 +106,7 @@ internal fun DayCell.valueText(labels: Map<OptionId, String>, metric: SleepMetri
 /** "9h 00m"; under an hour, "22 min". */
 internal fun Duration.asSpan(): String {
     val minutes = toMinutes()
-    return if (minutes < 60) "$minutes min" else "${minutes / 60}h ${"%02d".format(minutes % 60)}m"
+    return if (minutes < 60) "$minutes min" else "${minutes / 60}h ${(minutes % 60).toString().padStart(2, '0')}m"
 }
 
 /** "80 oz". Whole units: a fraction of an ounce is precision nobody measured. */
@@ -140,10 +140,6 @@ internal fun DayCell.markText(): String = buildList {
     if (marks.provisional) add("provisional")
     if (marks.hasNote) add("note")
 }.joinToString(" · ")
-
-/** A percentage, or a dash. **Null is not zero** — it means nothing was scored (10.5, 11.7). */
-internal fun Double?.asPercent(): String =
-    this?.let { "${Math.round(it * 100)}%" } ?: "—"
 
 /** A position on the 04:00 axis, back as a time of day. */
 internal fun Double.asClockTime(): String = ClockAxis.timeAt(this).format(timeFormat)

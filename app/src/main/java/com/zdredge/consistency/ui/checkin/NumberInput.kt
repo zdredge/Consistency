@@ -98,10 +98,11 @@ private fun NumberKeypad(
     onDismiss: () -> Unit,
     onConfirm: (Double?) -> Unit,
 ) {
+    // What the keys type, so what they parse back: digits and a ".", never grouped and never the
+    // phone's locale. "%.1f" here wrote "1,5" on a comma-decimal phone, which toDoubleOrNull cannot
+    // read, so tapping Set on an unchanged 1.5 would have cleared the answer.
     var entry by remember {
-        mutableStateOf(
-            initial?.let { if (it % 1.0 == 0.0) "%.0f".format(it) else "%.1f".format(it) } ?: "",
-        )
+        mutableStateOf(initial?.let(::keypadText) ?: "")
     }
 
     AlertDialog(
@@ -140,6 +141,10 @@ private fun NumberKeypad(
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
 }
+
+/** A stored number as the keypad would have typed it: "2", "1.5". Plain, so `toDoubleOrNull` reads it. */
+private fun keypadText(value: Double): String =
+    if (value % 1.0 == 0.0) value.toLong().toString() else value.toBigDecimal().stripTrailingZeros().toPlainString()
 
 private fun String.press(key: String): String = when {
     key == "⌫" -> dropLast(1)

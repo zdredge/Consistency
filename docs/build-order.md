@@ -2066,6 +2066,36 @@ Doc comments attached to the wrong declaration were moved to their own:
 Five file-level notes written as `/** */`, which silently attach to the first declaration below
 them, are now plain `/* */`, as `EntityMappers` already did.
 
+### One way to write a number
+
+`CLAUDE.md` says value formatting is shared in `AnswerFormat`. In fact there were about five
+formatters, some following the phone's locale and some forcing US.
+
+**Two defects among them:**
+- **Long decimals.** `asAnswer` wrote any non-whole number with `toString()`. Fine for a half, but
+  the dashboard's missed-day average went through it, so missed days of 1, 1 and 2 bottles would
+  have read "averaged 1.3333333333333333".
+- **The keypad's prefill.** It pre-filled an existing answer with `"%.1f"`, in the phone's locale,
+  and parses with `toDoubleOrNull`, which wants a ".". On a comma-decimal phone, reopening 1.5 would
+  have shown "1,5", and tapping Set would have cleared the answer.
+
+**Now:**
+- `asAnswer` writes every number: grouped, one decimal at most, half up, always US. `asPercent`
+  moved beside it.
+- The dashboard's private `amount`/`percent`, `DayGrid`'s `short`, two hand-formatted step readings
+  and the Average figure all use them.
+- The keypad builds plain "1.5" text of its own.
+- The chart axis keeps its "10k" abbreviation without the locale.
+- `GoalLine` in `:domain`, which cannot import `:app`, rounds the same way and says so.
+
+**Verified on the device**, fixture install, `six_months`:
+- the rings' percentages;
+- "averaged 6,391" on the steps card and "1 bottle" on water's;
+- weekly totals "60.8k/56k";
+- mindset's weekly averages and its Average 3.8;
+- water's "73 oz" and "3 · 120 oz";
+- 1.5 entered, the keypad reopened showing "1.5", and Set keeping it.
+
 ---
 
 ## After the plan — settings add-on

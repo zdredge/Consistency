@@ -172,7 +172,7 @@ private fun QuestionUi.summaryValue(): String? = when {
     // for the same reason it is on the question screen: a total the app does not believe must not
     // appear as a step count anywhere.
     measuredConflicted -> "More than one source. Not counted."
-    readOnly -> draft.valueNumber?.let { "%,.0f".format(it) } ?: "Not available yet"
+    readOnly -> draft.valueNumber?.asAnswer() ?: "Not available yet"
     draft.deferred -> "Not yet"
     !draft.isAnswered -> null
     draft.noneSelected -> "None of these"
