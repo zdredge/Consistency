@@ -279,17 +279,17 @@ private fun QuestionCard(
                 Column(
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 ) {
-                when {
-                    question.readOnly -> ReadOnlyValue(question)
-                    question.answerType == AnswerType.BOOL -> BoolInput(question, onBool)
-                    question.answerType == AnswerType.NUMBER -> NumberInput(question, onNumber)
-                    question.answerType == AnswerType.TIME -> TimeInput(question, onTime)
-                    question.answerType == AnswerType.SCALE -> ScaleInput(question, onScale)
-                    question.answerType == AnswerType.SINGLE_SELECT ->
-                        SelectInput(question, singleChoice = true, onSelectOne, onToggle, onSelectNone)
-                    question.answerType == AnswerType.MULTI_SELECT ->
-                        SelectInput(question, singleChoice = false, onSelectOne, onToggle, onSelectNone)
-                }
+                    when {
+                        question.readOnly -> ReadOnlyValue(question)
+                        question.answerType == AnswerType.BOOL -> BoolInput(question, onBool)
+                        question.answerType == AnswerType.NUMBER -> NumberInput(question, onNumber)
+                        question.answerType == AnswerType.TIME -> TimeInput(question, onTime)
+                        question.answerType == AnswerType.SCALE -> ScaleInput(question, onScale)
+                        question.answerType == AnswerType.SINGLE_SELECT ->
+                            SelectInput(question, singleChoice = true, onSelectOne, onToggle, onSelectNone)
+                        question.answerType == AnswerType.MULTI_SELECT ->
+                            SelectInput(question, singleChoice = false, onSelectOne, onToggle, onSelectNone)
+                    }
                 }
             }
 

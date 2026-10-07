@@ -2155,6 +2155,8 @@ fixture all build, and every suite passes unchanged.
   could leave missed check-ins with no run recorded. `runRollover` now wraps them all in
   `withTransaction`; the worker's failure row is written after the rollback. The test forces a real
   SQLite failure at the freeze, the last write, with a temporary trigger.
+- **The check-in screen's answer `when` is indented inside its `Column`.** The scrolling `Column` was
+  wrapped around it without re-indenting, so the block read as the Box's child. Whitespace only.
 
 ---
 
