@@ -1976,6 +1976,15 @@ question, none for steps. The existing check-in screen and `AnswerRevision` do t
 - An older on-time day changed from Yes to No read **edited · Missed**, with its original capture
   kept.
 
+### The library's size
+
+Spec §4 opened with "roughly 25–30 items grouped into sleep, movement, food, mind and social", above
+a list of sixteen. No more than those sixteen were ever specified, the seed holds exactly them, and
+nothing models a group. **The user's call: the sixteen are the library.** §4 now says so, keeping
+the five areas only as a description. The same sentence said "removable", against constraint 6, and
+"editable" before anything could edit; it now says retirable, and points to the settings add-on.
+Docs only, plus `SeedLibrary`'s own comment, which repeated "five groups".
+
 ---
 
 ## After the plan — settings add-on

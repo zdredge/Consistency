@@ -21,9 +21,10 @@ import java.time.LocalDate
 /**
  * The seed library from spec section 4, as rows.
  *
- * Sixteen items in five groups, everything editable and removable afterwards -- this is a starting
- * point, not a fixed set. Ids are stable strings rather than UUIDs so the library is legible in a
- * database dump and re-runnable without duplicating.
+ * The sixteen items spec §4 lists, covering sleep, movement, food, mind and social. Nothing stores
+ * those areas as groups. This is a starting point, not a fixed set: editable and retirable --
+ * never deleted -- once item configuration exists (the settings add-on). Ids are stable strings
+ * rather than UUIDs so the library is legible in a database dump and re-runnable without duplicating.
  *
  * **Targets here are illustrative and editable** (spec section 4). What is *not* negotiable is each
  * direction describing what would genuinely count as failing, which is the rule three separate

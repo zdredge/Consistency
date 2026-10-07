@@ -348,8 +348,11 @@ than two.
 ## 4. Seed library
 
 Ships pre-defined and pre-classified, with type, unit, slot and a suggested target on each entry.
-Roughly 25–30 items grouped into sleep, movement, food, mind and social. Everything editable,
-removable, extendable; users may also write their own from scratch.
+**Sixteen items, exactly the ones listed below**, covering sleep, movement, food, mind and social.
+They are not stored in groups. *(This line once said "roughly 25–30 items grouped into" those areas.
+No more than these sixteen were ever specified, and the 2026-10-07 review settled on the list as the
+library.)* Everything is editable, retirable (never deleted, constraint 6) and extendable, and users
+may also write their own from scratch, once item configuration exists (§2, the settings add-on).
 
 **Morning:** bedtime (time) · pre-sleep activities (multi-select: read a book, watched YouTube,
 scrolled on phone, watched TV, …) · woke at (time) · got out of bed at (time)
