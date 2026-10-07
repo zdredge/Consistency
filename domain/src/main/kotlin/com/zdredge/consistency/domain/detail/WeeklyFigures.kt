@@ -52,6 +52,9 @@ data class WeekFigure(
  */
 object WeeklyFigures {
 
+    /** Aggregations that describe the values seen rather than accumulate them. */
+    private val OF_VALUES = setOf(RollUpAggregation.AVERAGE, RollUpAggregation.MAX)
+
     /**
      * A week of an asked item: worked out, stretched, coffee.
      *
@@ -95,13 +98,15 @@ object WeeklyFigures {
         return WeekFigure(
             weekStart = weekStart,
             active = days.isNotEmpty(),
-            value = rollUp.value,
+            // A count or a total of nothing is zero; an average or a maximum of nothing is not a
+            // number at all. A silent week of mindset reading "0" would claim the worst week possible.
+            value = if (rollUp.observedDays == 0 && aggregation in OF_VALUES) null else rollUp.value,
             observedDays = rollUp.observedDays,
             expectedDays = rollUp.expectedDays,
             target = target,
             closed = closed,
             result = target?.let { RollUpCalculator.scoreClosedPeriod(rollUp, it, closed) },
-            progress = progress(target, rollUp.value, closed, days.size, weekStart, today, weeks),
+            progress = progress(target, rollUp.value, closed, item, weekStart, today, weeks),
         )
     }
 
@@ -140,7 +145,7 @@ object WeeklyFigures {
                 if (closed) MeasuredScorer.scoreWeek(it, inWeek)
                 else GoalResult.excluded(ExclusionReason.PERIOD_OPEN)
             },
-            progress = progress(target, total, closed, days.size, weekStart, today, weeks),
+            progress = progress(target, total, closed, item, weekStart, today, weeks),
         )
     }
 
@@ -154,25 +159,34 @@ object WeeklyFigures {
     private fun isClosed(weekStart: LocalDate, today: LocalDate, weeks: DayResolver): Boolean =
         today.isAfter(weeks.weekEnd(weekStart))
 
-    /** Spec §5.3: an open week shows how far it has got, never a verdict it has not earned. */
+    /**
+     * Spec §5.3: an open week shows how far it has got, never a verdict it has not earned.
+     *
+     * **Both counts are over the days of the week the item exists on**, including the ones still
+     * ahead. [activeDays] stops at the last answerable day, which is right for what was observed and
+     * wrong here: as the total it made every running week end today, and the dashboard read "with 0
+     * days to go" on a Wednesday. And elapsed days count from the item's first day in the week, not
+     * from Monday, or a goal created midweek would have fewer days to go than it really has.
+     */
     private fun progress(
         target: Target?,
         value: Double,
         closed: Boolean,
-        totalDays: Int,
+        item: Item,
         weekStart: LocalDate,
         today: LocalDate,
         weeks: DayResolver,
     ): PeriodProgress? {
         if (closed || target?.valueNumber == null) return null
-        val elapsed = generateSequence(weekStart) { it.plusDays(1) }
-            .takeWhile { !it.isAfter(weeks.weekEnd(weekStart)) && !it.isAfter(today) }
-            .count()
+        val weekDays = generateSequence(weekStart) { it.plusDays(1) }
+            .takeWhile { !it.isAfter(weeks.weekEnd(weekStart)) }
+            .filter { ItemLifecycle.isActiveOn(item, it) }
+            .toList()
         return PeriodProgress(
             observed = value,
             target = target.valueNumber,
-            elapsedDays = elapsed,
-            totalDays = totalDays,
+            elapsedDays = weekDays.count { !it.isAfter(today) },
+            totalDays = weekDays.size,
         )
     }
 }

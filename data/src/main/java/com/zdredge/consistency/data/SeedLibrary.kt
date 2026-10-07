@@ -14,15 +14,17 @@ import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.domain.scoring.SleepMetric
 import java.time.Instant
 import java.time.LocalDate
 
 /**
  * The seed library from spec section 4, as rows.
  *
- * Sixteen items in five groups, everything editable and removable afterwards -- this is a starting
- * point, not a fixed set. Ids are stable strings rather than UUIDs so the library is legible in a
- * database dump and re-runnable without duplicating.
+ * The sixteen items spec §4 lists, covering sleep, movement, food, mind and social. Nothing stores
+ * those areas as groups. This is a starting point, not a fixed set: editable and retirable --
+ * never deleted -- once item configuration exists (the settings add-on). Ids are stable strings
+ * rather than UUIDs so the library is legible in a database dump and re-runnable without duplicating.
  *
  * **Targets here are illustrative and editable** (spec section 4). What is *not* negotiable is each
  * direction describing what would genuinely count as failing, which is the rule three separate
@@ -30,7 +32,7 @@ import java.time.LocalDate
  *
  * **On granularity, and the rule M3 added to that list.** Worked out and stretched carry weekly
  * targets only: they are lower bounds on inherently non-daily behaviours, and a daily "must be yes"
- * would read as a ~50% hit rate and land in "going badly" for no real failure. Coffee looks like the
+ * would read as a ~50% hit rate, a failing goal, for no real failure. Coffee looks like the
  * same case and is not. It is an *upper* bound, and weekly granularity forgives clustering -- five
  * coffees in one day and one on each of the others sums to ten and passes a weekly cap of fourteen
  * cleanly, which is exactly the day worth seeing. So coffee carries **both** a daily and a weekly
@@ -42,11 +44,25 @@ import java.time.LocalDate
 object SeedLibrary {
 
     // Sleep items. Observations, not goals: they carry no targets and exist to be recorded and to
-    // feed the two hardcoded derived metrics (spec constraint 13).
-    private const val BEDTIME = "bedtime"
-    private const val WOKE_AT = "woke_at"
-    private const val GOT_UP_AT = "got_up_at"
+    // feed the two hardcoded derived metrics (spec constraint 13). Public, like STEPS, because the
+    // repository has to know which three items those metrics are computed from.
+    const val BEDTIME = "bedtime"
+    const val WOKE_AT = "woke_at"
+    const val GOT_UP_AT = "got_up_at"
     private const val PRE_SLEEP = "pre_sleep"
+
+    /**
+     * Which sleep item's screen shows which derived metric -- the user's call, 2026-10-06: sleep
+     * duration beside waking, lingering beside getting up.
+     *
+     * **This is constraint 13's hardcoding, and it lives here on purpose**, beside the ids it names.
+     * Both metrics are wired to these three seeded time items and to nothing a user creates; making
+     * it general would need a type system, validation and retired-source handling for two known uses.
+     */
+    val SLEEP_METRICS: Map<String, SleepMetric> = mapOf(
+        WOKE_AT to SleepMetric.SLEEP_DURATION,
+        GOT_UP_AT to SleepMetric.LINGERING,
+    )
 
     private const val MEALS = "meals"
     private const val VITAMINS = "vitamins"
@@ -200,7 +216,8 @@ object SeedLibrary {
      * identity of its own yet -- "workouts this week" is a *view* of `worked_out`, not a separate
      * question, and it was deliberately removed as an asked item to avoid two contradicting sources
      * of truth (spec section 4 change log). `sourceItemId` stays distinct in the model for when a
-     * derived figure does need its own identity; M8 is where that becomes concrete.
+     * derived figure does need its own identity. M8 drew every roll-up as a view of its source item
+     * and gave none a separate one, so that day has not come.
      */
     fun rollUpSpecs(): List<RollUpSpecEntity> = listOf(
         rollUp(WORKED_OUT, RollUpAggregation.COUNT_OF_YES),

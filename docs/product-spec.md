@@ -1,6 +1,8 @@
 # Habit Accountability App — Product Spec
 
 **Status:** approved; the v1 build plan is complete (build-order M0–M11). Five interview rounds.
+**Not everything in §2's v1 scope is built:** item configuration, check-in times and the setup flow
+are the settings add-on, the next agreed work. §2 lists exactly what that leaves out.
 **Intended repo path:** `docs/product-spec.md`
 **Sole known user:** Zach. **Platform:** Google Pixel (Android).
 
@@ -45,7 +47,8 @@ Interpreting the gap — suggesting a target is too high, proposing a smaller st
 - Two check-ins per day. Deliberately few; notification fatigue is the primary abandonment risk.
 - **Morning** covers last night: bedtime, pre-sleep activity, waking, rising.
 - **Night** covers the day just ending. Time is user-set, chosen so the day is effectively over but
-  the user is still awake. Default 21:00.
+  the user is still awake. Default 21:00. *(As built, both times are fixed at 08:00 and 21:00 until the
+  settings add-on; see §2.)*
 - Both check-ins are retrospective. **No feature may assume the app can influence the outcome it is
   asking about.**
 - One session is roughly 5–10 questions, target under 60 seconds, phone in hand, low attention.
@@ -83,6 +86,24 @@ Interpreting the gap — suggesting a target is too high, proposing a smaller st
   raw copy of the database file to Downloads** (kept at M11, the user's call): until an import exists
   it is the one file that can be restored directly.
 - `user_id` on every record from day one, unused in v1.
+
+### In scope, not yet built: the settings add-on
+
+Recorded 2026-10-06, when a review found this section describing these as built. They are still v1
+scope and are **the next agreed work** (build-order, *After the plan*). Nothing here is cut.
+
+- **Item configuration.** Choosing items from the library, writing your own, classifying each as
+  goal or observation, and rewording, retargeting or retiring them (§3.3, §5.7). It would be the first
+  UI to create item versions. As built, the §4 library is seeded on first launch, fully pre-classified,
+  and cannot be changed from the app.
+- **Extending a multi-select's options** (§3.3). The option list is the seeded one.
+- **Configuring container sizes** (§3.3). Sizes are stored per period and shown (§5.4); nothing in the
+  app changes them.
+- **Check-in times** (§1). Fixed at 08:00 and 21:00. Changing one must re-arm the alarms *and*
+  re-anchor the rollover; build-order records why both are needed.
+- **The setup flow** (§5.7). As built, first launch seeds the library, then asks for notifications,
+  then for steps.
+- **The "must not include" target UI** (O2), part of item configuration.
 
 ### Deferred (post-v1, not rejected)
 
@@ -189,6 +210,15 @@ than two.
   missed. The same rule applies to a carried-over item left blank inside an otherwise answered
   morning check-in.
 - History is editable; edits set the edited flag. Never a silent overwrite.
+- **Reaching an old day** (added 2026-10-07; until then nothing could, so no `LATE` answer could be
+  given). Any day on an item's screen opens the check-in that asked about it (§5.4). It opens on its
+  summary, saying first what answering now will record. A question never answered records `LATE`; a
+  change to an answer already given is an edit. **A missed check-in stays missed** however much of it
+  is filled in afterwards.
+- **"Not yet" is offered only on the night itself** (added 2026-10-07). It is never offered while
+  backfilling yesterday's night or later. A deferral made during a backfill would be resolved in that
+  same morning's check-in as in-window, buying a backfill in-window credit. A deferral made a week late
+  could never be resolved.
 
 ### 3.3 Items
 
@@ -214,7 +244,9 @@ than two.
   **read-only** in the night check-in so the user sees it in the moment. They carry targets and are
   scored like any other goal.
 - If health permissions are declined at setup, steps is **hidden**, not downgraded to manual entry.
-  The setup flow therefore has a branch in which a library item disappears.
+  The setup flow therefore has a branch in which a library item disappears. As built, it is hidden
+  from the night check-in and the Items list whenever steps cannot be read, checked each time rather
+  than remembered. Hidden is not deleted: collected history is kept and returns with the permission.
 
 ### 3.4 Targets, scoring and derivation
 
@@ -316,8 +348,11 @@ than two.
 ## 4. Seed library
 
 Ships pre-defined and pre-classified, with type, unit, slot and a suggested target on each entry.
-Roughly 25–30 items grouped into sleep, movement, food, mind and social. Everything editable,
-removable, extendable; users may also write their own from scratch.
+**Sixteen items, exactly the ones listed below**, covering sleep, movement, food, mind and social.
+They are not stored in groups. *(This line once said "roughly 25–30 items grouped into" those areas.
+No more than these sixteen were ever specified, and the 2026-10-07 review settled on the list as the
+library.)* Everything is editable, retirable (never deleted, constraint 6) and extendable, and users
+may also write their own from scratch, once item configuration exists (§2, the settings add-on).
 
 **Morning:** bedtime (time) · pre-sleep activities (multi-select: read a book, watched YouTube,
 scrolled on phone, watched TV, …) · woke at (time) · got out of bed at (time)
@@ -433,8 +468,8 @@ is what teaches them not to open it.
 **Answered check-ins still in grace that have questions with no answer are listed beneath it**
 (added 2026-09-25), each with how many ("2 not answered"), and open on their summary. A fully
 answered check-in is not listed: listing every answered check-in pushed the dashboard off the screen
-with cards that had nothing left in them. A general review surface, including changing an answer in
-a complete check-in, is deferred rather than rejected. One answer marks a check-in answered and takes it off the banner, so without this a
+with cards that had nothing left in them. Changing an answer in a complete check-in, or in any older
+one, is reached from the item instead: any day on an item's screen opens its check-in (§3.2, §5.4). One answer marks a check-in answered and takes it off the banner, so without this a
 question skipped inside a finished check-in could not be reached again, although §3.2 keeps it
 answerable until the end of the next day. The count is a plain fact, never a warning: skips are
 shown, not scolded (§5.6). A question filled in this way is a first answer, captured against its
@@ -562,6 +597,10 @@ settles is itself worth seeing. §5.5 is unchanged and still governs the dashboa
 **Notes surface here**, attached to the individual data point: tapping a day outlines it and a card
 beneath the chart shows that day's answer, how it was recorded, and its note.
 
+**Every day opens its check-in** (added 2026-10-07): the day card's *Open check-in*, and any row of
+the table, for the item's whole history. This is how a day is filled in late or corrected (§3.2).
+Steps has no check-in to open.
+
 **Marks on the chart:** backfilled days carry a corner notch, deferred days a dashed outline, and days
 with a note a dot. Answers given after the grace window, and edits, are left to the table.
 
@@ -572,6 +611,19 @@ item deliberately never judged.
 
 **No-opportunity usage is shown here** for goals that carry the option (constraint 17): how often the
 neutral answer was chosen over the window, so leaning on it stays legible rather than hidden.
+
+**The derived figures are shown here** (added 2026-10-06; until then §2 and §4 promised them and no
+surface showed them). Each sits on the item it ends on, as a figure over the window and, for each day,
+beside the answer in the table and the tapped-day card:
+
+- **Sleep duration** on *woke up* ("Typical Sleep"), and **minutes lingering in bed** on *got out of
+  bed* ("Typical Lingering in Bed"). Both are the median over the nights shown, so they follow the
+  night filter exactly as the typical time does. A night missing an end has no value, not zero.
+- **Average mindset** on *mindset*: the window's average, plus each week's average at the end of its
+  calendar row. It is a plain number, never coloured or compared with anything, because it is
+  watched rather than targeted (§4).
+- **A counted container's amount** on *water*: each day reads "2 · 80 oz" at the bottle size in force
+  that day, and an **Average Amount** sits among the figures. The chart and its key stay in bottles.
 
 **Hit rate and average attainment are both shown here, side by side and never merged.** For numeric
 goals the pair is the point: hit rate is how often the target was met, average attainment is how
@@ -625,6 +677,9 @@ keyboard opens, so the user was typing into something they could not see.
 
 ### 5.7 Setup
 
+*Not yet built: part of the settings add-on (§2). As built, first launch seeds the §4 library as-is
+and asks for notifications, then steps.*
+
 Library-first: the user picks from pre-defined items and may add custom ones. Zach's set arrives
 pre-selected, pre-classified and pre-slotted, all editable, skippable in one tap. Includes the health
 permissions prompt and its declined branch (§3.3).
@@ -636,11 +691,11 @@ permissions prompt and its declined branch (§3.3).
 | # | Question | Notes |
 |---|---|---|
 | O1 | Goal-completion formula for the inner ring. | **Resolved.** Split into a daily ring and a weekly ring, each instance-based within its granularity, never merged. See below and §5.1. |
-| O2 | Multi-select target interaction design | Mechanism accepted; the UI for "must not include *option*" is unbuilt and the user expects it to be fiddly. |
-| O3 | Health integration API surface | Health Connect is the current Android path; the older Fit APIs have been deprecating. **Verify at build time rather than trusting this document.** |
+| O2 | Multi-select target interaction design | Mechanism accepted; the UI for "must not include *option*" is unbuilt and the user expects it to be fiddly. **Open:** part of item configuration in the settings add-on (§2). |
+| O3 | Health integration API surface | **Resolved at M7.** Health Connect, framework-provided on the Pixel with no separate install, pinned to the stable 1.1.0 client and verified on the device (architecture §2, §4). |
 | O4 | Measured-day finality | **Claude's decision, not the user's:** provisional for 24h after its last read, then frozen. (A read happens when a check-in opens; see architecture §5.) Chosen because platform step-tracking behaviour is unverified, and this is the option that tolerates late syncing without permanently mis-scoring a day. Reversible in an afternoon; revisit after a week of real data. |
 | O5 | Carousel timing | **Resolved at M10.** A two-tier carousel, 6 s per goal, stopping for good on any touch — see §5.1. |
-| O6 | Chart assignment per library item | Finalise with the library. |
+| O6 | Chart assignment per library item | **Resolved at M8.** One view per item, agreed over three rounds of mockups (§5.4), derived from what the item is rather than looked up by name. |
 | O7 | Development seed-data fixture | **Now planned as build-order M9.** A debug-only fixture that populates Room directly (not a standalone script). Target volume **~6 months** of generated history including gaps, backfills, retired items and effective-from changes — enough for month-over-month trends and comparisons. This is a testing tool, not a precondition for usefulness: the app works from day one and the dashboard needs 14 days. |
 
 ### O1 in detail — resolved
@@ -668,9 +723,8 @@ behaviour), and pooling all goals into a single ratio (it drowns the weekly goal
 of every goal's hit rate was also considered and set aside — the two-ring split was preferred because
 it stays purely instance-based and needs no averaging of averages.
 
-**Still open, but visual only:** whether the two completion figures render as full concentric rings or
-as a **half-ring / arc gauge** is a presentation choice for the dashboard phase (build-order M10), not
-a change to the metric. A half-ring may be easier to read; both are worth prototyping then.
+**The visual question, settled at M10:** both full concentric rings and a half-ring / arc gauge were
+drawn, and the concentric rings were chosen (§5.1). Presentation only; the metric did not change.
 
 ### Recorded trade-offs
 

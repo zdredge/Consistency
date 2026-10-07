@@ -2,6 +2,7 @@ package com.zdredge.consistency.ui.items
 
 import androidx.lifecycle.ViewModel
 import com.zdredge.consistency.data.ConsistencyRepository
+import com.zdredge.consistency.domain.checkin.CheckInKey
 import com.zdredge.consistency.domain.detail.Chart
 import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.ItemDetails
@@ -26,6 +27,8 @@ data class DayCardUi(
     val what: String,
     val how: String,
     val note: String?,
+    /** The check-in that asks about this day, to fill in or correct it. Null for steps, never asked. */
+    val openCheckIn: CheckInKey? = null,
 )
 
 /** One day in the table. */
@@ -35,6 +38,8 @@ data class HistoryRow(
     val value: String,
     val marks: String,
     val note: String?,
+    /** As on [DayCardUi]: the way back into this day, over the item's whole history (spec §3.2). */
+    val openCheckIn: CheckInKey? = null,
 )
 
 data class ItemDetailUiState(
@@ -165,6 +170,8 @@ class ItemDetailViewModel(
         _state.value = presentItemDetail(
             loaded,
             ItemDetails.assemble(loaded, today, dayResolver, filter),
+            today,
+            dayResolver,
             selected,
         ).copy(showTrend = showTrend)
     }

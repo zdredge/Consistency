@@ -7,10 +7,8 @@ import com.zdredge.consistency.domain.dashboard.TrendGoal
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.scoring.GoalCompletion
 import com.zdredge.consistency.ui.checkin.asAnswer
-import java.text.NumberFormat
+import com.zdredge.consistency.ui.checkin.asPercent
 import java.time.format.DateTimeFormatter
-import java.util.Locale
-import kotlin.math.roundToInt
 
 /** One ring and its legend row. [fraction] is null when nothing has been scored yet. */
 data class RingUi(val name: String, val fraction: Double?, val value: String, val detail: String)
@@ -74,7 +72,7 @@ internal fun presentDashboard(figures: DashboardFigures): DashboardUi {
                 RingUi(
                     name = "Response rate",
                     fraction = rate.rate,
-                    value = rate.rate?.let(::percent) ?: "—",
+                    value = rate.rate.asPercent(),
                     detail = "${rate.answered} of ${rate.expected} check-ins",
                 ),
                 ring("Daily goals", score.rings.daily, pendingDetail = "Nothing scored yet"),
@@ -120,7 +118,7 @@ private fun ring(name: String, completion: GoalCompletion, pendingDetail: String
     return RingUi(
         name = name,
         fraction = ratio,
-        value = ratio?.let(::percent) ?: "Pending",
+        value = ratio?.asPercent() ?: "Pending",
         detail = if (ratio == null) pendingDetail else "${completion.met} of ${completion.scored}$unit",
     )
 }
@@ -134,12 +132,14 @@ private fun goalCard(goal: TrendGoal): GoalCardUi = GoalCardUi(
     nowFraction = fraction(goal.now),
     met = metLine(goal),
     extra = goal.missedAverage?.let { average ->
-        // "1 bottles" read wrongly on the device; the unit is stored plural, so one drops the s.
-        val unit = goal.unitLabel?.let { " " + if (average == 1.0) it.removeSuffix("s") else it }.orEmpty()
-        "On the days you missed, you averaged ${amount(average)}$unit."
+        // "1 bottles" read wrongly on the device; the unit is stored plural, so one drops the s. Judged
+        // on what is shown, so an average of 1.04 -- written "1" -- is singular too.
+        val shown = average.asAnswer()
+        val unit = goal.unitLabel?.let { " " + if (shown == "1") it.removeSuffix("s") else it }.orEmpty()
+        "On the days you missed, you averaged $shown$unit."
     } ?: goal.openWeek?.let { week ->
         val left = week.totalDays - week.elapsedDays
-        "This week so far: ${amount(week.observed)} of ${amount(week.target)}, with $left ${if (left == 1) "day" else "days"} to go."
+        "This week so far: ${week.observed.asAnswer()} of ${week.target.asAnswer()}, with $left ${if (left == 1) "day" else "days"} to go."
     },
 )
 
@@ -161,9 +161,3 @@ private fun metLine(goal: TrendGoal): String {
 private fun tally(t: Tally) = "${t.met} of ${t.scored}"
 
 private fun fraction(t: Tally) = if (t.scored == 0) 0f else t.met.toFloat() / t.scored
-
-private fun percent(v: Double) = "${(v * 100).roundToInt()}%"
-
-/** 1.5 as "1.5", 6400.0 as "6,400": amounts read the way the check-in wrote them. */
-private fun amount(v: Double): String =
-    if (v >= 1000) NumberFormat.getIntegerInstance(Locale.US).format(v.roundToInt()) else v.asAnswer()

@@ -72,6 +72,11 @@ object CheckInContent {
          * true so every caller that has nothing measured is unaffected.
          */
         measuredAvailable: Boolean = true,
+        /**
+         * The day the check-in is being answered on. Only a check-in answered on its own day may be
+         * deferred -- see [canDefer]. Defaults to the check-in's day, the ordinary case.
+         */
+        answeredOn: LocalDate = checkInDay,
     ): List<CheckInEntry> {
         val answersDay = AnswerDay.forCheckIn(checkInDay, slot)
         val byItem = items.associateBy { it.id }
@@ -82,7 +87,7 @@ object CheckInContent {
             .mapNotNull { item ->
                 val version = versions.versionFor(item, answersDay) ?: return@mapNotNull null
                 if (version.slot !in slotsAskedIn(slot, checkInDay)) return@mapNotNull null
-                CheckInEntry(item, version, canDefer = canDefer(version, slot))
+                CheckInEntry(item, version, canDefer = answeredOn == checkInDay && canDefer(version, slot))
             }
 
         // Measured items are shown, never asked, and only alongside the day they measure. When the
@@ -120,12 +125,6 @@ object CheckInContent {
     }
 
     /**
-     * Which item slots this check-in covers.
-     *
-     * The weekly questions are appended to **Sunday night's** check-in rather than forming their own
-     * (spec §1), which closes the Monday–Sunday week the moment it ends.
-     */
-    /**
      * Whether a question may be answered "not yet".
      *
      * Spec §3.2 scopes the deferral precisely: **night goal questions.** Both halves matter.
@@ -139,15 +138,26 @@ object CheckInContent {
      * defers a feeling, and the answer tomorrow is a different answer, not a delayed one.
      *
      * A carried-over question is never deferrable again: the promise "not yet" makes is that the
-     * question comes back **once**, and an unresolved deferral becomes a missed goal at rollover
-     * (scoring-cases A2.1). Letting it be deferred indefinitely would turn a deferral into a way of
+     * question comes back **once**, and an unresolved deferral becomes a missed goal once its grace
+     * closes (scoring-cases A2.1). Letting it be deferred indefinitely would turn a deferral into a way of
      * never answering while never being marked as having failed to.
+     *
+     * *On its own night* -- the caller's condition, `answeredOn == checkInDay`. A deferral exists for
+     * the 21:00 prompt arriving while things are still actionable. Offered while backfilling
+     * yesterday's night, it would be carried into this morning and resolved there as in-window,
+     * buying a backfill in-window credit; offered a week late, nothing would ever resolve it.
      */
     private fun canDefer(version: ItemVersion, slot: Slot): Boolean =
         slot == Slot.NIGHT &&
             version.slot == Slot.NIGHT &&
             version.classification == Classification.GOAL
 
+    /**
+     * Which item slots this check-in covers.
+     *
+     * The weekly questions are appended to **Sunday night's** check-in rather than forming their own
+     * (spec §1), which closes the Monday–Sunday week the moment it ends.
+     */
     private fun slotsAskedIn(slot: Slot, checkInDay: LocalDate): Set<Slot> = when {
         slot == Slot.NIGHT && checkInDay.dayOfWeek == DayOfWeek.SUNDAY -> setOf(Slot.NIGHT, Slot.WEEKLY)
         else -> setOf(slot)

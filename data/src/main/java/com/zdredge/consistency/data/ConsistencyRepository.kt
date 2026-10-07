@@ -1,6 +1,7 @@
 package com.zdredge.consistency.data
 
 import android.util.Log
+import androidx.room.withTransaction
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.data.db.LOCAL_USER_ID
 import com.zdredge.consistency.data.db.entity.CheckInEntity
@@ -15,6 +16,7 @@ import com.zdredge.consistency.data.mapper.originEntities
 import com.zdredge.consistency.data.mapper.selectionEntities
 import com.zdredge.consistency.data.mapper.toDomain
 import com.zdredge.consistency.data.mapper.toEntity
+import com.zdredge.consistency.data.mapper.toRun
 import com.zdredge.consistency.domain.checkin.AnswerRevision
 import com.zdredge.consistency.domain.checkin.CheckInCompleteness
 import com.zdredge.consistency.domain.checkin.CheckInContent
@@ -37,11 +39,13 @@ import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.MeasuredValue
+import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpSpec
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.model.Target
+import com.zdredge.consistency.domain.scoring.SleepNights
 import com.zdredge.consistency.domain.time.DayResolver
 import java.io.File
 import java.io.OutputStream
@@ -60,6 +64,17 @@ data class RolloverOutcome(
     val valuesFrozen: Int = 0,
 )
 
+/** One recorded rollover, as read back. A failed run has [error] and zero counts. */
+data class RolloverRun(
+    val ranAt: Instant,
+    val forDay: LocalDate,
+    val succeeded: Boolean,
+    val checkInsCreated: Int,
+    val checkInsMissed: Int,
+    val valuesFrozen: Int,
+    val error: String?,
+)
+
 /** Stored in `rollover_runs.outcome`. Plain strings: the set is not a domain concept. */
 const val ROLLOVER_SUCCEEDED = "SUCCEEDED"
 const val ROLLOVER_FAILED = "FAILED"
@@ -74,8 +89,9 @@ private const val TAG = "ConsistencyRepository"
  * reads here are exactly the inputs the M2 calculators already take as parameters, and nothing is
  * shaped for a screen.
  *
- * There is deliberately **no dashboard-shaped aggregate loader**. M10 knows what the dashboard
- * wants; guessing now would produce an API written against nothing and tested against less.
+ * There is deliberately **no dashboard-shaped aggregate loader**. M10 settled what the dashboard
+ * reads -- [dashboardInputs] is one [itemHistory] per item and the check-ins, so every goal is
+ * judged exactly as its own screen judges it.
  *
  * **Nothing computed is stored, and nothing stored is computed here.** Sleep duration, lingering
  * minutes, weekly roll-ups, hit rates and both goal-completion ratios are the domain layer's, on
@@ -98,9 +114,9 @@ class ConsistencyRepository(
     /**
      * Populates the spec section 4 library, once, on an empty database.
      *
-     * Guarded on emptiness rather than on a "seeded" flag because the flag and the rows can disagree
-     * -- and because the library is editable and removable from the moment it lands (spec section
-     * 4). Once the user has deleted an item, re-adding it would be the app overruling them.
+     * Guarded on emptiness rather than on a "seeded" flag because the flag and the rows can disagree.
+     * Items are retired, never deleted (constraint 6), so a library that has ever been seeded is never
+     * empty again, and nothing here can bring back an item the user chose to retire.
      *
      * Everything takes effect from [on], so targets apply from the first day rather than from a date
      * baked into the source, and no period before installation is scored.
@@ -120,6 +136,20 @@ class ConsistencyRepository(
     // ---- Definitions -------------------------------------------------------------------------
 
     suspend fun items(): List<Item> = db.itemDao().allItems().map { it.toDomain(dayResolver) }
+
+    /**
+     * The items the user is shown in the Items list.
+     *
+     * Spec §3.3: when health permission is declined, steps is **hidden** -- never left on screen as an
+     * empty row, which reads as an invitation to manual entry (permanently out of scope, §2). The same
+     * rule as the check-in's ([checkInQuestions]), asked fresh each time for the same reason: the
+     * permission can be revoked in system settings without the app being told. Hidden is not deleted;
+     * the history stays and the item returns when steps can be read again.
+     */
+    suspend fun listedItems(): List<Item> {
+        val measuredShown = stepSource.status() == StepSourceStatus.Available
+        return items().filter { it.kind != ItemKind.MEASURED || measuredShown }
+    }
 
     suspend fun item(itemId: ItemId): Item? =
         db.itemDao().item(itemId.value)?.toDomain(dayResolver)
@@ -151,7 +181,7 @@ class ConsistencyRepository(
      */
     suspend fun noOpportunityOptionIds() =
         db.itemDao().allOptions().filter { it.isNoOpportunity }
-            .map { com.zdredge.consistency.domain.model.OptionId(it.id) }
+            .map { OptionId(it.id) }
             .toSet()
 
     // ---- Targets -----------------------------------------------------------------------------
@@ -203,6 +233,7 @@ class ConsistencyRepository(
         val item = item(itemId) ?: return null
         val versions = versions(itemId)
         if (versions.isEmpty()) return null
+        val sleepMetric = SeedLibrary.SLEEP_METRICS[itemId.value]
 
         return ItemHistory(
             item = item,
@@ -217,6 +248,26 @@ class ConsistencyRepository(
             } else {
                 emptyList()
             },
+            containerSizes = containerSizes(itemId),
+            sleep = sleepMetric?.let { sleepNights(item.createdOn, today) },
+            sleepMetric = sleepMetric,
+        )
+    }
+
+    /**
+     * The three sleep/wake times by night, for the two hardcoded metrics (constraint 13). Read from
+     * their own items, which is why they travel beside an item's history rather than inside it. A
+     * deferral carries no time; the morning items cannot be deferred anyway.
+     */
+    private suspend fun sleepNights(from: LocalDate, to: LocalDate): SleepNights {
+        suspend fun times(id: String) = answers(ItemId(id), from, to)
+            .filter { it.capture != Capture.PENDING }
+            .mapNotNull { answer -> answer.valueTime?.let { answer.day to it } }
+            .toMap()
+        return SleepNights(
+            bedtime = times(SeedLibrary.BEDTIME),
+            wokeAt = times(SeedLibrary.WOKE_AT),
+            gotUpAt = times(SeedLibrary.GOT_UP_AT),
         )
     }
 
@@ -403,6 +454,8 @@ class ConsistencyRepository(
             // every time rather than remembered, because the permission can be revoked in system
             // settings without the app being told.
             measuredAvailable = stepSource.status() == StepSourceStatus.Available,
+            // "Not yet" only on the night itself: never while backfilling it, never late (spec §3.2).
+            answeredOn = dayResolver.today(),
         )
 
     /** Unresolved "not yet" answers, for carry-over into the next morning. */
@@ -433,11 +486,15 @@ class ConsistencyRepository(
      * values are the only rows either rule can act on, and both sets stay small because this job is
      * what drains them.
      *
+     * **All or nothing, run record included.** The writes and the row recording them share one
+     * transaction, so a run that throws partway leaves no day half-closed and no success claimed;
+     * the worker's failure row is written after the rollback, and the retry does the whole job.
+     *
      * Safe to run twice, and safe to run late. Both rules compare stored state against [today]
      * rather than assuming they run once per day, so a run after the device was off for three days
      * resolves all three at once — see `RolloverPlanner`.
      */
-    suspend fun runRollover(today: LocalDate = dayResolver.today()): RolloverOutcome {
+    suspend fun runRollover(today: LocalDate = dayResolver.today()): RolloverOutcome = db.withTransaction {
         val created = ensureCheckInsExist(today)
 
         val plan = RolloverPlanner.plan(
@@ -456,7 +513,7 @@ class ConsistencyRepository(
                 .setState(it.itemId.value, it.day.toString(), MeasuredState.FROZEN.name)
         }
 
-        return RolloverOutcome(
+        RolloverOutcome(
             forDay = today,
             checkInsCreated = created,
             checkInsMissed = plan.checkInsToMiss.size,
@@ -514,8 +571,8 @@ class ConsistencyRepository(
         db.checkInDao().earliestDay()?.let(LocalDate::parse)
 
     /** Recent runs, failures included, newest first. */
-    suspend fun recentRolloverRuns(limit: Int = 20): List<RolloverRunEntity> =
-        db.rolloverDao().recent(limit)
+    suspend fun recentRolloverRuns(limit: Int = 20): List<RolloverRun> =
+        db.rolloverDao().recent(limit).map { it.toRun() }
 
     /**
      * Marks a check-in answered **only if something was actually recorded for it**, returning whether
@@ -553,9 +610,14 @@ class ConsistencyRepository(
      * rate dates a check-in by that timestamp (`ResponseRate`), so finishing it again the next day --
      * now possible, since an answered check-in can be reopened inside grace -- would quietly turn an
      * in-window check-in into a backfilled one.
+     *
+     * **A missed check-in stays missed.** Its answers can still be given -- they record `LATE` -- but
+     * reaching the end of it must not repair it (A1.2). The comment above said so from M4; nothing
+     * enforced it until a missed check-in could be reopened, from an item's day, after M11.
      */
     suspend fun markCheckInAnswered(day: LocalDate, slot: Slot, at: Instant) {
         val existing = db.checkInDao().onDayInSlot(day.toString(), slot.name) ?: return
+        if (existing.state == CheckInState.MISSED) return
         if (existing.state == CheckInState.ANSWERED && existing.answeredAt != null) return
         db.checkInDao().upsert(
             existing.copy(state = CheckInState.ANSWERED, answeredAt = at),
@@ -582,13 +644,6 @@ class ConsistencyRepository(
     suspend fun answer(itemId: ItemId, day: LocalDate): Answer? =
         db.answerDao().forItemOnDay(itemId.value, day.toString())?.toDomain()
 
-    /**
-     * Records an answer, replacing any existing one for that item and day.
-     *
-     * Resolving a deferral is this same call with a different capture -- there is no separate
-     * method, because "not yet" then answered is one answer that changed, not two. The row keeps its
-     * identity across the edit so nothing referencing it dangles.
-     */
     /**
      * Records an answer given in the check-in held on [checkInDay] in [slot].
      *
@@ -625,6 +680,13 @@ class ConsistencyRepository(
         recordAnswer(answer, checkIn?.id, revisiting)
     }
 
+    /**
+     * Records an answer, replacing any existing one for that item and day.
+     *
+     * Resolving a deferral is this same call with a different capture -- there is no separate
+     * method, because "not yet" then answered is one answer that changed, not two. The row keeps its
+     * identity across the edit so nothing referencing it dangles.
+     */
     suspend fun recordAnswer(
         answer: Answer,
         viaCheckInId: String? = null,
@@ -700,11 +762,6 @@ class ConsistencyRepository(
         db.measuredDao().forItemOnDay(itemId.value, day.toString())?.toDomain()
 
     /**
-     * Writes a measured value with its per-origin breakdown. The origins are written even when there
-     * is only one, because the guard is the *comparison* between days: a second origin appearing is
-     * only detectable if the single-origin days recorded theirs too (architecture section 5).
-     */
-    /**
      * Reads [day]'s steps and records them, returning what was written or null if there was nothing.
      *
      * **The one path a step value is written by.** [syncRecentSteps] calls it for each day it reads,
@@ -756,6 +813,11 @@ class ConsistencyRepository(
         }
     }
 
+    /**
+     * Writes a measured value with its per-origin breakdown. The origins are written even when there
+     * is only one, because the guard is the *comparison* between days: a second origin appearing is
+     * only detectable if the single-origin days recorded theirs too (architecture section 5).
+     */
     suspend fun recordMeasuredValue(value: MeasuredValue) {
         val existing = db.measuredDao().forItemOnDay(value.itemId.value, value.day.toString())
         val id = existing?.value?.id ?: newId()

@@ -5,22 +5,28 @@ import com.zdredge.consistency.domain.answer
 import com.zdredge.consistency.domain.history
 import com.zdredge.consistency.domain.item
 import com.zdredge.consistency.domain.measured
+import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.Classification
+import com.zdredge.consistency.domain.model.ContainerSize
 import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.ExclusionReason
+import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.ItemKind
+import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.option
 import com.zdredge.consistency.domain.rollUp
-import com.zdredge.consistency.domain.scoring.Panel
+import com.zdredge.consistency.domain.scoring.SleepMetric
+import com.zdredge.consistency.domain.scoring.SleepNights
 import com.zdredge.consistency.domain.target
 import com.zdredge.consistency.domain.time.ClockAxis
 import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.domain.version
+import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -71,9 +77,8 @@ class ItemDetailsTest {
         assertEquals(0, daily.summary.met)
         assertEquals(14, daily.summary.missed)
         assertEquals(0.0, daily.summary.hitRate!!)
-        assertEquals(0.75, daily.summary.averageAttainment!!)
         // The pair is the point: a fortnight of near-misses is not a fortnight of doing nothing.
-        assertEquals(Panel.GOING_BADLY, Panel.forHitRate(daily.summary.hitRate))
+        assertEquals(0.75, daily.summary.averageAttainment!!)
     }
 
     @Test
@@ -112,8 +117,7 @@ class ItemDetailsTest {
         assertEquals(0, daily.summary.met)
         assertEquals(0, daily.summary.missed, "silence is not a miss")
         assertEquals(14, daily.summary.excluded)
-        assertNull(daily.summary.hitRate, "and it is not a hit rate of zero either")
-        assertNull(Panel.forHitRate(daily.summary.hitRate), "so the item belongs in no panel")
+        assertNull(daily.summary.hitRate, "and it is not a hit rate of zero either, so it is on no trend")
     }
 
     @Test
@@ -144,6 +148,172 @@ class ItemDetailsTest {
         assertEquals(0, daily.run.longest, "neither extended nor broken -- there is nothing to extend")
         // Constraint 17: leaning on the neutral answer has to be legible rather than hidden.
         assertEquals(14, daily.summary.noOpportunityCount)
+    }
+
+    @Test
+    @DisplayName("6.2 - a goal retired a month ago: no figures for this fortnight, its history intact")
+    fun aRetiredGoalHasNoCurrentFigures() {
+        val retired = today.minusDays(30)
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("water", createdOn = longAgo, retiredOn = retired),
+                version = version("water", AnswerType.NUMBER),
+                targets = listOf(target("water", Direction.AT_LEAST, value = 2.0)),
+                answers = (30..60).map { answer("water", day = today.minusDays(it.toLong()), number = 2.0) },
+            ),
+            today, weeks,
+        )
+
+        // Spec §5.4: the figures cover the same 14 days as the dashboard, and the item was not active
+        // in any of them -- so nothing is scored, rather than its final fortnight standing in for now.
+        val daily = detail.figures.daily!!
+        assertEquals(today, detail.figures.windowDays.last())
+        assertEquals(0, daily.summary.met + daily.summary.missed)
+        assertNull(daily.summary.hitRate)
+
+        // The chart, the log and the run still describe the periods it was active in (spec §3.3).
+        assertEquals(retired, detail.lastDay)
+        assertEquals(DayState.MET, detail.log.last().state)
+        assertEquals(retired, detail.log.last().day)
+        assertTrue(detail.days.any { it.state == DayState.MET })
+        assertEquals(31, daily.run.longest)
+    }
+
+    // ---------------------------------------------------------------- derived figures
+
+    /** "Woke at", showing sleep duration, over the given nights' three times. */
+    private fun wokeAt(bedtime: Map<LocalDate, LocalTime>, woke: Map<LocalDate, LocalTime>) =
+        history(
+            item = item("woke_at", createdOn = longAgo),
+            version = version("woke_at", AnswerType.TIME, slot = Slot.MORNING, classification = Classification.OBSERVATION),
+            answers = woke.map { (night, time) -> answer("woke_at", day = night, time = time) },
+        ).copy(sleep = SleepNights(bedtime, woke, emptyMap()), sleepMetric = SleepMetric.SLEEP_DURATION)
+
+    @Test
+    @DisplayName("8.1/8.2/8.4 - each night carries its sleep duration, and none without a bedtime")
+    fun eachNightCarriesItsSleep() {
+        val sunday = today.minusDays(3)
+        val saturday = today.minusDays(4)
+        val friday = today.minusDays(5)
+        val detail = ItemDetails.assemble(
+            wokeAt(
+                bedtime = mapOf(sunday to LocalTime.of(23, 30), saturday to LocalTime.of(1, 30)),
+                woke = mapOf(sunday to LocalTime.of(8, 30), saturday to LocalTime.of(9, 0), friday to LocalTime.of(8, 0)),
+            ),
+            today, weeks,
+        )
+        val byDay = detail.log.associateBy { it.day }
+
+        assertEquals(java.time.Duration.ofHours(9), byDay.getValue(sunday).derived, "8.1: 23:30 to 08:30")
+        assertEquals(java.time.Duration.ofMinutes(450), byDay.getValue(saturday).derived, "8.2: 01:30 to 09:00")
+        assertNull(byDay.getValue(friday).derived, "8.4: no bedtime, so unavailable -- never zero")
+        assertEquals(DayState.RECORDED, byDay.getValue(friday).state, "the waking time itself still stands")
+    }
+
+    @Test
+    @DisplayName("M8 - typical sleep is over the nights shown, like the typical time")
+    fun typicalSleepFollowsTheFilter() {
+        // Three weeknights of seven hours; four Friday and Saturday nights of ten.
+        val nights = (1..14).map { today.minusDays(it.toLong()) }
+        val weekend = nights.filter { it.dayOfWeek == DayOfWeek.FRIDAY || it.dayOfWeek == DayOfWeek.SATURDAY }
+        val weeknights = nights.filter { it.dayOfWeek in setOf(DayOfWeek.SUNDAY, DayOfWeek.MONDAY, DayOfWeek.TUESDAY) }.take(3)
+        val shown = weekend + weeknights
+        val history = wokeAt(
+            bedtime = shown.associateWith { LocalTime.of(23, 0) },
+            woke = shown.associateWith { if (it in weekend) LocalTime.of(9, 0) else LocalTime.of(6, 0) },
+        )
+
+        val weeknightsOnly = ItemDetails.assemble(history, today, weeks, NightFilter.SundayToThursday).figures.sleep!!
+        val everyNight = ItemDetails.assemble(history, today, weeks, NightFilter.EveryNight).figures.sleep!!
+
+        assertEquals(SleepMetric.SLEEP_DURATION, weeknightsOnly.metric)
+        assertEquals(Duration.ofHours(7), weeknightsOnly.typical)
+        assertEquals(java.time.Duration.ofHours(10), everyNight.typical, "four of the seven nights were ten hours")
+    }
+
+    @Test
+    @DisplayName("8.1 - got out of bed shows minutes lingering, not sleep")
+    fun gotUpShowsLingering() {
+        val monday = today.minusDays(2)
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("got_up_at", createdOn = longAgo),
+                version = version("got_up_at", AnswerType.TIME, slot = Slot.MORNING, classification = Classification.OBSERVATION),
+                answers = listOf(answer("got_up_at", day = monday, time = LocalTime.of(8, 52))),
+            ).copy(
+                sleep = SleepNights(
+                    bedtime = mapOf(monday to LocalTime.of(23, 30)),
+                    wokeAt = mapOf(monday to LocalTime.of(8, 30)),
+                    gotUpAt = mapOf(monday to LocalTime.of(8, 52)),
+                ),
+                sleepMetric = SleepMetric.LINGERING,
+            ),
+            today, weeks,
+        )
+
+        assertEquals(Duration.ofMinutes(22), detail.log.single { it.day == monday }.derived)
+        assertEquals(SleepMetric.LINGERING, detail.figures.sleep!!.metric)
+        assertEquals(Duration.ofMinutes(22), detail.figures.sleep!!.typical)
+    }
+
+    @Test
+    @DisplayName("Spec 4 - average mindset over the window, and each week's beside its row")
+    fun averageMindset() {
+        val lastMonday = weeks.weekStart(today).minusWeeks(1)
+        val thisMonday = weeks.weekStart(today)
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("mindset", createdOn = longAgo),
+                version = version("mindset", AnswerType.SCALE, classification = Classification.OBSERVATION),
+                rollUp = rollUp("mindset", RollUpAggregation.AVERAGE),
+                answers = listOf(
+                    answer("mindset", day = lastMonday, scale = 2),
+                    answer("mindset", day = lastMonday.plusDays(1), scale = 4),
+                    answer("mindset", day = thisMonday, scale = 5),
+                ),
+            ),
+            today, weeks,
+        )
+
+        val average = detail.figures.average!!
+        assertEquals(11.0 / 3, average.value, 1e-9)
+        assertEquals(3, average.days)
+
+        val chart = detail.chart as Chart.ShadedCalendar
+        val byWeek = chart.weeks.associateBy { it.weekStart }
+        assertEquals(5, chart.weeks.size, "one per row of the five-week calendar")
+        assertEquals(3.0, byWeek.getValue(lastMonday).value)
+        assertTrue(byWeek.getValue(lastMonday).incomplete, "five of its days went unanswered")
+        assertEquals(5.0, byWeek.getValue(thisMonday).value)
+        assertNull(byWeek.getValue(lastMonday.minusWeeks(1)).value, "a silent week has no average, not zero")
+    }
+
+    @Test
+    @DisplayName("5.4 - two bottles are 80 oz before the bottle changed and 64 oz after")
+    fun containerAmountsFollowTheirDay() {
+        val changed = today.minusDays(5)
+        val before = changed.minusDays(1)
+        val after = changed.plusDays(1)
+        val detail = ItemDetails.assemble(
+            history(
+                item = item("water", createdOn = longAgo),
+                version = version("water", AnswerType.NUMBER, unitLabel = "bottles"),
+                targets = listOf(target("water", Direction.AT_LEAST, value = 2.0)),
+                answers = listOf(answer("water", day = before, number = 2.0), answer("water", day = after, number = 2.0)),
+            ).copy(
+                containerSizes = listOf(
+                    ContainerSize(ItemId("water"), size = 40.0, unitLabel = "oz", effectiveFrom = longAgo),
+                    ContainerSize(ItemId("water"), size = 32.0, unitLabel = "oz", effectiveFrom = changed),
+                ),
+            ),
+            today, weeks,
+        )
+        val byDay = detail.log.associateBy { it.day }
+
+        assertEquals(DayValue.Amount(2.0, ContainerAmount(80.0, "oz")), byDay.getValue(before).value)
+        assertEquals(DayValue.Amount(2.0, ContainerAmount(64.0, "oz")), byDay.getValue(after).value)
+        assertEquals(AmountFigure(ContainerAmount(72.0, "oz"), days = 2), detail.figures.averageAmount)
+        assertTrue((detail.chart as Chart.ShadedCalendar).weeks.isEmpty(), "water declares no roll-up")
     }
 
     // ---------------------------------------------------------------- weekly roll-ups
@@ -249,7 +419,7 @@ class ItemDetailsTest {
                 measured = (0..5).map { measured(day = week.plusDays(it.toLong()), value = 10_000.0) } +
                     measured(
                         day = week.plusDays(6), value = 30_000.0,
-                        state = com.zdredge.consistency.domain.model.MeasuredState.CONFLICTED,
+                        state = MeasuredState.CONFLICTED,
                     ),
             ),
             today, weeks,
@@ -449,7 +619,7 @@ class ItemDetailsTest {
     /** Water raised from 2 bottles to 3 twelve days ago, inside the chart's five weeks. */
     private val raisedOn = today.minusDays(12)
 
-    private fun waterRaised(answers: List<com.zdredge.consistency.domain.model.Answer>) = history(
+    private fun waterRaised(answers: List<Answer>) = history(
         item = item("water", createdOn = longAgo),
         version = version("water", AnswerType.NUMBER),
         targets = listOf(

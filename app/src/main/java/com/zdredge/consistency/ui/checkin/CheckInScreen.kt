@@ -73,10 +73,10 @@ private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
  * is a real state that scores differently from an answer (spec constraint 11) — a flow that trapped
  * you until you answered would force a value where the truth is that you have none.
  *
- * Advancement is manual. Auto-advance was considered and deferred: while the number input is still a
- * stepper there is no moment where "the user has answered" is unambiguous, so a screen that advanced
- * itself would be least predictable exactly where it needed to be trusted. Phase 4's chips are what
- * make it viable later.
+ * Advancement is manual. Auto-advance was considered and deferred while the number input was a
+ * stepper, which has no moment where "the user has answered" is unambiguous. Every answer type is a
+ * tap on an option now, so that objection is gone; it stays manual because nobody has asked for the
+ * screen to move under their finger.
  *
  * There are no tests for this file, by design (`CLAUDE.md`). Everything that could be *wrong* rather
  * than merely ugly lives in `:domain`; what is left here is layout, and layout is checked by looking.
@@ -279,17 +279,17 @@ private fun QuestionCard(
                 Column(
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 ) {
-                when {
-                    question.readOnly -> ReadOnlyValue(question)
-                    question.answerType == AnswerType.BOOL -> BoolInput(question, onBool)
-                    question.answerType == AnswerType.NUMBER -> NumberInput(question, onNumber)
-                    question.answerType == AnswerType.TIME -> TimeInput(question, onTime)
-                    question.answerType == AnswerType.SCALE -> ScaleInput(question, onScale)
-                    question.answerType == AnswerType.SINGLE_SELECT ->
-                        SelectInput(question, singleChoice = true, onSelectOne, onToggle, onSelectNone)
-                    question.answerType == AnswerType.MULTI_SELECT ->
-                        SelectInput(question, singleChoice = false, onSelectOne, onToggle, onSelectNone)
-                }
+                    when {
+                        question.readOnly -> ReadOnlyValue(question)
+                        question.answerType == AnswerType.BOOL -> BoolInput(question, onBool)
+                        question.answerType == AnswerType.NUMBER -> NumberInput(question, onNumber)
+                        question.answerType == AnswerType.TIME -> TimeInput(question, onTime)
+                        question.answerType == AnswerType.SCALE -> ScaleInput(question, onScale)
+                        question.answerType == AnswerType.SINGLE_SELECT ->
+                            SelectInput(question, singleChoice = true, onSelectOne, onToggle, onSelectNone)
+                        question.answerType == AnswerType.MULTI_SELECT ->
+                            SelectInput(question, singleChoice = false, onSelectOne, onToggle, onSelectNone)
+                    }
                 }
             }
 
@@ -432,8 +432,9 @@ private fun NoteDialog(
 }
 
 /**
- * Measured items are shown, never asked (spec §3.3). Steps has no value until Health Connect arrives
- * in M7, and saying so plainly beats hiding the row and having it appear later unexplained.
+ * Measured items are shown, never asked (spec §3.3). When a day has no value yet -- nothing synced --
+ * saying so plainly beats hiding the row and having it appear later unexplained. (When steps cannot
+ * be read at all, the row is not here: `CheckInContent` leaves it out.)
  */
 @Composable
 private fun ReadOnlyValue(question: QuestionUi) {
@@ -443,7 +444,7 @@ private fun ReadOnlyValue(question: QuestionUi) {
         // failure the origin guard exists to make visible (architecture §5).
         when {
             question.measuredConflicted -> "More than one source reported today. Not counted."
-            question.draft.valueNumber != null -> "%,.0f".format(question.draft.valueNumber)
+            question.draft.valueNumber != null -> question.draft.valueNumber.asAnswer()
             else -> "Not available yet"
         },
         style = MaterialTheme.typography.headlineSmall,

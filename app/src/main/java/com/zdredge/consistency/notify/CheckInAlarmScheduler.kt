@@ -10,6 +10,7 @@ import com.zdredge.consistency.container
 import com.zdredge.consistency.domain.checkin.AlarmPlanner
 import com.zdredge.consistency.domain.checkin.AlarmSpec
 import com.zdredge.consistency.domain.model.CheckIn
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Sets the check-in prompts.
@@ -77,6 +78,26 @@ object CheckInAlarmScheduler {
 
         val cancelled = cancelAlarmsNoLongerWanted(app, manager, window, alarms)
         Log.i(TAG, "set ${alarms.size} check-in alarms, cancelled $cancelled")
+    }
+
+    /**
+     * [reschedule], for a caller with nobody to tell: a failure is logged, never thrown.
+     *
+     * App start, `onResume`, Home and leaving a check-in all reschedule as a side effect, from a
+     * coroutine nothing waits on, and an exception there used to crash the process. App start is
+     * the serious one: it also runs in the process WorkManager starts for the 04:00 rollover, so a
+     * failed reschedule could take the rollover down with it. Losing one reschedule costs nothing
+     * lasting, because every run re-sets the whole window and the next one repairs it. The receivers
+     * and the worker catch for themselves and say more about what failed.
+     */
+    suspend fun rescheduleQuietly(context: Context) {
+        try {
+            reschedule(context)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(TAG, "could not reschedule check-in alarms; the next trigger will", e)
+        }
     }
 
     /**

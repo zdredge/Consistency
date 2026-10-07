@@ -28,7 +28,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 
-/**
+/*
  * The dashboard's three states, on invented data run through the real pipeline: invented histories
  * through `Dashboard.assemble`, then `presentDashboard`. `:app` has no tests, so these are the check.
  */

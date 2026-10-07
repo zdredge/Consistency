@@ -20,22 +20,21 @@ holding or improving. Every item has a screen with its chart, figures, goal line
 separate **Consistency Fixture** install loads named verification scenarios. Export (M11) writes the
 whole database as JSON wherever the system picker points, beside a raw `.db` copy to Downloads. **The
 next agreed work is the settings add-on** (`build-order.md`, *After the plan*); anything beyond it is
-a new decision, so ask. The rollover failed every run from 2026-09-11 to
-09-13 because it read steps from the background; it was fixed by reading steps only when a check-in
-opens — see *The rollover defect, fixed* in `build-order.md`. Item configuration and check-in times are deferred to a
-settings add-on after the plan. **M8 is the first milestone whose
-work happens while real data accumulates**, so a wipe is no longer a free way out of a mistake. Do
-not begin a later milestone than the one in progress.
+a new decision, so ask. A review of code against spec after M11 (2026-10-06/07) settled every place
+the two disagreed; see *After M11 — review fixes* in `build-order.md`. The rollover failed every run
+from 2026-09-11 to 09-13 because it read steps from the background; it was fixed by reading steps
+only when a check-in opens — see *The rollover defect, fixed* in `build-order.md`. **Real data has
+accumulated since 2026-09-10**, so a wipe is never a free way out of a mistake.
 
 The two defects M6 left were fixed on 2026-09-09; see *Defects found after M6* in `build-order.md`.
 Confirmed on 2026-09-10: the first morning prompt the app has ever sent arrived at 08:00 on a day
 nobody opened the app. **What to watch is the rollover's lateness, not the alarms** — it was due at
 04:15 and ran at 06:16, and it is the only thing standing between an idle phone and a silent day.
 
-Two ordering facts behind that sequence: `:domain` can be proven correct without a device, and the
-dashboard cannot be evaluated without substantial seeded history, so scoring belongs early and the
-dashboard late. The dashboard is also gated on the seed-data fixture (spec O7; designed as
-build-order M9) and the goal-completion formula (spec O1).
+Two ordering facts shaped the plan, and still shape anything like it: `:domain` can be proven correct
+without a device, and a dashboard cannot be evaluated without substantial seeded history. So scoring
+came first and the dashboard last (M10), after the fixture (M9) and the goal-completion formula (O1)
+it waited on.
 
 Two rules the M4.5 defect fixes settled, both worth knowing before touching answers:
 
@@ -43,8 +42,10 @@ Two rules the M4.5 defect fixes settled, both worth knowing before touching answ
   that exists with nothing in it is the real answer *"none of these"* for a select item, so blanking
   a retraction would turn it into a met goal.
 - **An edit is a change made through a different check-in** than the one that first recorded the
-  answer, **or after reopening a check-in that was already answered** (Home lists those while in
-  grace, and only when a question is still unanswered). Corrections while giving a check-in — including from its summary — are part of that
+  answer, **or after reopening a check-in that was already answered or missed** (Home lists answered
+  ones in grace with a question still unanswered; any day on an item's screen opens its check-in, at
+  any age). A missed check-in stays missed however much is filled in later -- `markCheckInAnswered`
+  refuses it (A1.2). Corrections while giving a check-in — including from its summary — are part of that
   answering, and filling in a skipped question is a first answer, never an edit. `AnswerRevision`
   in `:domain` owns this; do not set `submitted_at`, `capture` or `edited_at` from a caller — a
   caller only says whether it is revisiting (`recordAnswer(..., revisiting)`).
@@ -221,9 +222,9 @@ module. This is what makes the whole rulebook testable without an emulator, whic
   a user setting. `ItemViews.derive` works it out from what the item *is* — measured or asked, which
   slot, its answer type, which periods it has targets in — and a test pins all 16 seeded items to the
   views that were agreed. Change that rule only by re-deriving §5.4's table, not by special-casing an
-  item. **No item uses a line chart**, so the Vico choice in
-  architecture §4 is under review in M8 Phase 5; draw in Compose Canvas unless that concludes
-  otherwise. Clock times plot on an axis that starts at 04:00, or a 01:30 bedtime plots as the
+  item. **No item uses a line chart, and every chart is drawn in Compose Canvas** -- settled in M8
+  Phase 5 (architecture §4): Vico was chosen for line charts, there are none, and it was never added.
+  A charting library is a new dependency, so ask first. Clock times plot on an axis that starts at 04:00, or a 01:30 bedtime plots as the
   earliest night of the month. A missed day is grey, never red — only *scrolled on phone* is red, by
   the user's explicit choice.
 - **A day is judged once.** `ItemDetails.assemble` turns one item's history into its chart, its table
@@ -288,8 +289,10 @@ build-order section.
 - **Two installs share the phone.** `.\gradlew.bat :app:installDebug` is the **real app**, holding
   real data: never uninstall it, never load a scenario into it. `.\gradlew.bat :app:installFixture`
   is **Consistency Fixture**, whose Load scenario screen replaces its own history. The loader lives
-  in `:fixture`, linked only by that build type; **never move it, or anything that clears tables, into
-  `src/main` of any module.**
+  in `:fixture` (its `src/main`, which is fine: the module is linked only by the fixture build type,
+  `fixtureImplementation`), and its screen in `app/src/fixture`. **Never move it, or anything that
+  clears tables, into code the real app ships: `:app`'s `src/main`, `:data` or `:domain`** -- the
+  debug build *is* the real app.
 - **Before trusting a test that guards something important, make it fail.** M3 produced two tests
   that could not: one asserted a drift the build makes impossible, and one read a stale packaged
   asset. Both looked green and guarded nothing. Mutating the code under a new guard costs one run.
@@ -340,10 +343,13 @@ build-order section.
   merged with each other or with response rate. Spec §5.1, O1.
 - **Run** — consecutive days on which every scheduled check-in was answered. Measures showing up,
   not performing. Backfill within grace preserves it.
-- **Hit rate** — how often a single item met its target over the 14-day window. Drives the
-  going-well / middling / going-badly panels at 80% and 60%.
+- **Hit rate** — how often a single item met its target over the 14-day window. Its change against
+  the fortnight before places a goal in the Slipping / Holding / Improving trend panels, at 10 points
+  either way (spec §5.1). The level panels at 80% and 60% were replaced at M10.
 - **Average attainment** — for numeric goals, how close the user came to the target on average over
   the window. Reported beside hit rate, never merged into it. Not meaningful for at-most directions.
 - **Roll-up** — a weekly figure derived from one daily item plus an aggregation.
 - **Derived metric** — sleep duration and lingering minutes, computed from the three sleep/wake time
-  items. Hardcoded, never persisted.
+  items. Hardcoded, never persisted. Shown on the *woke up* and *got out of bed* screens; which item
+  shows which is `SeedLibrary.SLEEP_METRICS`, and that map is constraint 13's hardcoding, not a
+  starting point for generalising it.

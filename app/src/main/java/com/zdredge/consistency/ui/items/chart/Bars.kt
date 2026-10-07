@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -138,7 +139,7 @@ private fun DrawScope.plotArea(width: Float, height: Float): Rect = Rect(
     bottom = height - PlotInsets.Bottom.toPx(),
 )
 
-private fun androidx.compose.ui.input.pointer.PointerInputScope.plotArea(width: Float, height: Float): Rect = Rect(
+private fun PointerInputScope.plotArea(width: Float, height: Float): Rect = Rect(
     left = AxisWidth.toPx(),
     top = PlotInsets.Top.toPx(),
     right = width - PlotInsets.Right.toPx(),

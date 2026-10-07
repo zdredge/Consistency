@@ -1826,6 +1826,340 @@ than on screen. **Not done by me: saving to Drive**, which is the user's to try 
 
 ---
 
+## After M11 — review fixes, 2026-10-06
+
+A full review of the code against the spec, worked through with the user one finding at a time.
+
+### Retired goals stayed on the dashboard for ever
+
+**The defect.** `ItemDetails.assemble` ended an item's figures window on its last answerable day
+*clipped to its retirement*, so a goal retired months ago kept its final fortnight as its "current"
+figures. The dashboard sums every goal's figures, so that fortnight went into today's rings
+indefinitely, and the weekly trend took the last two weekly results *that existed*, which kept a
+retired goal on the carousel too. Against spec §3.4 ("scoring covers only items active in the period
+being scored"), case 6.2, and 9.8 (one window everywhere). Latent: nothing in the app can retire an
+item yet, but the `retired_reversioned` fixture does.
+
+**Two decisions, the user's.**
+- **A goal retired inside the window counts its active days**, and drops out once the window passes
+  it -- the same rule as `ItemLifecycle.isActiveInPeriod` and case 6.2.
+- **The item screen uses the dashboard's window too** (spec §5.4: "the same 14 days as the
+  dashboard"). This narrows M8's "a retired item anchors on its retirement day" to the **chart, the
+  Daily Log and the runs**; the figures no longer anchor there, so a long-retired item's hit rate
+  reads N/A while its chart still shows its last five active weeks.
+
+**The fix.** The figures window always ends on the slot's latest answerable day; cells still stop at
+retirement, so the active-days rule needs no code of its own. Weeks an item was not active in are
+dropped from its weekly figures rather than scored as silent. `Dashboard.trendOf` keys the weekly
+comparison on the two most recently closed weeks by date (it now takes `today` and the resolver),
+so a week with no result is simply absent.
+
+**Tests.** 4 new in `:domain` (381 total): retired before the window, retired inside it, a retired
+weekly goal, and the item screen's figures for a retired goal. All four failed before the fix.
+**Mutations caught: 3 of 3** -- the window anchored on retirement (4 tests), the weekly trend by
+`takeLast` (1), and inactive weeks scored as silent (1).
+
+### The derived figures had no surface
+
+**The gap.** Spec §2 and §4 put four derived figures in v1: sleep duration, minutes lingering in bed,
+average mindset, and a counted container's absolute amount. §5 never said where they appear, and none
+did. `DerivedMetrics` and `ContainerSizeResolver` were tested and called only by their tests.
+
+**Where they go, the user's call.**
+- **Sleep:** Typical Sleep on *woke up* and Typical Lingering in Bed on *got out of bed*, following
+  the night filter like Typical Time. Each night's value goes in the Daily Log and the day card.
+- **Mindset:** an Average figure, plus each week's average in the chip column that worked out and
+  stretched already use.
+- **Containers:** "2 · 80 oz" in water's log and day card at that day's bottle size, plus Average
+  Amount.
+
+Spec §5.4 now records all of this.
+
+**A defect found on the way.** `RollUpCalculator` summed, averaged and maxed only `valueNumber`, but
+mindset is a SCALE item whose value is in `valueScale`. Its seeded AVERAGE roll-up would have
+reported every week as 0, the worst week possible, the moment anything displayed it. It now reads
+whichever of the two columns the answer uses. A related fix: a week with nothing observed has *no*
+average rather than an average of 0. Silence is not a zero.
+
+**Constraint 13 holds.** `SeedLibrary.SLEEP_METRICS` names the two items and their metric beside the
+ids they belong to. The repository reads the three times from their own items and hands them to an
+`ItemHistory` *beside* its answers, never mixed in, because the calculators trust an item's answers to
+be its own.
+
+**Tests.** 6 new in `:domain` (387 total) and 2 instrumented. All six domain tests failed before the
+code existed. **Mutations caught: 4 of 4**:
+- the roll-up reading only numbers (2 tests)
+- the container resolved at today's size (1)
+- Typical Sleep ignoring the filter (1)
+- a silent week averaging 0 (1)
+
+**One harness misfire, again:** an incremental build left a stale class in place, so mutation 3
+reported the *container* test failing. A clean build attributed it correctly. Same lesson as M8 and
+M11: check the checker.
+
+### The spec claimed the settings features were built
+
+**The mismatch.** The spec's status line said v1 was complete, and §2's v1 scope still listed:
+- item configuration (library choice, custom items, classification)
+- extendable options
+- configurable container sizes
+- a user-set night time
+- the §5.7 setup flow
+
+None of these is built. This document and `CLAUDE.md` had moved them to the settings add-on, but the
+spec never said so.
+
+**Resolved in the spec, the user's call.** Nothing is cut. Spec §2 gains *In scope, not yet built:
+the settings add-on*, which lists each piece and what the app does instead. The status line, §1's
+night time and §5.7 point to it.
+
+**One part fixed rather than documented.** Spec §3.3 hides steps when health permission is declined.
+The check-in did; the Items list still showed Steps with an empty chart.
+`ConsistencyRepository.listedItems` now applies the same rule, asked fresh each time. The dashboard
+needed nothing: a day with no step data is already excluded, never missed. The fixture install's step
+source reports available, so its step scenarios are unaffected. Guarded by
+`stepsIsListedOnlyWhileStepsCanBeRead` (instrumented).
+
+### The carousel could not be stepped
+
+**Found on the device** while checking the fixes above. Spec §5.1 says a tap on either half of the
+trend carousel, or a swipe, steps to the next goal. Every forward tap landed on the same card: twenty
+taps in a row stayed on "Holding 3 of 6".
+
+**Cause.** `step()` computed the next slide from `current`, a value captured when the composable ran.
+The tap and swipe handlers are installed once by `pointerInput(slides.size)` and keep the `step` from
+that composition, so `current` stayed fixed at whatever was showing on the first touch. It now reads
+the `index` state at the moment of the tap. The M10 device pass recorded "stopping on a tap", which was
+true; the stepping itself was never checked.
+
+**Verified on the device**, fixture install:
+- Four forward taps stepped through four goals in order.
+- Two back taps returned through them.
+- A swipe stepped forward.
+- The rotation stayed stopped afterwards.
+
+`:app` has no tests, so this is the check.
+
+### Late answers and old days had no way in
+
+**The gap.** Spec §2 and §3.2 promise editable history, and late answers (`LATE`) after grace.
+Nothing reached either. The banner and Home's reviewable list both stop at `Grace`, so no `LATE`
+answer could ever be given, and nothing could be changed once its check-in left grace. M9 had noted
+the first part; the 2026-09-25 review had deferred the second.
+
+**The user's call:** reached from the item. Every day on an item's screen opens the check-in that
+asked about it, through the day card's *Open check-in* or any Daily Log row, over the whole history.
+`AnswerDay.checkInFor` finds the check-in: the morning for a sleep item, Sunday night for a weekly
+question, none for steps. The existing check-in screen and `AnswerRevision` do the rest.
+- A finished or missed check-in is a later sitting: it opens on its summary, and changing an answer
+  already given is an edit.
+- The summary says first what answering now will record.
+
+**Two guards, both latent until something could reach an old check-in.**
+- **A missed check-in stays missed.** `markCheckInAnswered` upserted `ANSWERED` whatever the state.
+  Its own comment had said since M4 that a late answer must not repair a missed one, and nothing
+  enforced it. Now it does (A1.2).
+- **"Not yet" only on the night itself.** `CheckInContent` takes `answeredOn` and offers a deferral
+  only when it equals the check-in's day. **Behaviour change:** backfilling yesterday's night no
+  longer offers it. A deferral made then would have been resolved in that same morning's check-in as
+  in-window (3.3), buying a backfill in-window credit.
+
+**Tests.** 2 new in `:domain` (389 total) and 2 instrumented (145). **Mutations caught: 3 of 3**:
+- the missed guard dropped (caught on the device)
+- deferral offered on any day
+- weekly questions opening a "weekly" check-in
+
+**Verified on the device**, fixture install, `captures`:
+- A missed night opened from vitamins' log. The summary said so before anything was tapped, and no
+  "Not yet" was offered. Answering vitamins gave **late · Met**, and the response rate stayed
+  **25 of 26**.
+- An older on-time day changed from Yes to No read **edited · Missed**, with its original capture
+  kept.
+
+### The library's size
+
+Spec §4 opened with "roughly 25–30 items grouped into sleep, movement, food, mind and social", above
+a list of sixteen. No more than those sixteen were ever specified, the seed holds exactly them, and
+nothing models a group. **The user's call: the sixteen are the library.** §4 now says so, keeping
+the five areas only as a description. The same sentence said "removable", against constraint 6, and
+"editable" before anything could edit; it now says retirable, and points to the settings add-on.
+Docs only, plus `SeedLibrary`'s own comment, which repeated "five groups".
+
+### What M10 superseded, still standing
+
+The trend panels replaced the 80%/60% level panels at M10. Several things still described the old
+ones:
+- the `CLAUDE.md` glossary
+- scoring-cases 2.3, 10.5, 11.7 and the §11 footer
+- comments in `GoalScorer`, `SeedLibrary` and the fixture
+
+`Panel` itself was still in `:domain`, used by nothing outside its own tests. **Removed.**
+`PeriodProgress`, which shared its file and is live, moved to its own. `PanelBandTest` went with it,
+and two `ItemDetailsTest` asserts that went through `Panel` were dropped: each repeated a hit-rate
+assertion already on the line above. `:domain` goes from 389 tests to 383 (the six band cases).
+
+Also brought up to date:
+- **Spec §6:** O3 is resolved at M7, O6 at M8, and O1's "still open, visual only" note at M10. O2
+  points to the settings add-on.
+- **build-order's decision-gates table:** it still gave the carousel as 8 seconds per goal. O5
+  resolved at 6.
+
+### Home called a backfill "Late"
+
+Home's cards for yesterday's check-ins read "Late — this will be recorded as backfilled". `LATE` is a
+different capture state: an answer after grace, which repairs nothing. Since item #4 the app can also
+record a `LATE` answer, so the screen used one state's word for the other in the same place a user
+learns what they mean. Both cards now name only what is recorded: "Anything answered now is recorded
+as backfilled", and "Anything filled in now…" on a reviewed check-in, in the style of the check-in
+summary's late note. Seen on the device, fixture install: yesterday's two cards carry it, today's
+does not.
+
+### Architecture drift
+
+`architecture.md` had fallen behind what was built.
+- **§5's data model** listed every table but `rollover_runs` (M5, schema v3). It is now described
+  there, and the model counts twelve tables.
+- **The §6 diagram:**
+  - It drew a settings screen re-arming alarms, "in M8". That is now a dashed edge marked *settings
+    add-on, not built*.
+  - Its UI box listed "library · settings". It now lists the four screens that exist.
+  - It left out two of the scheduler's callers: each alarm firing, and leaving a check-in.
+  - Its components now carry their real names, and the database box includes `rollover_runs`.
+- **§1** had the rollover generating "the next day's" check-ins, which §6 already corrected (through
+  today, never ahead).
+- **§4** counted `AppContainer` as four objects; M7 made it five. It also said "five screens"; there
+  are four.
+
+These were corrected where the claim was current, with "since then" notes where an M4 *As built*
+note is history. The DI note says plainly that its trigger for adopting Hilt has been met in letter,
+and not in pain.
+
+### `CLAUDE.md`, read against the tree
+
+- **The fixture rule contradicted the layout.** "Never move \[the loader\] into `src/main` of any
+  module" stood beside a loader that lives in `fixture/src/main`, which is correct, since that
+  module is linked only by the fixture build type. The rule now names what it protects: nothing that
+  clears tables goes into code the real app ships (`:app`'s `src/main`, `:data`, `:domain`).
+- **Three present-tense lines M8–M10 had overtaken:**
+  - Vico "under review in M8 Phase 5": settled there, all Canvas.
+  - The dashboard "gated on" M9 and O1: both done.
+  - "Do not begin a later milestone than the one in progress": none is in progress. What still
+    matters there, that real data makes a wipe costly, stays.
+
+### Stale comments
+
+Comments only, no behaviour.
+- **What the rollover does.** Several described the rollover reading steps or converting deferrals.
+  It does neither: steps are read when a check-in opens, and an unresolved deferral scores as missed
+  at read time, once its grace closes.
+- **Finished milestones as future work.** "Until Health Connect arrives in M7", "when M8 makes check-in
+  times configurable", "M10 knows what the dashboard wants", "M6's settings".
+- **`DayState.NOT_ACTIVE`** said such days are not drawn. Since M8 Phase 4 they are a dim dot.
+- **The seeding comment** spoke of the user deleting items, which never happens.
+
+Doc comments attached to the wrong declaration were moved to their own:
+- two in `ConsistencyRepository` and one in `CheckInContent`;
+- `HomeViewModel`'s class doc, which sat on a constant;
+- one introduced by item #4 itself, where `lateNote` split `CheckInSummary` from its doc;
+- `DayGrid.shadedFill`, which carried two.
+
+Five file-level notes written as `/** */`, which silently attach to the first declaration below
+them, are now plain `/* */`, as `EntityMappers` already did.
+
+### One way to write a number
+
+`CLAUDE.md` says value formatting is shared in `AnswerFormat`. In fact there were about five
+formatters, some following the phone's locale and some forcing US.
+
+**Two defects among them:**
+- **Long decimals.** `asAnswer` wrote any non-whole number with `toString()`. Fine for a half, but
+  the dashboard's missed-day average went through it, so missed days of 1, 1 and 2 bottles would
+  have read "averaged 1.3333333333333333".
+- **The keypad's prefill.** It pre-filled an existing answer with `"%.1f"`, in the phone's locale,
+  and parses with `toDoubleOrNull`, which wants a ".". On a comma-decimal phone, reopening 1.5 would
+  have shown "1,5", and tapping Set would have cleared the answer.
+
+**Now:**
+- `asAnswer` writes every number: grouped, one decimal at most, half up, always US. `asPercent`
+  moved beside it.
+- The dashboard's private `amount`/`percent`, `DayGrid`'s `short`, two hand-formatted step readings
+  and the Average figure all use them.
+- The keypad builds plain "1.5" text of its own.
+- The chart axis keeps its "10k" abbreviation without the locale.
+- `GoalLine` in `:domain`, which cannot import `:app`, rounds the same way and says so.
+
+**Verified on the device**, fixture install, `six_months`:
+- the rings' percentages;
+- "averaged 6,391" on the steps card and "1 bottle" on water's;
+- weekly totals "60.8k/56k";
+- mindset's weekly averages and its Average 3.8;
+- water's "73 oz" and "3 · 120 oz";
+- 1.5 entered, the keypad reopened showing "1.5", and Set keeping it.
+
+### "With 0 days to go" on a Wednesday
+
+**Found on the device** while checking the number formatting. Every weekly goal's card read "This
+week so far: 1 of 6, with 0 days to go" on a Wednesday.
+
+**Cause.** `WeeklyFigures.progress` took its total from `activeDays`, which stops at the last
+answerable day. That is right for counting what was observed, but as the total it made every running
+week end today, so total minus elapsed was always zero. Its elapsed count started on Monday whatever
+the item's first day, so a goal created midweek would also have had fewer days to go than it really
+did.
+
+**Fix.** Both counts now run over the week's days the item exists on, ahead included. M10's
+dashboard test checked elapsed days and never the total, which is how this got through. Two new
+`:domain` tests, both seen to fail first: a Wednesday is 3 of 7, and a goal created Wednesday is 3 of
+5 on Friday. 385 tests.
+
+**Verified on the device**, fixture install: stretched and worked out both read "with 4 days to go"
+on Wednesday 7 October.
+
+### A failed reschedule crashed the process
+
+Four alarm reschedules ran in coroutines nothing waited on, with no error handling:
+- app start;
+- `onResume`;
+- Home's refresh;
+- leaving a check-in.
+
+An exception in any of them crashed the app. App start mattered most: it also runs in the process
+WorkManager starts for the 04:00 rollover, so a failed reschedule could take the rollover down with
+it. The receivers and the worker already caught their own.
+
+All four now call `CheckInAlarmScheduler.rescheduleQuietly`, which logs a failure and returns. One
+lost reschedule costs nothing lasting, because every run re-sets the whole window. Not seen on the
+device, which is honest rather than ideal: the fixture install never schedules prompts, and the only
+install that does is the real app.
+
+### The wizard's test, still in `:app`
+
+`:app` has no tests, deliberately (`CLAUDE.md`), yet it still had the Android Studio template's
+`ExampleInstrumentedTest`, a test runner and five test-only libraries that nothing used. One of them,
+`ui-test-manifest`, was declared for the debug build -- the real app -- where it merged an exported
+test activity into the manifest for Compose UI tests that do not exist. The test, the runner, the
+five dependencies and their four catalog entries are gone. The debug manifest now holds only
+`MainActivity`, the health-permission alias and the debug-only preview activity. Debug, release and
+fixture all build, and every suite passes unchanged.
+
+### Minor tidy-ups
+
+- **Inline fully qualified names.** About thirty, across fourteen main and test files (one of them
+  added by item #2), were written out in full where an import belonged. They are now imported. The
+  sweep was scripted to refuse any short name that would clash with an existing import; none did.
+- **`recentRolloverRuns` returns a plain `RolloverRun`.** It was the one repository read that handed
+  out a Room row (`RolloverRunEntity`) and its raw `outcome` string. It now maps through
+  `EntityMappers` like every other read, with `succeeded` in place of the string. Only tests call it.
+- **The rollover is one transaction.** Creating the day's check-ins, marking old ones missed,
+  freezing step values and recording the run were separate writes, so a run that threw partway
+  could leave missed check-ins with no run recorded. `runRollover` now wraps them all in
+  `withTransaction`; the worker's failure row is written after the rollback. The test forces a real
+  SQLite failure at the freeze, the last write, with a temporary trigger.
+- **The check-in screen's answer `when` is indented inside its `Column`.** The scrolling `Column` was
+  wrapped around it without re-indenting, so the block read as the Box's child. Whitespace only.
+
+---
+
 ## After the plan — settings add-on
 
 **Not a milestone, and deliberately after M11.** Two pieces deferred out of M8 on 2026-09-11, because
@@ -1851,7 +2185,8 @@ These are the points where the build stops and asks, per `CLAUDE.md`'s "Ask firs
 | ~~T1 / M0~~ — platform verification | ~~M6, M7~~ — **cleared** | **M7:** on-device Health Connect step counting confirmed on the Pixel 9 Pro (Android 17); one origin, synthetic on-device package; the raw-sensor escape hatch stays unbuilt. **M6:** `USE_EXACT_ALARM` install-granted with no prompt, and 0.6 s slip in confirmed deep Doze — no fallback path needed. Multi-day observation of real firings continues in M6 as an architecture §8 mitigation. |
 | **Schema changes** | M3 and anything later | Any change to `answers`, `checkins` or `targets` is a stop-and-ask, never a quiet edit. |
 | **New dependency** | any milestone | Adding one is ask-first. The stack in architecture §4 is the agreed set. |
-| **O4 / O5** — measured-day finality, carousel timing | M5, M10 | Lower-stakes assumptions (provisional-24h, 8s auto-advance); confirm when reached, both reversible. |
+| **O4** — measured-day finality | M5 | Provisional for 24h after its last read, then frozen; built in M5, fed from M7. Reversible; revisit with real data. |
+| ~~O5~~ — carousel timing | ~~M10~~ | **Resolved at M10:** 6 s per goal, stopping for good on any touch (spec §5.1). |
 
 ## What this plan deliberately does not do
 

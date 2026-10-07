@@ -1,5 +1,6 @@
 package com.zdredge.consistency.data.export
 
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import java.io.File
 import java.io.OutputStream
@@ -7,9 +8,10 @@ import java.io.OutputStream
 /**
  * What a snapshot contains, so the caller can say it out loud rather than claim success blindly.
  *
- * Counts are read *after* the checkpoint, from the same file that was copied, which is what makes
- * them evidence rather than decoration: if the copy were stale these numbers would be stale too, and
- * they are the numbers shown to the user.
+ * For the file copy, counts are read through the connection *after* the checkpoint, so they describe
+ * what the checkpoint folded into the file that was copied; for the JSON export, they are counted off
+ * the very snapshot that was written. Either way they are evidence rather than decoration, and they
+ * are the numbers shown to the user.
  */
 data class SnapshotSummary(
     val bytes: Long,
@@ -65,6 +67,6 @@ object DatabaseSnapshot {
         )
     }
 
-    private fun androidx.sqlite.db.SupportSQLiteDatabase.count(table: String): Int =
+    private fun SupportSQLiteDatabase.count(table: String): Int =
         query("SELECT COUNT(*) FROM $table").use { if (it.moveToFirst()) it.getInt(0) else 0 }
 }

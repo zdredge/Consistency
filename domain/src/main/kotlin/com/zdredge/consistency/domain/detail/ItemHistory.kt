@@ -2,6 +2,7 @@ package com.zdredge.consistency.domain.detail
 
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
+import com.zdredge.consistency.domain.model.ContainerSize
 import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.ItemVersion
@@ -11,6 +12,9 @@ import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpSpec
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Target
+import com.zdredge.consistency.domain.scoring.ContainerSizeResolver
+import com.zdredge.consistency.domain.scoring.SleepMetric
+import com.zdredge.consistency.domain.scoring.SleepNights
 import com.zdredge.consistency.domain.scoring.TargetResolver
 import com.zdredge.consistency.domain.scoring.inForce
 import java.time.LocalDate
@@ -38,6 +42,16 @@ data class ItemHistory(
     val rollUp: RollUpSpec? = null,
     val answers: List<Answer> = emptyList(),
     val measured: List<MeasuredValue> = emptyList(),
+    /** Counted-container sizes (spec §3.3), so a count can be shown as the amount it stood for that day. */
+    val containerSizes: List<ContainerSize> = emptyList(),
+    /**
+     * The three sleep/wake times, for the one item that shows [sleepMetric]. They belong to other
+     * items, which is why they are carried apart from [answers] rather than mixed into them: the
+     * calculators below trust [answers] to be this item's alone.
+     */
+    val sleep: SleepNights? = null,
+    /** Which hardcoded sleep metric this item's screen shows (constraint 13), or null for none. */
+    val sleepMetric: SleepMetric? = null,
 ) {
 
     init {
@@ -47,6 +61,10 @@ data class ItemHistory(
         requireOwned("targets", targets.map { it.itemId })
         requireOwned("answers", answers.map { it.itemId })
         requireOwned("measured values", measured.map { it.itemId })
+        requireOwned("container sizes", containerSizes.map { it.itemId })
+        require((sleep == null) == (sleepMetric == null)) {
+            "a sleep metric needs the three sleep times to compute it from, and only then"
+        }
         require(rollUp == null || rollUp.itemId == item.id) {
             "roll-up belongs to ${rollUp?.itemId?.value}, not ${item.id.value}"
         }
@@ -56,6 +74,9 @@ data class ItemHistory(
 
     /** Targets keyed by (period, date) — the resolver, built once rather than per day drawn. */
     val targetResolver: TargetResolver = TargetResolver(targets)
+
+    /** Container sizes by date, built once -- the same effective-from rule as targets (case 5.4). */
+    val containerResolver: ContainerSizeResolver = ContainerSizeResolver(containerSizes)
 
     private val answersByDay: Map<LocalDate, Answer> = answers.associateBy { it.day }
     private val measuredByDay: Map<LocalDate, MeasuredValue> = measured.associateBy { it.day }

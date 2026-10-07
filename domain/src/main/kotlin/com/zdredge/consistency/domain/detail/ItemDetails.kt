@@ -8,9 +8,11 @@ import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Period
+import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.scoring.FiguresWindow
 import com.zdredge.consistency.domain.scoring.ItemSummary
+import com.zdredge.consistency.domain.scoring.RollUpCalculator
 import com.zdredge.consistency.domain.scoring.RunCalculator
 import com.zdredge.consistency.domain.time.DayResolver
 import java.time.LocalDate
@@ -41,16 +43,23 @@ object ItemDetails {
         // yesterday changes which days are answerable today, including days already past.
         val slot = history.latestVersion.slot
 
-        // The window ends on the latest day this item could have an answer for, not on today. A
-        // morning item cannot have an answer for tonight, so ending on today would hand it thirteen
-        // real days and one guaranteed blank. A retired item stops on the day it was retired.
-        val lastDay = minOf(
-            Answerability.latestAnswerDay(today, slot),
-            history.item.retiredOn ?: LocalDate.MAX,
-        )
+        // The latest day this item could have an answer for, not today. A morning item cannot have
+        // an answer for tonight, so ending on today would hand it thirteen real days and one
+        // guaranteed blank.
+        val latestAnswerDay = Answerability.latestAnswerDay(today, slot)
+
+        // The chart, the log and the runs stop on the day a retired item was retired: they describe
+        // the periods it was active in (spec §3.3).
+        val lastDay = minOf(latestAnswerDay, history.item.retiredOn ?: LocalDate.MAX)
         val version = history.versionOn(lastDay) ?: history.latestVersion
 
-        val windowDays = FiguresWindow.days(lastDay)
+        // **The figures do not stop there.** They cover the same 14 days as the dashboard (spec
+        // §5.4, case 9.8), and scoring covers only items active in them (§3.4, 6.2). Anchoring a
+        // retired item's window on its retirement kept its final fortnight standing in for the
+        // current one -- in its own figures, and summed into the dashboard's rings for ever. Days
+        // after retirement have no cells, so a goal retired inside the window counts only the days
+        // it was still a goal.
+        val windowDays = FiguresWindow.days(latestAnswerDay)
         val chartStart = weeks.weekStart(lastDay).minusWeeks((CHART_WEEKS - 1).toLong())
 
         // Runs run over the whole history, so the cells start at whichever came first -- the chart's
@@ -230,6 +239,9 @@ object ItemDetails {
                         cell.day to DayShade(bucket, scale, keyBucketOf(bucket, scale, view.scale))
                     }
                 }.toMap(),
+                // Mindset's weekly average beside its rows (spec §4). Only a declared roll-up earns
+                // the column, so meals and water keep their plain calendars.
+                weeks = if (history.rollUp != null) weekly else emptyList(),
             )
 
             is ItemView.DailyBars -> Chart.DailyBars(
@@ -297,7 +309,40 @@ object ItemDetails {
             } else {
                 null
             },
+            // Read off the same cells the log shows, over the same nights as the typical time.
+            sleep = history.sleepMetric?.let { metric ->
+                SleepFigure(
+                    metric,
+                    SleepTrend.typicalDuration(
+                        cells.mapNotNull { cell -> cell.derived?.let { cell.day to it } }.toMap(),
+                        filter, from = windowDays.first(), to = lastDay,
+                    ),
+                )
+            },
+            average = averageOf(history, windowDays),
+            averageAmount = averageAmountOf(windowCells),
         )
+    }
+
+    /**
+     * The window's mean, for an item whose declared roll-up is an average -- the declaration is what
+     * earns it, never a guess from the answer type (spec §3.4: roll-ups are explicit, not inferred).
+     */
+    private fun averageOf(history: ItemHistory, windowDays: List<LocalDate>): AverageFigure? {
+        if (history.rollUp?.aggregation != RollUpAggregation.AVERAGE) return null
+        val rollUp = RollUpCalculator.weekly(history.answers, windowDays, RollUpAggregation.AVERAGE)
+        return if (rollUp.observedDays == 0) null else AverageFigure(rollUp.value, rollUp.observedDays)
+    }
+
+    /**
+     * The mean amount over the window's answered days, each at the container size of its own day.
+     * Null when no day carries an amount, or when the unit changed within the window -- an average of
+     * ounces and millilitres is a number describing nothing.
+     */
+    private fun averageAmountOf(windowCells: List<DayCell>): AmountFigure? {
+        val amounts = windowCells.mapNotNull { (it.value as? DayValue.Amount)?.container }
+        val unit = amounts.map { it.unitLabel }.distinct().singleOrNull() ?: return null
+        return AmountFigure(ContainerAmount(amounts.map { it.amount }.average(), unit), amounts.size)
     }
 
     /**
@@ -347,7 +392,11 @@ object ItemDetails {
         return GoalFigures(
             period = Period.WEEK,
             summary = ItemSummary.of(
-                weekFigures(history, windowWeeks, today, lastDay, weeks).mapNotNull { it.result },
+                // A week the item was not active in is not a goal week at all (6.1, 6.2) -- not a
+                // silent one, which is what its empty roll-up would otherwise be scored as.
+                weekFigures(history, windowWeeks, today, lastDay, weeks)
+                    .filter { it.active }
+                    .mapNotNull { it.result },
             ),
             // Keyed by Monday, over the weeks that had a target. A week before the goal existed
             // carries no result, so it neither extends the run nor breaks it -- which matters here,

@@ -202,7 +202,12 @@ internal fun TrendCarousel(pages: List<TrendPageUi>) {
 
     fun step(forward: Boolean) {
         auto = false
-        index = if (forward) (current + 1) % slides.size else (current - 1 + slides.size) % slides.size
+        // Reads the state, never `current`. The gesture handlers below are installed once, keyed on
+        // the slide count, and keep the `step` from the composition that installed them -- so a
+        // value captured here is the slide showing at the first touch, and every tap after it went to
+        // the same card. Found on the device in the post-M11 review, 2026-10-06.
+        val from = index.coerceIn(0, slides.lastIndex)
+        index = if (forward) (from + 1) % slides.size else (from - 1 + slides.size) % slides.size
     }
 
     val (pageIndex, goalIndex) = slides[current]

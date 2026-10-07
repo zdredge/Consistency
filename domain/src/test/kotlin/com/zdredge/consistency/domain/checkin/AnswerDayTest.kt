@@ -46,6 +46,21 @@ class AnswerDayTest {
     }
 
     @Test
+    @DisplayName("a day finds the check-in that asks about it, weekly questions on Sunday night")
+    fun aDayFindsItsCheckIn() {
+        val tuesday = LocalDate.of(2026, 8, 25)
+        val sunday = LocalDate.of(2026, 8, 30)
+
+        // Last night's sleep is asked in this morning's check-in (spec 3.1).
+        assertEquals(CheckInKey(wednesday, Slot.MORNING), AnswerDay.checkInFor(tuesday, Slot.MORNING))
+        assertEquals(CheckInKey(tuesday, Slot.NIGHT), AnswerDay.checkInFor(tuesday, Slot.NIGHT))
+        // Weekly questions ride on Sunday night's check-in; there is never a weekly one (spec 1).
+        assertEquals(CheckInKey(sunday, Slot.NIGHT), AnswerDay.checkInFor(sunday, Slot.WEEKLY))
+        // Steps is read, never asked, so there is no check-in to open.
+        assertEquals(null, AnswerDay.checkInFor(tuesday, Slot.NONE))
+    }
+
+    @Test
     @DisplayName("a month boundary does not confuse the previous-day step")
     fun crossingAMonthBoundaryStillStepsBackOneDay() {
         assertEquals(

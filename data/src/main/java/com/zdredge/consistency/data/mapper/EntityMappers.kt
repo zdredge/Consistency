@@ -1,5 +1,7 @@
 package com.zdredge.consistency.data.mapper
 
+import com.zdredge.consistency.data.ROLLOVER_SUCCEEDED
+import com.zdredge.consistency.data.RolloverRun
 import com.zdredge.consistency.data.db.LOCAL_USER_ID
 import com.zdredge.consistency.data.db.entity.AnswerEntity
 import com.zdredge.consistency.data.db.entity.AnswerSelectionEntity
@@ -10,6 +12,7 @@ import com.zdredge.consistency.data.db.entity.ItemVersionEntity
 import com.zdredge.consistency.data.db.entity.MeasuredOriginEntity
 import com.zdredge.consistency.data.db.entity.MeasuredValueEntity
 import com.zdredge.consistency.data.db.entity.RollUpSpecEntity
+import com.zdredge.consistency.data.db.entity.RolloverRunEntity
 import com.zdredge.consistency.data.db.entity.SelectOptionEntity
 import com.zdredge.consistency.data.db.entity.TargetEntity
 import com.zdredge.consistency.data.db.relation.AnswerWithSelections
@@ -132,6 +135,16 @@ fun MeasuredValueWithOrigins.toDomain() = MeasuredValue(
     state = value.state,
     lastSyncedAt = value.lastSyncedAt,
     origins = origins.map { MeasuredOrigin(it.originPackage, it.valueNumber) },
+)
+
+fun RolloverRunEntity.toRun() = RolloverRun(
+    ranAt = ranAt,
+    forDay = forDay,
+    succeeded = outcome == ROLLOVER_SUCCEEDED,
+    checkInsCreated = checkInsCreated,
+    checkInsMissed = checkInsMissed,
+    valuesFrozen = valuesFrozen,
+    error = error,
 )
 
 /*

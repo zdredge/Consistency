@@ -1,6 +1,7 @@
 package com.zdredge.consistency.domain.scoring
 
 import com.zdredge.consistency.domain.answeredDay
+import com.zdredge.consistency.domain.backfilledCheckIn
 import com.zdredge.consistency.domain.checkIn
 import com.zdredge.consistency.domain.missedCheckIn
 import com.zdredge.consistency.domain.model.GoalOutcome
@@ -49,7 +50,7 @@ class RunCalculatorTest {
         // The record stays flagged as backfilled so the strict figure remains recoverable, but the
         // run is about showing up, and the user did show up.
         val checkIns = (1..5).flatMap { answeredDay(day(it)) } +
-            listOf(checkIn(day(6), Slot.MORNING), com.zdredge.consistency.domain.backfilledCheckIn(day(6)))
+            listOf(checkIn(day(6), Slot.MORNING), backfilledCheckIn(day(6)))
         val run = RunCalculator.globalRun(checkIns, upTo = day(6))
         assertEquals(6, run.current)
     }

@@ -4,10 +4,13 @@ import com.zdredge.consistency.domain.TEST_ZONE
 import com.zdredge.consistency.domain.answer
 import com.zdredge.consistency.domain.item
 import com.zdredge.consistency.domain.measured
+import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.ExclusionReason
 import com.zdredge.consistency.domain.model.GoalOutcome
+import com.zdredge.consistency.domain.model.Item
 import com.zdredge.consistency.domain.model.MeasuredState
+import com.zdredge.consistency.domain.model.MeasuredValue
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.scoring.TargetResolver
@@ -45,10 +48,10 @@ class WeeklyFiguresTest {
     private fun yes(days: Int) = (0 until days).map { answer("stretched", day = monday.plusDays(it.toLong()), bool = true) }
 
     private fun figure(
-        answers: List<com.zdredge.consistency.domain.model.Answer>,
+        answers: List<Answer>,
         today: LocalDate = nextMonday,
         resolver: TargetResolver = targets,
-        item: com.zdredge.consistency.domain.model.Item = stretched,
+        item: Item = stretched,
     ) = WeeklyFigures.rollUp(
         item = item,
         answers = answers,
@@ -91,6 +94,33 @@ class WeeklyFiguresTest {
         assertFalse(week.closed)
         assertEquals(2.0, week.progress!!.observed)
         assertEquals(3, week.progress!!.elapsedDays)
+    }
+
+    @Test
+    @DisplayName("9.7 - an open week's progress counts the days still ahead of it")
+    fun openWeekCountsTheDaysAhead() {
+        // Wednesday: three days gone, four to go. The total once stopped at today, so "days to go"
+        // was always zero -- "1 of 6, with 0 days to go" on a Wednesday.
+        val progress = figure(yes(2), today = monday.plusDays(2)).progress!!
+
+        assertEquals(3, progress.elapsedDays)
+        assertEquals(7, progress.totalDays)
+    }
+
+    @Test
+    @DisplayName("9.7 - a goal created midweek counts only the days it exists on, gone and ahead")
+    fun aMidweekGoalCountsItsOwnDays() {
+        // Created Wednesday, looked at on Friday: Wednesday to Friday gone, Saturday and Sunday ahead.
+        // Counting elapsed days from Monday would make it two days fewer to go than there are.
+        val wednesday = monday.plusDays(2)
+        val progress = figure(
+            answers = emptyList(),
+            today = monday.plusDays(4),
+            item = item("stretched", createdOn = wednesday),
+        ).progress!!
+
+        assertEquals(3, progress.elapsedDays)
+        assertEquals(5, progress.totalDays)
     }
 
     @Test
@@ -147,7 +177,7 @@ class WeeklyFiguresTest {
         listOf(target("steps", Direction.AT_LEAST, value = 56_000.0, period = Period.WEEK)),
     )
 
-    private fun stepWeek(values: List<com.zdredge.consistency.domain.model.MeasuredValue>, today: LocalDate = nextMonday) =
+    private fun stepWeek(values: List<MeasuredValue>, today: LocalDate = nextMonday) =
         WeeklyFigures.measured(steps, values, stepTargets, monday, today, minOf(today, sunday), weeks)
 
     @Test

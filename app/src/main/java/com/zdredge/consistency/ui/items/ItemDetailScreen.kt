@@ -1,5 +1,6 @@
 package com.zdredge.consistency.ui.items
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.zdredge.consistency.domain.detail.Chart
 import com.zdredge.consistency.domain.detail.NightFilter
+import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.ui.items.chart.ActivityRowsChart
 import com.zdredge.consistency.ui.items.chart.BarsChart
 import com.zdredge.consistency.ui.items.chart.ChartPalette
@@ -69,6 +71,8 @@ fun ItemDetailScreen(
     onShowTrend: (Boolean) -> Unit = {},
     onSelectDay: (LocalDate) -> Unit = {},
     onClearDay: () -> Unit = {},
+    /** Reopens the check-in that asked about a day, to fill it in late or correct it (spec §3.2). */
+    onOpenCheckIn: (LocalDate, Slot) -> Unit = { _, _ -> },
 ) {
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -129,7 +133,7 @@ fun ItemDetailScreen(
                         ItemChart(state, onFilter, onShowTrend, onSelectDay)
                         val card = state.dayCard
                         if (card != null) {
-                            DayCard(card, onClearDay)
+                            DayCard(card, onClearDay, onOpenCheckIn)
                         } else {
                             Figures(state.figures)
                         }
@@ -160,7 +164,7 @@ fun ItemDetailScreen(
                     )
                 }
             }
-            items(state.rows) { HistoryRowLine(it) }
+            items(state.rows) { HistoryRowLine(it, onOpenCheckIn) }
         }
     }
 }
@@ -190,7 +194,9 @@ private fun ItemChart(
         is Chart.ShadedCalendar -> {
             val ramp = ChartPalette.rampOf(chart.scale.buckets.size)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                DayGrid(state.days, shadedFill(chart.shades, ramp), emptyList(), selected, onSelectDay)
+                // Mindset's weekly average sits beside its rows; meals and water declare no roll-up,
+                // so their weeks are empty and the column does not appear.
+                DayGrid(state.days, shadedFill(chart.shades, ramp), chart.weeks, selected, onSelectDay)
                 // The key is what makes the ramp mean something rather than merely vary.
                 ShadeKey(chart.scale.keyLabels(), ramp, chart.scale.targetBucket())
             }
@@ -263,7 +269,7 @@ private fun Figures(figures: List<Figure>) {
  * been opened.
  */
 @Composable
-private fun DayCard(card: DayCardUi, onClose: () -> Unit) {
+private fun DayCard(card: DayCardUi, onClose: () -> Unit, onOpenCheckIn: (LocalDate, Slot) -> Unit) {
     Surface(
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = MaterialTheme.shapes.extraSmall,
@@ -285,6 +291,14 @@ private fun DayCard(card: DayCardUi, onClose: () -> Unit) {
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+                // The way back into a day: late if it was never answered, an edit if it was. The
+                // check-in it opens says which before anything is tapped (spec §3.2).
+                card.openCheckIn?.let { key ->
+                    TextButton(
+                        onClick = { onOpenCheckIn(key.day, key.slot) },
+                        contentPadding = PaddingValues(0.dp),
+                    ) { Text("Open check-in") }
+                }
             }
             IconButton(onClick = onClose, modifier = Modifier.align(Alignment.TopEnd)) {
                 Text("×", fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -293,13 +307,28 @@ private fun DayCard(card: DayCardUi, onClose: () -> Unit) {
     }
 }
 
-/** One day in the log — the only surface that shows every state and every note in bulk (§5.4). */
+/**
+ * One day in the log — the only surface that shows every state and every note in bulk (§5.4), and,
+ * because it reaches back over the whole history, the way into any day's check-in (§3.2).
+ */
 @Composable
-private fun HistoryRowLine(row: HistoryRow) {
-    Column(Modifier.fillMaxWidth()) {
+private fun HistoryRowLine(row: HistoryRow, onOpenCheckIn: (LocalDate, Slot) -> Unit) {
+    val key = row.openCheckIn
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .then(
+                if (key != null) {
+                    Modifier.clickable(onClickLabel = "Open this day's check-in") { onOpenCheckIn(key.day, key.slot) }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f).padding(end = 16.dp)) {
                 Text(row.day, style = MaterialTheme.typography.bodyLarge)
@@ -317,6 +346,15 @@ private fun HistoryRowLine(row: HistoryRow) {
                         textAlign = TextAlign.End,
                     )
                 }
+            }
+            // A row that opens something says so; a steps row, which no check-in asks, does not.
+            if (key != null) {
+                Text(
+                    "›",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
             }
         }
         row.note?.let {

@@ -1,6 +1,7 @@
 package com.zdredge.consistency.domain.scoring
 
 import java.time.Duration
+import java.time.LocalDate
 import java.time.LocalTime
 
 /**
@@ -52,4 +53,37 @@ object DerivedMetrics {
         val naive = Duration.between(from, to)
         return if (naive.isNegative) naive.plusDays(1) else naive
     }
+}
+
+/**
+ * Which of the two hardcoded metrics an item's screen shows.
+ *
+ * Still the same fixed pair (constraint 13): this names one of them, it does not describe a formula.
+ * Which seeded item shows which is decided where the item ids live, in `:data`.
+ */
+enum class SleepMetric {
+    /** Woke - bedtime. Shown with "woke at". */
+    SLEEP_DURATION,
+
+    /** Got up - woke. Shown with "got out of bed at". */
+    LINGERING,
+    ;
+
+    fun of(metrics: SleepMetrics): Duration? = when (this) {
+        SLEEP_DURATION -> metrics.sleepDuration
+        LINGERING -> metrics.lingering
+    }
+}
+
+/**
+ * The three sleep/wake times, each by the night it belongs to (spec §3.1: the night the user went to
+ * bed), so one night's metrics are an intra-day calculation.
+ */
+data class SleepNights(
+    val bedtime: Map<LocalDate, LocalTime>,
+    val wokeAt: Map<LocalDate, LocalTime>,
+    val gotUpAt: Map<LocalDate, LocalTime>,
+) {
+    fun on(night: LocalDate): SleepMetrics =
+        DerivedMetrics.sleep(bedtime[night], wokeAt[night], gotUpAt[night])
 }

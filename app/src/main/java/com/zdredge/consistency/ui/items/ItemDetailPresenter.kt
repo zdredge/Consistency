@@ -1,5 +1,7 @@
 package com.zdredge.consistency.ui.items
 
+import com.zdredge.consistency.domain.checkin.AnswerDay
+import com.zdredge.consistency.domain.checkin.CheckInKey
 import com.zdredge.consistency.domain.dashboard.Dashboard
 import com.zdredge.consistency.domain.dashboard.Trend
 import com.zdredge.consistency.domain.detail.DayCell
@@ -12,7 +14,11 @@ import com.zdredge.consistency.domain.detail.ItemHistory
 import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Slot
+import com.zdredge.consistency.domain.scoring.SleepMetric
+import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.ui.checkin.asAnswer
+import com.zdredge.consistency.ui.checkin.asPercent
+import com.zdredge.consistency.ui.items.chart.isSelectable
 import java.time.LocalDate
 
 /**
@@ -26,6 +32,8 @@ import java.time.LocalDate
 internal fun presentItemDetail(
     history: ItemHistory,
     detail: ItemDetail,
+    today: LocalDate,
+    weeks: DayResolver,
     selected: LocalDate? = null,
 ): ItemDetailUiState {
     val labels = history.options.associate { it.id to it.label }
@@ -39,7 +47,7 @@ internal fun presentItemDetail(
         subtitle = subtitleFor(
             detail.item.kind, detail.version.slot, detail.version.classification, detail.item.retiredOn,
         ),
-        goal = goalFor(history, detail),
+        goal = goalFor(history, detail, today, weeks),
         windowLabel = "Last ${detail.figures.windowDays.size} days · " +
             "${detail.figures.windowDays.first().format(windowDayFormat)} – " +
             "${detail.figures.windowDays.last().format(windowDayFormat)}",
@@ -48,10 +56,25 @@ internal fun presentItemDetail(
         days = detail.days,
         targetNote = detail.earlierTarget?.let { targetNoteFor(it, detail.version.unitLabel) },
         figures = figuresFor(detail),
-        rows = rowsFor(detail, labels),
+        rows = rowsFor(history, detail, labels),
         selectedDay = cell?.day,
-        dayCard = cell?.let { dayCardFor(it, labels, detail.item.kind == ItemKind.MEASURED) },
+        dayCard = cell?.let {
+            dayCardFor(it, labels, history.sleepMetric, detail.item.kind == ItemKind.MEASURED)
+                .copy(openCheckIn = checkInFor(history, it))
+        },
     )
+}
+
+/**
+ * The check-in to reopen for a day: the one that asked the item about it, in the slot the item had
+ * that day. Late answers and corrections are reached this way (spec §3.2); the check-in screen and
+ * `AnswerRevision` decide what they record. Null for a day the item did not exist on, a day not yet
+ * here, and for steps, which no check-in asks.
+ */
+private fun checkInFor(history: ItemHistory, cell: DayCell): CheckInKey? {
+    if (!cell.isSelectable()) return null
+    val slot = history.versionOn(cell.day)?.slot ?: return null
+    return AnswerDay.checkInFor(cell.day, slot)
 }
 
 /**
@@ -61,8 +84,13 @@ internal fun presentItemDetail(
  * the next day", not BACKFILLED — because this card is the one place the product explains a mark the
  * chart only draws.
  */
-private fun dayCardFor(cell: DayCell, labels: Map<OptionId, String>, measured: Boolean): DayCardUi {
-    val value = cell.value.text(labels)
+private fun dayCardFor(
+    cell: DayCell,
+    labels: Map<OptionId, String>,
+    metric: SleepMetric?,
+    measured: Boolean,
+): DayCardUi {
+    val value = cell.valueText(labels, metric)
     val what = if (value.isEmpty()) cell.state.label() else "${cell.state.label()} · $value"
     val how = when (cell.state) {
         DayState.OPEN -> if (measured) "Still being counted" else "Still open — it can be answered"
@@ -113,6 +141,26 @@ private fun figuresFor(detail: ItemDetail): List<Figure> = buildList {
         add(Figure("Typical Time", it.asClockTime(), "Over the nights shown"))
     }
 
+    // The two hardcoded sleep metrics (constraint 13), each beside the time it ends on. A dash, not
+    // zero, when no night has both ends -- unavailable is not "no sleep" (case 8.4).
+    detail.figures.sleep?.let { sleep ->
+        val label = when (sleep.metric) {
+            SleepMetric.SLEEP_DURATION -> "Typical Sleep"
+            SleepMetric.LINGERING -> "Typical Lingering in Bed"
+        }
+        add(Figure(label, sleep.typical?.asSpan() ?: "—", "Over the nights shown"))
+    }
+
+    // Spec §4: the derived average is mindset's signal, watched rather than targeted -- so a plain
+    // number, with no colour and no comparison to anything.
+    detail.figures.average?.let {
+        add(Figure("Average", it.value.asAnswer(), "Over ${it.days} day(s) recorded"))
+    }
+
+    detail.figures.averageAmount?.let {
+        add(Figure("Average Amount", it.amount.text(), "Over ${it.days} day(s) answered"))
+    }
+
     if (isEmpty()) {
         // An observation with nothing recorded yet, which is most of the library on day three.
         add(Figure("Nothing to Report Yet", "—", "Figures appear as answers arrive"))
@@ -149,9 +197,13 @@ private fun goalFigures(figures: GoalFigures, unit: String, units: String): List
  * and the chart needs them, because a calendar has to draw a square for every day in its grid; a
  * table does not, and thirty rows reading "not active" would bury the three that say something.
  */
-private fun rowsFor(detail: ItemDetail, labels: Map<OptionId, String>): List<HistoryRow> =
+private fun rowsFor(
+    history: ItemHistory,
+    detail: ItemDetail,
+    labels: Map<OptionId, String>,
+): List<HistoryRow> =
     // The whole history, not the chart's five weeks: the table is the one place older days can be
-    // read at all (spec §5.4).
+    // read at all (spec §5.4), and so the one way back into them.
     detail.log
         .asReversed()
         .filterNot { it.state == DayState.NOT_ACTIVE || it.state == DayState.FUTURE }
@@ -159,9 +211,10 @@ private fun rowsFor(detail: ItemDetail, labels: Map<OptionId, String>): List<His
             HistoryRow(
                 day = cell.day.format(tableDayFormat),
                 state = cell.state.label(),
-                value = cell.value.text(labels),
+                value = cell.valueText(labels, history.sleepMetric),
                 marks = cell.markText(),
                 note = cell.note,
+                openCheckIn = checkInFor(history, cell),
             )
         }
 
@@ -180,10 +233,10 @@ private fun targetNoteFor(earlier: EarlierTarget, unitLabel: String?): String {
  * The goal line under the question, with the goal's trend once it has one: "Goal: at least 2 bottles
  * a day · Slipping". The same line and the same trend the dashboard shows for this goal.
  */
-private fun goalFor(history: ItemHistory, detail: ItemDetail): String? {
+private fun goalFor(history: ItemHistory, detail: ItemDetail, today: LocalDate, weeks: DayResolver): String? {
     val line = GoalLine.forItem(detail.version, history.targetResolver, history.options, history.rollUp, detail.lastDay)
         ?: return null
-    val trend = Dashboard.trendOf(history, detail)?.trend?.let {
+    val trend = Dashboard.trendOf(history, detail, today, weeks)?.trend?.let {
         when (it) {
             Trend.SLIPPING -> " · Slipping"
             Trend.HOLDING -> " · Holding"

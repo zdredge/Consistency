@@ -8,6 +8,8 @@ import com.zdredge.consistency.domain.model.GoalResult
 import com.zdredge.consistency.domain.scoring.ItemSummary
 import com.zdredge.consistency.domain.scoring.PeriodProgress
 import com.zdredge.consistency.domain.scoring.RunSummary
+import com.zdredge.consistency.domain.scoring.SleepMetric
+import java.time.Duration
 import java.time.LocalDate
 
 /**
@@ -73,7 +75,12 @@ sealed interface Chart {
      * target raised mid-chart moves the bands: two bottles reached a target of two and did not reach
      * a target of three, and shading August by September's target would paint met days as short.
      */
-    data class ShadedCalendar(val scale: ShadeScale, val shades: Map<LocalDate, DayShade>) : Chart
+    data class ShadedCalendar(
+        val scale: ShadeScale,
+        val shades: Map<LocalDate, DayShade>,
+        /** Each week's declared roll-up beside its row -- mindset's weekly average. Empty without one. */
+        val weeks: List<WeekFigure> = emptyList(),
+    ) : Chart
 
     /**
      * A bar per day, with the daily limit as a line. [weeks] is empty unless totals are shown.
@@ -149,15 +156,37 @@ data class ItemFigures(
     val recording: RunSummary?,
     /** The median time over the shown nights, on the 04:00 axis. Sleep items only. */
     val typicalMinute: Double?,
+    /** The typical night's sleep metric, over the shown nights. Only on the item that shows one. */
+    val sleep: SleepFigure? = null,
+    /**
+     * The window's average, for an item whose declared roll-up is an average -- mindset (spec §4:
+     * "the derived average mindset is the signal, watched rather than targeted"). Null when nothing
+     * was recorded: no answers is not an average of zero.
+     */
+    val average: AverageFigure? = null,
+    /** The window's mean absolute amount, for an item that counts containers (spec §3.3). */
+    val averageAmount: AmountFigure? = null,
 )
+
+/** The median of one hardcoded sleep metric over the nights shown, or null when no night has both ends. */
+data class SleepFigure(val metric: SleepMetric, val typical: Duration?)
+
+/** A mean of [days] recorded values. */
+data class AverageFigure(val value: Double, val days: Int)
+
+/** A mean absolute amount over [days] answered days. */
+data class AmountFigure(val amount: ContainerAmount, val days: Int)
 
 /**
  * One item's detail screen, assembled.
  *
  * [days] is the chart's five weeks — the same cells the table draws, and the same judgements the
  * figures are counted from, so the calendar and the numbers beside it cannot tell different stories.
- * The figures cover the last 14 of those days; the runs are computed over the item's whole history,
- * because a run that only looked back a fortnight would reset itself every fortnight.
+ * The figures cover the current 14 days -- the dashboard's -- which for a live item are the last 14 of
+ * those days. A retired item's chart stops at its retirement and its figures do not, so once it has
+ * been retired a fortnight it has nothing left to score (§3.4, 6.2). The runs are computed over the
+ * item's whole history, because a run that only looked back a fortnight would reset itself every
+ * fortnight.
  *
  * One exception: a **weekly question** has one cell per week rather than per day, and the last of them
  * is the running week's Sunday, which is still ahead of [lastDay]. It is drawn as a week not yet

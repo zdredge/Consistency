@@ -121,7 +121,7 @@ fun HomeScreen(
                     detail = "${reviewable.unanswered} not answered",
                     // Only what is filled in now is a backfill; answers already given keep the
                     // capture they were recorded with.
-                    backfillNote = "Late — anything filled in now will be recorded as backfilled.",
+                    backfillNote = "Anything filled in now is recorded as backfilled.",
                     onOpen = onOpenCheckIn,
                 )
             }
@@ -183,12 +183,16 @@ private fun CheckInCard(
     action: String,
     onOpen: (LocalDate, Slot) -> Unit,
     detail: String? = null,
-    backfillNote: String = "Late — this will be recorded as backfilled.",
+    backfillNote: String = "Anything answered now is recorded as backfilled.",
 ) {
     // Yesterday's check-in is still answerable but will record as a backfill, and the record says so
     // permanently (spec §3.2). Saying it up front is not a warning, it is the honesty the product is
     // built on -- the metric is not for sale, and the user should know before they tap. It holds for
     // a reviewed check-in too: a skipped question filled in today is a backfill.
+    //
+    // Named "backfilled" and nothing else. This line once opened "Late --", which is the name of a
+    // different capture state (an answer after grace, which does not count), so it described a
+    // backfill with the word for what a backfill is not.
     val isBackfill = today != null && checkIn.day.isBefore(today)
 
     Card(

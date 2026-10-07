@@ -23,12 +23,14 @@ import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.RollUpSpec
 import com.zdredge.consistency.domain.model.SelectOption
 import com.zdredge.consistency.domain.model.Target
+import com.zdredge.consistency.domain.time.DayResolver
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
-/**
+/*
  * Terse builders so the scoring tests read like the tables in docs/scoring-cases.md they come from.
  * Ids are plain strings here and wrapped for you; the value classes earn their keep in production
  * code, not in every line of a 75-case suite.
@@ -106,10 +108,10 @@ fun missedCheckIn(day: LocalDate, slot: Slot = Slot.NIGHT): CheckIn =
 fun answeredDay(day: LocalDate): List<CheckIn> =
     listOf(checkIn(day, Slot.NIGHT), checkIn(day, Slot.MORNING))
 
-internal fun LocalDate.atTime(hour: Int, minute: Int): java.time.LocalDateTime =
-    java.time.LocalDateTime.of(this, LocalTime.of(hour, minute))
+internal fun LocalDate.atTime(hour: Int, minute: Int): LocalDateTime =
+    LocalDateTime.of(this, LocalTime.of(hour, minute))
 
-internal fun java.time.LocalDateTime.toInstant(): Instant = atZone(TEST_ZONE).toInstant()
+internal fun LocalDateTime.toInstant(): Instant = atZone(TEST_ZONE).toInstant()
 
 /** Fixed, deliberately not UTC, so a zone bug cannot hide behind a zero offset. */
 val TEST_ZONE: ZoneId = ZoneId.of("America/New_York")
@@ -205,7 +207,7 @@ fun history(
 )
 
 /** The Monday-start week containing [day], as seven dates. */
-fun weekOf(day: LocalDate, resolver: com.zdredge.consistency.domain.time.DayResolver): List<LocalDate> {
+fun weekOf(day: LocalDate, resolver: DayResolver): List<LocalDate> {
     val start = resolver.weekStart(day)
     return (0..6).map { start.plusDays(it.toLong()) }
 }

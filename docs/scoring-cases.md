@@ -56,7 +56,7 @@ different numbers answering two different questions, and the tests should assert
 |---|---|---|
 | 2.1 | water AT_LEAST 2 bottles, answer 1.5 | goal **missed**; contributes 0 to goal completion, not 0.75 |
 | 2.2 | same day | attainment for that day is **75%**, reported independently of the score |
-| 2.3 | water AT_LEAST 2, answer 1.5 on all 14 days of the window | **hit rate 0%, average attainment 75%.** Both must be produced. Item lands in the going-badly panel by hit rate, with attainment shown as the secondary line. |
+| 2.3 | water AT_LEAST 2, answer 1.5 on all 14 days of the window | **hit rate 0%, average attainment 75%.** Both must be produced, side by side on the item's screen; the dashboard's goal card adds the average on the missed days (spec §5.1). |
 | 2.4 | water AT_LEAST 2, answer 3 | met; attainment caps at 100% rather than reporting 150% |
 | 2.5 | coffee AT_MOST 2, answer 3 | missed. Attainment is meaningless for an at-most direction and must not be reported as 150% or 67%. Assert it is absent, not zero. |
 
@@ -138,7 +138,7 @@ Computed from the three sleep/wake **time** items only. Never persisted.
 
 | # | Given | Then |
 |---|---|---|
-| 9.1 | ~~hit rate 80%~~ | ~~going well~~ — *superseded at M10 by the trend panels (spec §5.1); `Panel` still proves it* |
+| 9.1 | ~~hit rate 80%~~ | ~~going well~~ — *superseded at M10 by the trend panels (spec §5.1); the `Panel` code and its test were removed in the post-M11 review* |
 | 9.2 | ~~hit rate 79%~~ | ~~middling~~ — *superseded* |
 | 9.3 | ~~hit rate 60%~~ | ~~middling~~ — *superseded* |
 | 9.4 | ~~hit rate 59%~~ | ~~going badly~~ — *superseded* |
@@ -208,7 +208,7 @@ without counting as a miss, while the check-in still counts as answered. Spec §
 | 10.2 | took-time, answer `no` | missed; contributes 0 to goal completion |
 | 10.3 | took-time, answer `no opportunity` | **excluded** — numerator and denominator both unchanged. Not met, not missed. |
 | 10.4 | same day as 10.3 | the check-in is still **ANSWERED**; response rate is unaffected; the global run is unaffected |
-| 10.5 | took-time answered `no opportunity` on 14 consecutive days | the item appears in no panel by hit rate (no hits and no misses to rank); its per-item run is neither extended nor broken; and **usage frequency of the no-opportunity option is available on the detail view** |
+| 10.5 | took-time answered `no opportunity` on 14 consecutive days | the item has no hit rate, so it is on no trend panel and adds nothing to either ring (no hits and no misses to count); its per-item run is neither extended nor broken; and **usage frequency of the no-opportunity option is available on the detail view** |
 | 10.6 | weekly "invited someone", answer `no opportunity` for the week | that week is **excluded** from the goal's completion; not missed; the weekly check-in still counts as answered |
 | 10.7 | no-opportunity option evaluated against a target | exclusion happens **before** direction — a no-opportunity answer is excluded whatever the direction says, never run through the comparator |
 
@@ -237,9 +237,10 @@ rate. Each is instance-based **within** its granularity. Spec §3.4, §5.1, cons
 | 11.4 | mid-window, the current week has not closed | the current week's weekly instances are **excluded** from the weekly ring (progress, not scored — §5.3); only closed weeks count |
 | 11.5 | a window in which no weekly goal has yet closed a week | the weekly ring is **pending/empty, not 0%** — nothing has been scored to show |
 | 11.6 | both rings on one dashboard | computed and shown as two separate rings; assert they are never summed, averaged together, or merged with the response-rate ring |
-| 11.7 | a goal with no scored instances in the window (all no-opportunity, or newly created) | excluded from its ring's denominator entirely — same as an empty panel |
+| 11.7 | a goal with no scored instances in the window (all no-opportunity, or newly created) | excluded from its ring's denominator entirely, and on no trend panel |
 | 11.8 | fewer than 14 days of history | both goal-completion rings are suppressed with the rest of the dashboard (§5.5) |
 
-Each ring is the panel hit rates aggregated within one granularity, so a ring and its panels always
-tell the same story. A test should assert 11.1 and 11.3 are **kept distinct** — never combined into a
+Each ring sums the same per-goal instances the item screens count, within one granularity. So a ring,
+the trend panels and an item's own hit rate always tell the same story: one judgement per day, counted
+three ways. A test should assert 11.1 and 11.3 are **kept distinct** — never combined into a
 single goal-completion number — which is the O1 resolution and constraint 8.

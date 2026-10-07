@@ -22,6 +22,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.domain.model.AnswerType
 
+/** What answering now will record, for a check-in reopened past its window (spec §3.2, A1.2). */
+private fun lateNote(state: CheckInUiState): String? = when {
+    // The heading already says it was missed; this says what answering now does about it.
+    state.missed -> "Anything filled in now is recorded as late; the check-in stays missed."
+    state.pastGrace -> "Past its window. Anything filled in now is recorded as late; changes are marked edited."
+    else -> null
+}
+
 /**
  * What you just recorded, at the end of the set.
  *
@@ -57,7 +65,12 @@ fun CheckInSummary(
             Text(
                 // Reopened from Home, this is the first thing on screen rather than the end of a set,
                 // so "That's everything" would describe a set the user has not just walked through.
-                if (state.revisiting) "Already recorded" else "That's everything",
+                // A missed check-in has nothing "already recorded" to show -- it was never answered.
+                when {
+                    state.missed -> "Not answered in time"
+                    state.revisiting -> "Already recorded"
+                    else -> "That's everything"
+                },
                 style = MaterialTheme.typography.headlineSmall,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
@@ -72,6 +85,19 @@ fun CheckInSummary(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
+            // Said before anything is tapped, the way Home says a backfill is a backfill: the record
+            // is honest about late answers, so the screen is honest about them first. A plain line,
+            // never an error colour -- a late answer is welcome, it just does not count as on time.
+            lateNote(state)?.let {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
             Spacer(Modifier.height(16.dp))
 
@@ -146,7 +172,7 @@ private fun QuestionUi.summaryValue(): String? = when {
     // for the same reason it is on the question screen: a total the app does not believe must not
     // appear as a step count anywhere.
     measuredConflicted -> "More than one source. Not counted."
-    readOnly -> draft.valueNumber?.let { "%,.0f".format(it) } ?: "Not available yet"
+    readOnly -> draft.valueNumber?.asAnswer() ?: "Not available yet"
     draft.deferred -> "Not yet"
     !draft.isAnswered -> null
     draft.noneSelected -> "None of these"

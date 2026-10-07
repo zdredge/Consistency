@@ -4,6 +4,9 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zdredge.consistency.data.db.ConsistencyDatabase
+import com.zdredge.consistency.data.health.FakeStepSource
+import com.zdredge.consistency.data.health.StepSourceStatus
+import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.ItemDetails
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
@@ -14,6 +17,7 @@ import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.MeasuredValue
 import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Period
+import com.zdredge.consistency.domain.scoring.SleepMetric
 import com.zdredge.consistency.domain.time.DayResolver
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -25,8 +29,10 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 
 /**
@@ -127,9 +133,54 @@ class ItemHistoryRepositoryTest {
         // A2.1 in full: still resolvable this morning, so the day is not yet a miss.
         val detail = ItemDetails.assemble(history, today, dayResolver)
         assertEquals(
-            com.zdredge.consistency.domain.detail.DayState.DEFERRED,
+            DayState.DEFERRED,
             detail.days.single { it.day == day }.state,
         )
+    }
+
+    @Test
+    fun theSleepItemsArriveWithTheThreeTimesTheirMetricIsComputedFrom() = runBlocking {
+        val night = today.minusDays(2)
+        repo.recordAnswer(answer(SeedLibrary.BEDTIME, night, time = LocalTime.of(23, 30)))
+        repo.recordAnswer(answer(SeedLibrary.WOKE_AT, night, time = LocalTime.of(8, 30)))
+        repo.recordAnswer(answer(SeedLibrary.GOT_UP_AT, night, time = LocalTime.of(8, 52)))
+
+        // Constraint 13: the two metrics are wired to these three items, read from their own rows. A
+        // missing one would not throw -- the figure would simply be absent, case 8.4's "unavailable".
+        val woke = repo.itemHistory(ItemId(SeedLibrary.WOKE_AT), today)!!
+        assertEquals(SleepMetric.SLEEP_DURATION, woke.sleepMetric)
+        assertEquals(Duration.ofHours(9), woke.sleep!!.on(night).sleepDuration)
+
+        val gotUp = repo.itemHistory(ItemId(SeedLibrary.GOT_UP_AT), today)!!
+        assertEquals(SleepMetric.LINGERING, gotUp.sleepMetric)
+        assertEquals(Duration.ofMinutes(22), gotUp.sleep!!.on(night).lingering)
+
+        // Bedtime shows neither, and is not handed the other items' times.
+        assertNull(repo.itemHistory(ItemId(SeedLibrary.BEDTIME), today)!!.sleep)
+    }
+
+    @Test
+    fun waterArrivesWithItsBottleSize() = runBlocking {
+        // Without this the absolute amount is not wrong but missing -- "2" with no "80 oz" beside it.
+        val water = repo.itemHistory(ItemId("water"), today)!!
+        assertEquals(40.0, water.containerResolver.resolve(ItemId("water"), today)!!.size, 0.0)
+        assertTrue(repo.itemHistory(ItemId("meals"), today)!!.containerSizes.isEmpty())
+    }
+
+    @Test
+    fun stepsIsListedOnlyWhileStepsCanBeRead() = runBlocking {
+        // Spec §3.3: declined health permission hides steps -- from the list as well as the check-in.
+        // The default source here is unavailable, which is the declined case.
+        val steps = ItemId(SeedLibrary.STEPS)
+        assertTrue(repo.listedItems().none { it.id == steps })
+        assertEquals(repo.items().size - 1, repo.listedItems().size)
+
+        val missing = ConsistencyRepository(db, dayResolver, stepSource = FakeStepSource(StepSourceStatus.PermissionMissing))
+        assertTrue(missing.listedItems().none { it.id == steps })
+
+        // Granted again: it comes back, history and all -- hidden is not deleted.
+        val granted = ConsistencyRepository(db, dayResolver, stepSource = FakeStepSource(StepSourceStatus.Available))
+        assertTrue(granted.listedItems().any { it.id == steps })
     }
 
     @Test
@@ -152,7 +203,7 @@ class ItemHistoryRepositoryTest {
             assertEquals(
                 "${item.id.value} shows a missed day with nothing ever answered",
                 0,
-                detail.days.count { it.state == com.zdredge.consistency.domain.detail.DayState.MISSED },
+                detail.days.count { it.state == DayState.MISSED },
             )
             assertEquals(14, detail.figures.windowDays.size)
         }
@@ -163,6 +214,7 @@ class ItemHistoryRepositoryTest {
         day: LocalDate,
         number: Double? = null,
         bool: Boolean? = null,
+        time: LocalTime? = null,
         capture: Capture = Capture.IN_WINDOW,
     ) = Answer(
         itemId = ItemId(itemId),
@@ -172,5 +224,6 @@ class ItemHistoryRepositoryTest {
         submittedAt = dayResolver.now(),
         valueBool = bool,
         valueNumber = number,
+        valueTime = time,
     )
 }

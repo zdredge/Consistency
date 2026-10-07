@@ -50,9 +50,11 @@ open class ConsistencyApp : Application() {
         //
         // Detached, and safe to be: this used to race the rollover worker in this same process,
         // arming alarms from check-in rows the worker had not created yet. The scheduler now
-        // guarantees those rows itself, so the two can no longer finish in the wrong order.
+        // guarantees those rows itself, so the two can no longer finish in the wrong order. Quietly,
+        // because nothing waits on it: a throw here would crash the process, and when WorkManager
+        // started this process for the rollover, the rollover with it.
         CoroutineScope(SupervisorJob() + Dispatchers.Default).launch {
-            CheckInAlarmScheduler.reschedule(this@ConsistencyApp)
+            CheckInAlarmScheduler.rescheduleQuietly(this@ConsistencyApp)
         }
     }
 }

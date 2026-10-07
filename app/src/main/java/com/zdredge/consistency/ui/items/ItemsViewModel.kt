@@ -37,11 +37,10 @@ data class ItemsUiState(
 /**
  * The list of items, in the order the check-ins ask them.
  *
- * **Deliberately without figures.** A list with a hit rate against each row is the dashboard, which
- * is M10 and has rings, panels and thresholds behind it — and `HomeScreen` already carries a note
- * saying this half of the app must not grow toward it in the meantime. This screen exists to reach
- * an item's history; the judgements live on the item's own screen, where they have room to be
- * reported honestly beside their attainment.
+ * **Deliberately without figures.** A list with a hit rate against each row would be a second, worse
+ * dashboard -- Home already has the real one (M10), with its rings, its trends and the 14-day
+ * suppression behind them. This screen exists to reach an item's history; the judgements live on the
+ * item's own screen, where they have room to be reported honestly beside their attainment.
  */
 class ItemsViewModel(
     private val repository: ConsistencyRepository,
@@ -72,7 +71,8 @@ class ItemsViewModel(
         val options = repository.allOptions()
         val rollUps = repository.rollUpSpecs().associateBy { it.itemId }
 
-        val rows = repository.items()
+        // Steps is left out while it cannot be read (spec §3.3); the repository owns that rule.
+        val rows = repository.listedItems()
             // Spec §4's listing order, stored as `ordinal` since M4 — the order the questions are
             // asked in, which is chronological through the night rather than alphabetical by id.
             .sortedBy { it.ordinal }

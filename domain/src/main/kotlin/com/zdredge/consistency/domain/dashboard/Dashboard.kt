@@ -18,6 +18,7 @@ import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.scoring.FiguresWindow
 import com.zdredge.consistency.domain.scoring.GoalCompletion
 import com.zdredge.consistency.domain.scoring.GoalCompletionRings
+import com.zdredge.consistency.domain.scoring.ItemSummary
 import com.zdredge.consistency.domain.scoring.PeriodProgress
 import com.zdredge.consistency.domain.scoring.ResponseRate
 import com.zdredge.consistency.domain.scoring.RunCalculator
@@ -134,7 +135,7 @@ object Dashboard {
             scoreFrom = installDay?.plusDays(SCORE_AFTER_DAYS - 1L),
             trendsFrom = installDay?.plusDays(TRENDS_AFTER_DAYS - 1L),
             score = if (days >= SCORE_AFTER_DAYS) score(checkIns, today, weeks, details.map { it.second }) else null,
-            trends = if (days >= TRENDS_AFTER_DAYS) trends(details) else null,
+            trends = if (days >= TRENDS_AFTER_DAYS) trends(details, today, weeks) else null,
         )
     }
 
@@ -164,14 +165,18 @@ object Dashboard {
         )
     }
 
-    private fun completion(summaries: List<com.zdredge.consistency.domain.scoring.ItemSummary>) = GoalCompletion(
+    private fun completion(summaries: List<ItemSummary>) = GoalCompletion(
         met = summaries.sumOf { it.met },
         missed = summaries.sumOf { it.missed },
         excluded = summaries.sumOf { it.excluded },
     )
 
-    private fun trends(details: List<Pair<ItemHistory, ItemDetail>>): Map<Trend, List<TrendGoal>> {
-        val goals = details.mapNotNull { (history, detail) -> trendOf(history, detail) }
+    private fun trends(
+        details: List<Pair<ItemHistory, ItemDetail>>,
+        today: LocalDate,
+        weeks: DayResolver,
+    ): Map<Trend, List<TrendGoal>> {
+        val goals = details.mapNotNull { (history, detail) -> trendOf(history, detail, today, weeks) }
         return Trend.entries
             .associateWith { trend -> goals.filter { it.trend == trend }.sortedBy { order(it) } }
             .filterValues { it.isNotEmpty() }
@@ -190,9 +195,9 @@ object Dashboard {
      * A goal with a daily target is judged on its daily instances -- coffee and steps included, by the
      * user's decision -- and a weekly-only goal on its last two closed weeks against the two before.
      */
-    fun trendOf(history: ItemHistory, detail: ItemDetail): TrendGoal? {
+    fun trendOf(history: ItemHistory, detail: ItemDetail, today: LocalDate, weeks: DayResolver): TrendGoal? {
         val daily = detail.figures.daily != null
-        val (before, now) = if (daily) dailyTallies(detail) else weeklyTallies(detail) ?: return null
+        val (before, now) = if (daily) dailyTallies(detail) else weeklyTallies(detail, today, weeks)
         val nowRate = now.hitRate ?: return null
         val beforeRate = before.hitRate ?: return null
 
@@ -234,12 +239,20 @@ object Dashboard {
             Tally.of(results.filter { it.first in now }.map { it.second })
     }
 
-    private fun weeklyTallies(detail: ItemDetail): Pair<Tally, Tally>? {
-        val closed = detail.weeklyResults.toSortedMap().values.toList()
-        if (closed.isEmpty()) return null
-        val now = closed.takeLast(WEEKS_COMPARED)
-        val before = closed.dropLast(WEEKS_COMPARED).takeLast(WEEKS_COMPARED)
-        return Tally.of(before) to Tally.of(now)
+    /**
+     * The two most recently closed weeks against the two before them, **by date**.
+     *
+     * Keyed on the calendar rather than on whichever results exist: a retired goal's results stop at
+     * its retirement, and taking its last two would compare weeks from months ago as if they were
+     * this fortnight's (spec §3.4, case 6.2). A week with no result is simply absent from its tally.
+     */
+    private fun weeklyTallies(detail: ItemDetail, today: LocalDate, weeks: DayResolver): Pair<Tally, Tally> {
+        // The running week is never closed, so the latest closed week is always the one before it.
+        val latestClosed = weeks.weekStart(today).minusWeeks(1)
+        fun tally(newest: LocalDate) = Tally.of(
+            (0 until WEEKS_COMPARED).mapNotNull { detail.weeklyResults[newest.minusWeeks(it.toLong())] },
+        )
+        return tally(latestClosed.minusWeeks(WEEKS_COMPARED.toLong())) to tally(latestClosed)
     }
 
     /** "On the days you missed, you averaged 1.5 bottles." Null when nothing was missed. */

@@ -36,19 +36,21 @@ data class HomeUiState(
     val dashboard: DashboardUi? = null,
 )
 
+/** How long the rollover may be silent before Home says so. */
+private const val OverdueAfterDays = 2L
+
 /**
- * The landing screen's state holder.
+ * The landing screen's state holder: the outstanding banner, the check-ins still open to changes,
+ * and the dashboard (M10).
  *
- * It also owns the two things that must happen whenever the app is opened, in this order:
+ * It also does the two things that must happen whenever the app is opened, in this order:
  *
  * 1. **Seed the library** if this is a first run (spec §4).
  * 2. **Generate any missing check-ins** through today. Days the user never opened the app on must
  *    still produce rows, or a skipped week has no denominator and skipping *improves* response rate
- *    (architecture §5). M5 moves this to a scheduled worker so it happens without the app being
- *    opened at all; until then, opening is the only trigger there is.
+ *    (architecture §5). The rollover (M5) and the alarm scheduler generate them too, so opening is
+ *    one trigger among several, not the only one.
  */
-private const val OverdueAfterDays = 2L
-
 class HomeViewModel(
     private val repository: ConsistencyRepository,
     private val dayResolver: DayResolver,
@@ -76,6 +78,15 @@ class HomeViewModel(
     }
 
     /**
+     * Every judgement is `Dashboard.assemble`'s, in `:domain` where it is tested; this reads the
+     * inputs and hands the result to the presenter.
+     */
+    private suspend fun dashboard(today: LocalDate): DashboardUi {
+        val (histories, checkIns) = repository.dashboardInputs(today)
+        return presentDashboard(Dashboard.assemble(histories, checkIns, today, dayResolver))
+    }
+
+    /**
      * Suspends rather than launching into `viewModelScope`, so the caller can do something *after*
      * it.
      *
@@ -89,15 +100,6 @@ class HomeViewModel(
      * more. It stays suspending because the screen's state should still be read after the write that
      * produces it, not because anything else is waiting.
      */
-    /**
-     * Every judgement is `Dashboard.assemble`'s, in `:domain` where it is tested; this reads the
-     * inputs and hands the result to the presenter.
-     */
-    private suspend fun dashboard(today: LocalDate): DashboardUi {
-        val (histories, checkIns) = repository.dashboardInputs(today)
-        return presentDashboard(Dashboard.assemble(histories, checkIns, today, dayResolver))
-    }
-
     suspend fun refresh() {
         val today = dayResolver.today()
         repository.seedLibraryIfEmpty(today)

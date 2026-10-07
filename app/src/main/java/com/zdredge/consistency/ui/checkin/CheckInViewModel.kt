@@ -6,6 +6,7 @@ import com.zdredge.consistency.data.ConsistencyRepository
 import com.zdredge.consistency.domain.checkin.AnswerDay
 import com.zdredge.consistency.domain.checkin.CaptureResolver
 import com.zdredge.consistency.domain.checkin.CheckInEntry
+import com.zdredge.consistency.domain.checkin.Grace
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
@@ -42,8 +43,8 @@ data class AnswerDraft(
     val note: String = "",
     /**
      * The user tapped "not yet". Stored as a value-less answer with `capture = PENDING`, which is
-     * how the rollover finds it to convert into a missed goal if it is never resolved
-     * (scoring-cases A2.1). Mutually exclusive with a value: answering clears it, deferring clears
+     * how the next morning's check-in finds it to carry, and how scoring knows to count it a missed
+     * goal once its grace closes unresolved (scoring-cases A2.1). Mutually exclusive with a value: answering clears it, deferring clears
      * the value, because "3 meals, but not yet" is not a thing the record can mean.
      */
     val deferred: Boolean = false,
@@ -135,6 +136,10 @@ data class CheckInUiState(
      * to an answer already given counts as an edit (`ConsistencyRepository.recordAnswer`).
      */
     val revisiting: Boolean = false,
+    /** The rollover closed it unanswered. Answers given now record late and do not repair it (A1.2). */
+    val missed: Boolean = false,
+    /** Past its backfill window (spec §3.2), so anything filled in now records `LATE`. */
+    val pastGrace: Boolean = false,
 ) {
     val current: QuestionUi? get() = questions.getOrNull(index)
     val isFirst: Boolean get() = index == 0
@@ -220,9 +225,11 @@ class CheckInViewModel(
                 )
             }
 
-            // An answered check-in opens on its summary: what the user is back for is the list of
-            // what was given and what was skipped, each correctable in place, not question one.
-            val revisiting = repository.checkIn(day, slot)?.state == CheckInState.ANSWERED
+            // A finished or missed check-in opens on its summary: what the user is back for is the
+            // list of what was given and what was skipped, each correctable in place, not question
+            // one. And it is a later sitting, so changing an answer already given is an edit.
+            val state = repository.checkIn(day, slot)?.state
+            val revisiting = state == CheckInState.ANSWERED || state == CheckInState.MISSED
 
             _state.value = CheckInUiState(
                 loading = false,
@@ -232,6 +239,8 @@ class CheckInViewModel(
                 questions = questions,
                 onSummary = revisiting && questions.isNotEmpty(),
                 revisiting = revisiting,
+                missed = state == CheckInState.MISSED,
+                pastGrace = Grace.isPastGrace(day, dayResolver.today()),
             )
         }
     }
