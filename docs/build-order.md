@@ -2150,6 +2150,11 @@ fixture all build, and every suite passes unchanged.
 - **`recentRolloverRuns` returns a plain `RolloverRun`.** It was the one repository read that handed
   out a Room row (`RolloverRunEntity`) and its raw `outcome` string. It now maps through
   `EntityMappers` like every other read, with `succeeded` in place of the string. Only tests call it.
+- **The rollover is one transaction.** Creating the day's check-ins, marking old ones missed,
+  freezing step values and recording the run were separate writes, so a run that threw partway
+  could leave missed check-ins with no run recorded. `runRollover` now wraps them all in
+  `withTransaction`; the worker's failure row is written after the rollback. The test forces a real
+  SQLite failure at the freeze, the last write, with a temporary trigger.
 
 ---
 

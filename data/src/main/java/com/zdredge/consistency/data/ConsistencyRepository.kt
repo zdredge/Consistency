@@ -1,6 +1,7 @@
 package com.zdredge.consistency.data
 
 import android.util.Log
+import androidx.room.withTransaction
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.data.db.LOCAL_USER_ID
 import com.zdredge.consistency.data.db.entity.CheckInEntity
@@ -485,11 +486,15 @@ class ConsistencyRepository(
      * values are the only rows either rule can act on, and both sets stay small because this job is
      * what drains them.
      *
+     * **All or nothing, run record included.** The writes and the row recording them share one
+     * transaction, so a run that throws partway leaves no day half-closed and no success claimed;
+     * the worker's failure row is written after the rollback, and the retry does the whole job.
+     *
      * Safe to run twice, and safe to run late. Both rules compare stored state against [today]
      * rather than assuming they run once per day, so a run after the device was off for three days
      * resolves all three at once — see `RolloverPlanner`.
      */
-    suspend fun runRollover(today: LocalDate = dayResolver.today()): RolloverOutcome {
+    suspend fun runRollover(today: LocalDate = dayResolver.today()): RolloverOutcome = db.withTransaction {
         val created = ensureCheckInsExist(today)
 
         val plan = RolloverPlanner.plan(
@@ -508,7 +513,7 @@ class ConsistencyRepository(
                 .setState(it.itemId.value, it.day.toString(), MeasuredState.FROZEN.name)
         }
 
-        return RolloverOutcome(
+        RolloverOutcome(
             forDay = today,
             checkInsCreated = created,
             checkInsMissed = plan.checkInsToMiss.size,

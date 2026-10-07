@@ -171,6 +171,47 @@ class RolloverRepositoryTest {
         assertEquals("database locked", run.error)
     }
 
+    /**
+     * **A run that fails partway leaves nothing behind.** The freeze is the last write, so failing
+     * it there is the worst case: without one transaction the day's rows were created and old
+     * check-ins marked missed, with no run recorded to say any of it had happened. The trigger is a
+     * real SQLite failure, not a seam in the repository.
+     */
+    @Test
+    fun aRunThatFailsPartwayWritesNothing() = runBlocking {
+        repoAt("2026-09-01T10:00").ensureCheckInsExist(installDay)
+        val repo = repoAt("2026-09-04T04:15")
+        repo.recordMeasuredValue(
+            MeasuredValue(
+                itemId = ItemId("steps"),
+                day = installDay,
+                value = 11_240.0,
+                state = MeasuredState.PROVISIONAL,
+                lastSyncedAt = Instant.parse("2026-09-02T07:15:00Z"),
+            ),
+        )
+        val sql = db.openHelper.writableDatabase
+        sql.execSQL(
+            "CREATE TEMP TRIGGER fail_freeze BEFORE UPDATE OF state ON measured_values " +
+                "WHEN NEW.state = 'FROZEN' BEGIN SELECT RAISE(ABORT, 'forced'); END",
+        )
+
+        val failed = runCatching { repo.runRollover(installDay.plusDays(3)) }
+
+        assertTrue("the forced failure reaches the caller", failed.isFailure)
+        val checkIns = repo.checkIns(installDay, installDay.plusDays(3))
+        assertTrue("no day's rows were created", checkIns.all { it.day == installDay })
+        assertTrue("nothing was marked missed", checkIns.all { it.state == CheckInState.PENDING })
+        assertTrue("no run was recorded", repo.recentRolloverRuns().isEmpty())
+
+        // And the next run does the whole job.
+        sql.execSQL("DROP TRIGGER fail_freeze")
+        val outcome = repo.runRollover(installDay.plusDays(3))
+        assertTrue(outcome.checkInsCreated > 0)
+        assertTrue(outcome.checkInsMissed > 0)
+        assertEquals(1, outcome.valuesFrozen)
+    }
+
     // ---- O4, end to end ------------------------------------------------------------------------
 
     /**
