@@ -2014,6 +2014,26 @@ as backfilled", and "Anything filled in now…" on a reviewed check-in, in the s
 summary's late note. Seen on the device, fixture install: yesterday's two cards carry it, today's
 does not.
 
+### Architecture drift
+
+`architecture.md` had fallen behind what was built.
+- **§5's data model** listed every table but `rollover_runs` (M5, schema v3). It is now described
+  there, and the model counts twelve tables.
+- **The §6 diagram:**
+  - It drew a settings screen re-arming alarms, "in M8". That is now a dashed edge marked *settings
+    add-on, not built*.
+  - Its UI box listed "library · settings". It now lists the four screens that exist.
+  - It left out two of the scheduler's callers: each alarm firing, and leaving a check-in.
+  - Its components now carry their real names, and the database box includes `rollover_runs`.
+- **§1** had the rollover generating "the next day's" check-ins, which §6 already corrected (through
+  today, never ahead).
+- **§4** counted `AppContainer` as four objects; M7 made it five. It also said "five screens"; there
+  are four.
+
+These were corrected where the claim was current, with "since then" notes where an M4 *As built*
+note is history. The DI note says plainly that its trigger for adopting Hilt has been met in letter,
+and not in pain.
+
 ---
 
 ## After the plan — settings add-on

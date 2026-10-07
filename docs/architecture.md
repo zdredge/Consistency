@@ -24,8 +24,8 @@ decide everything:
 1. **Notifications that fire at a precise wall-clock time**, twice a day, plus escalation repeats at
    roughly 20-minute intervals, while the app is closed.
 2. **Reading step counts from the device's health data.**
-3. **A background job near 04:00** that closes the day, generates the next day's expected
-   check-ins, and freezes provisional step values.
+3. **A background job near 04:00** that closes the day, generates the new day's expected
+   check-ins (through today, never ahead -- see §6), and freezes provisional step values.
 4. **Rescheduling all of the above after a device reboot.**
 
 Every one of these is Android platform integration, and none of them is business logic. That is
@@ -179,7 +179,7 @@ cannot be used from Java at all.
 ### Jetpack Compose — UI
 **Why:** declarative, so the mental model transfers almost directly from React — state in, UI out,
 recomposition instead of re-render.
-**Pro:** far less code than the XML system; the five screens here are simple.
+**Pro:** far less code than the XML system; the handful of screens here are simple.
 **Con:** newer, so much of the material online targets the old View system; recomposition has
 performance footguns.
 **Alternative:** XML layouts with Views. Better documented, substantially more boilerplate, and the
@@ -190,6 +190,14 @@ legacy path.
 `AnswerFormat`. Material3, a single `darkColorScheme` with `dynamicColor = false`, and no navigation
 library (T5). M4 built the check-in as one scrolling list of cards; M4.5 replaced it with one question
 per screen and a closing summary, which is why this note spans two milestones.
+
+**Since then.** There are four screens in all:
+- **M8** added `items/ItemsScreen` and `items/ItemDetailScreen`, with the Canvas charts in
+  `items/chart/`.
+- **M10** made Home the dashboard (`home/DashboardCards`, `DashboardPresenter`).
+- **After M11**, any day on an item's screen opens its check-in.
+
+The fixture install adds one more screen of its own, *Load scenario*, which no other build has.
 
 **The recomposition footgun above was not the one that bit.** Every real defect here was a *state*
 defect that rendered perfectly: a stepper showing `0` for an unanswered question, indistinguishable
@@ -461,7 +469,7 @@ test rather than a hope: **133 tests, no emulator, complete case coverage.** The
 exactly — the whole rulebook was provable without a device, which is what justified the extra module.
 
 ### Manual constructor injection — dependency wiring
-**Why:** at five screens, a DI framework is not needed.
+**Why:** at a handful of screens (four, as built), a DI framework is not needed.
 **Pro:** no annotation processing, no magic, faster builds, the whole object graph is visible.
 **Con:** hand-wiring gets tedious as it grows.
 **Alternative:** Hilt, the Android standard. Worth adopting the moment several ViewModels need the
@@ -474,6 +482,16 @@ ViewModels through both milestones without hurting. The database is deliberately
 repository to a DAO. The factory is hand-written rather than skipped because plain state holders in
 `remember` die on rotation, and losing a half-finished check-in to a screen turn is the friction §1
 says ends the product. Still no reason to adopt Hilt.
+
+**Since then.** `AppContainer` is now **five** objects:
+- M7 added the step source, so `:app` reaches Health Connect only through `:data`.
+- M9 made the step source and the repository constructor parameters, which the fixture build
+  overrides.
+
+The factory builds five ViewModels: Home, check-in, Items, item detail, and the navigation back
+stack. Several of them do now share the repository and the resolver, which is the trigger written
+above. It has been met in letter and not in pain: the factory is one `when` of five lines. So still
+no Hilt, and adopting it stays an ask-first change (`CLAUDE.md`).
 
 ---
 
@@ -635,6 +653,15 @@ rate; without this table the primary metric is unmeasurable. Generated at rollov
 origin grouping guard from earlier in this section: more than one row for a day means a second
 source appeared.
 
+**`rollover_runs`** — **added in M5 as schema v3.** `id` · `ran_at` · `for_day` · `outcome`
+(`SUCCEEDED` / `FAILED`) · `checkins_created` · `checkins_missed` · `values_frozen` · `error`.
+
+The 04:00 job's record of itself, failures included. It is a history rather than one "last success"
+timestamp, so "it failed every night" can be told from "it never ran". Home reads it to say when the
+job has gone quiet (§8). It is diagnostic only: no figure is computed from it, and `checkins_created`
+can read 0 for a day whose rows another caller created moments earlier (build-order, *Defects found
+after M6*). Twelve tables in all, every one with `user_id`.
+
 #### Worked example: Tuesday 25 August 2026
 
 Two check-in rows, spanning two calendar days:
@@ -731,30 +758,32 @@ flowchart TB
     subgraph OS["Android OS — active while your app is closed"]
         AM["AlarmManager<br/>exact alarms: morning, night, +20 min repeats"]
         WM["WorkManager<br/>daily job, near 04:00"]
-        BOOT["BOOT_COMPLETED broadcast"]
+        BOOT["BOOT_COMPLETED / MY_PACKAGE_REPLACED"]
         NM["NotificationManager<br/>high-importance channel"]
         HC[("Health Connect<br/>on-device step store")]
         SAF["Document picker<br/>Drive, local, anywhere"]
     end
 
     subgraph APP["App process — alive only when woken or opened"]
-        AR["AlarmReceiver"]
+        AR["CheckInAlarmReceiver"]
         BR["ScheduleRestoreReceiver"]
         RW["RolloverWorker"]
-        SCH["Scheduler"]
-        UI["Compose UI<br/>check-in · dashboard · item detail · library · settings"]
+        SCH["CheckInAlarmScheduler"]
+        UI["Compose UI<br/>dashboard · check-in · items · item detail"]
         VM["ViewModels"]
-        REPO["Repository"]
+        REPO["ConsistencyRepository"]
         DOM[["Scoring engine<br/>pure Kotlin · no Android imports"]]
     end
 
     subgraph DATA["On-device storage"]
-        DB[("Room / SQLite<br/>items · versions · answers<br/>targets · checkins · measured values")]
+        DB[("Room / SQLite<br/>items · versions · answers<br/>targets · checkins · measured values<br/>rollover runs")]
     end
 
     AM -->|"fires at the scheduled minute"| AR
     AR -->|"post"| NM
+    AR -->|"re-arm the whole window"| SCH
     NM -->|"user taps the notification"| UI
+    UI -->|"app start, leaving a check-in"| SCH
 
     UI <-->|"state down, events up"| VM
     VM -->|"read and write"| REPO
@@ -771,7 +800,7 @@ flowchart TB
     BOOT --> BR
     BR -->|"alarms were wiped, set them again"| SCH
     SCH -->|"set and cancel"| AM
-    VM -->|"check-in time changed"| SCH
+    VM -.->|"check-in time changed -- settings add-on, not built"| SCH
 
     VM -->|"write export file"| SAF
 
@@ -807,9 +836,10 @@ off.
 (alarms survive neither a reboot nor an app update), each firing, leaving a check-in, and the rollover.
 Each one used to be responsible for generating the day's rows *before* arming, and three did not —
 so on a day nobody opened the app, nothing was armed at all. The scheduler now guarantees the rows
-itself, so there is no ordering left for a caller to get wrong. A settings screen (M8) will be the
-sixth, because changing the night check-in time must cancel and re-set real alarms rather than only
-updating a stored preference.
+itself, so there is no ordering left for a caller to get wrong. The settings add-on will add a sixth,
+the dashed edge above. Changing a check-in time must cancel and re-set real alarms rather than only
+updating a stored preference, and it must re-anchor the rollover too (build-order, *After the plan*).
+This was planned for M8 and moved out of the build plan at M8.
 
 ---
 
@@ -856,4 +886,4 @@ of mind.
 | ~~T2~~ | **Closed by M3.** Typed nullable columns were kept and the mapping did not get ugly: `EntityMappers.kt` is a flat set of one-line conversions with no branching on answer type, because the domain `Answer` carries the same typed nullable fields the table does. A blob would have added a serialiser on both sides and made every numeric query a parse. Revisit only if a new answer type cannot be expressed as a column. |
 | T3 | How to test alarm scheduling and the restore receiver without relying on manual device verification. **Narrowed twice, still open:** which alarms should exist is a pure tested function (`AlarmPlanner`), and *that the rows exist before anything is armed* is now a `:data` instrumented test (`checkInsForAlarms`) rather than a device observation — it was moved there precisely because the untested version of it was wrong for a whole milestone. What is left untestable is only *that a set alarm fires* and *that alarms return after a reboot or an update*. Each has been observed on a real device, but by hand, and nothing guards them against regression. The residue is not theoretical: **three real defects have now lived exactly there**, in the wiring between the tested rule and the platform. |
 | T4 | Whether the rollover job should also pre-compute and cache dashboard figures, or whether scoring on read is fast enough at a few thousand rows. Probably fast enough; worth measuring rather than assuming. |
-| T5 | Compose navigation approach. **Decided in M8: stays hand-rolled**, gaining a small back stack and the system back gesture as the Items and item detail screens arrive. No navigation library: at five screens the whole flow stays readable in one file, and the notification deep-link (`MainActivity.screenFor`) keeps working unchanged. Revisit only if screens multiply well past that. |
+| T5 | Compose navigation approach. **Decided in M8: stays hand-rolled**, gaining a small back stack and the system back gesture as the Items and item detail screens arrive. No navigation library: at four screens the whole flow stays readable in one file, and the notification deep-link (`MainActivity.screenFor`) keeps working unchanged. Revisit only if screens multiply well past that. |
