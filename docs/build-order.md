@@ -2004,6 +2004,16 @@ Also brought up to date:
 - **build-order's decision-gates table:** it still gave the carousel as 8 seconds per goal. O5
   resolved at 6.
 
+### Home called a backfill "Late"
+
+Home's cards for yesterday's check-ins read "Late — this will be recorded as backfilled". `LATE` is a
+different capture state: an answer after grace, which repairs nothing. Since item #4 the app can also
+record a `LATE` answer, so the screen used one state's word for the other in the same place a user
+learns what they mean. Both cards now name only what is recorded: "Anything answered now is recorded
+as backfilled", and "Anything filled in now…" on a reviewed check-in, in the style of the check-in
+summary's late note. Seen on the device, fixture install: yesterday's two cards carry it, today's
+does not.
+
 ---
 
 ## After the plan — settings add-on
