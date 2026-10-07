@@ -2096,6 +2096,25 @@ formatters, some following the phone's locale and some forcing US.
 - water's "73 oz" and "3 · 120 oz";
 - 1.5 entered, the keypad reopened showing "1.5", and Set keeping it.
 
+### "With 0 days to go" on a Wednesday
+
+**Found on the device** while checking the number formatting. Every weekly goal's card read "This
+week so far: 1 of 6, with 0 days to go" on a Wednesday.
+
+**Cause.** `WeeklyFigures.progress` took its total from `activeDays`, which stops at the last
+answerable day. That is right for counting what was observed, but as the total it made every running
+week end today, so total minus elapsed was always zero. Its elapsed count started on Monday whatever
+the item's first day, so a goal created midweek would also have had fewer days to go than it really
+did.
+
+**Fix.** Both counts now run over the week's days the item exists on, ahead included. M10's
+dashboard test checked elapsed days and never the total, which is how this got through. Two new
+`:domain` tests, both seen to fail first: a Wednesday is 3 of 7, and a goal created Wednesday is 3 of
+5 on Friday. 385 tests.
+
+**Verified on the device**, fixture install: stretched and worked out both read "with 4 days to go"
+on Wednesday 7 October.
+
 ---
 
 ## After the plan — settings add-on

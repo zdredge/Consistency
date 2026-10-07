@@ -94,6 +94,33 @@ class WeeklyFiguresTest {
     }
 
     @Test
+    @DisplayName("9.7 - an open week's progress counts the days still ahead of it")
+    fun openWeekCountsTheDaysAhead() {
+        // Wednesday: three days gone, four to go. The total once stopped at today, so "days to go"
+        // was always zero -- "1 of 6, with 0 days to go" on a Wednesday.
+        val progress = figure(yes(2), today = monday.plusDays(2)).progress!!
+
+        assertEquals(3, progress.elapsedDays)
+        assertEquals(7, progress.totalDays)
+    }
+
+    @Test
+    @DisplayName("9.7 - a goal created midweek counts only the days it exists on, gone and ahead")
+    fun aMidweekGoalCountsItsOwnDays() {
+        // Created Wednesday, looked at on Friday: Wednesday to Friday gone, Saturday and Sunday ahead.
+        // Counting elapsed days from Monday would make it two days fewer to go than there are.
+        val wednesday = monday.plusDays(2)
+        val progress = figure(
+            answers = emptyList(),
+            today = monday.plusDays(4),
+            item = item("stretched", createdOn = wednesday),
+        ).progress!!
+
+        assertEquals(3, progress.elapsedDays)
+        assertEquals(5, progress.totalDays)
+    }
+
+    @Test
     @DisplayName("a week is still open on its Sunday and closes the morning after")
     fun sundayIsStillOpen() {
         // The day the old PeriodProgress.closed got wrong. Sunday's answer can still be given.
