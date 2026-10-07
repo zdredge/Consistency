@@ -2034,6 +2034,18 @@ These were corrected where the claim was current, with "since then" notes where 
 note is history. The DI note says plainly that its trigger for adopting Hilt has been met in letter,
 and not in pain.
 
+### `CLAUDE.md`, read against the tree
+
+- **The fixture rule contradicted the layout.** "Never move \[the loader\] into `src/main` of any
+  module" stood beside a loader that lives in `fixture/src/main`, which is correct, since that
+  module is linked only by the fixture build type. The rule now names what it protects: nothing that
+  clears tables goes into code the real app ships (`:app`'s `src/main`, `:data`, `:domain`).
+- **Three present-tense lines M8–M10 had overtaken:**
+  - Vico "under review in M8 Phase 5": settled there, all Canvas.
+  - The dashboard "gated on" M9 and O1: both done.
+  - "Do not begin a later milestone than the one in progress": none is in progress. What still
+    matters there, that real data makes a wipe costly, stays.
+
 ---
 
 ## After the plan — settings add-on
