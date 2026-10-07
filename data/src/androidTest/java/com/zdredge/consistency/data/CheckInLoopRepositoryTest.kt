@@ -4,6 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zdredge.consistency.data.db.ConsistencyDatabase
+import com.zdredge.consistency.domain.checkin.CaptureResolver
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.CheckInState
@@ -998,6 +999,45 @@ class CheckInLoopRepositoryTest {
 
         assertNull(repo.measuredValue(ItemId("steps"), installDay))
         assertEquals(3_100.0, repo.measuredValue(ItemId("steps"), today)!!.value, 0.0)
+    }
+
+    /**
+     * A1.1-A1.2: a question never answered can still be filled in after grace, through the check-in
+     * that missed it. It records LATE, and finishing that check-in leaves it MISSED -- the data is
+     * worth having, the metric is not for sale.
+     */
+    @Test
+    fun aLateAnswerThroughAMissedCheckInRecordsLateAndLeavesItMissed() = runBlocking {
+        repoAt("2026-09-01T10:00").ensureCheckInsExist(installDay)
+        val weekLater = repoAt("2026-09-08T10:00")
+        weekLater.runRollover(installDay.plusDays(7))
+        assertEquals(CheckInState.MISSED, weekLater.checkIn(installDay, Slot.NIGHT)!!.state)
+
+        // The capture the check-in screen resolves for it, by the clock, as it always does.
+        val weekLaterClock = Clock.fixed(LocalDateTime.parse("2026-09-08T10:00").atZone(zone).toInstant(), zone)
+        val capture = CaptureResolver(DayResolver(weekLaterClock)).forEntry(installDay)
+        assertEquals(Capture.LATE, capture)
+        weekLater.recordAnswer(mealsAnswer(capture), installDay, Slot.NIGHT, revisiting = true)
+        weekLater.markCheckInAnsweredIfAnswered(installDay, Slot.NIGHT, Instant.parse("2026-09-08T14:00:00Z"))
+
+        assertEquals(Capture.LATE, weekLater.answer(ItemId("meals"), installDay)!!.capture)
+        val checkIn = weekLater.checkIn(installDay, Slot.NIGHT)!!
+        assertEquals("a late answer does not repair the check-in", CheckInState.MISSED, checkIn.state)
+        assertNull(checkIn.answeredAt)
+    }
+
+    /**
+     * "Not yet" is for the night itself (spec 3.2). Backfilling the night check-in the next morning
+     * must not offer it, or the deferral would be resolved in that same morning as in-window.
+     */
+    @Test
+    fun aNightCheckInOffersNotYetOnlyOnItsOwnNight() = runBlocking {
+        val tonight = repoAt("2026-09-01T21:30")
+        tonight.ensureCheckInsExist(installDay)
+        assertTrue(tonight.checkInQuestions(installDay, Slot.NIGHT).any { it.canDefer })
+
+        val nextMorning = repoAt("2026-09-02T09:00")
+        assertTrue(nextMorning.checkInQuestions(installDay, Slot.NIGHT).none { it.canDefer })
     }
 
     private fun mealsAnswer(capture: Capture) = Answer(

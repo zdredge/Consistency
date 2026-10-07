@@ -303,6 +303,9 @@ class MainActivity : ComponentActivity() {
                                 onShowTrend = itemDetailViewModel::setShowTrend,
                                 onSelectDay = itemDetailViewModel::selectDay,
                                 onClearDay = itemDetailViewModel::clearDay,
+                                // Late answers and corrections (spec §3.2). Leaving the check-in pops
+                                // back here, and the LaunchedEffect above reloads what it changed.
+                                onOpenCheckIn = { day, slot -> backStack.push(Screen.CheckIn(day, slot)) },
                             )
                         }
                     }

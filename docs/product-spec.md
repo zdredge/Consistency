@@ -210,6 +210,15 @@ than two.
   missed. The same rule applies to a carried-over item left blank inside an otherwise answered
   morning check-in.
 - History is editable; edits set the edited flag. Never a silent overwrite.
+- **Reaching an old day** (added 2026-10-07; until then nothing could, so no `LATE` answer could be
+  given). Any day on an item's screen opens the check-in that asked about it (§5.4). It opens on its
+  summary, saying first what answering now will record. A question never answered records `LATE`; a
+  change to an answer already given is an edit. **A missed check-in stays missed** however much of it
+  is filled in afterwards.
+- **"Not yet" is offered only on the night itself** (added 2026-10-07). It is never offered while
+  backfilling yesterday's night or later. A deferral made during a backfill would be resolved in that
+  same morning's check-in as in-window, buying a backfill in-window credit. A deferral made a week late
+  could never be resolved.
 
 ### 3.3 Items
 
@@ -456,8 +465,8 @@ is what teaches them not to open it.
 **Answered check-ins still in grace that have questions with no answer are listed beneath it**
 (added 2026-09-25), each with how many ("2 not answered"), and open on their summary. A fully
 answered check-in is not listed: listing every answered check-in pushed the dashboard off the screen
-with cards that had nothing left in them. A general review surface, including changing an answer in
-a complete check-in, is deferred rather than rejected. One answer marks a check-in answered and takes it off the banner, so without this a
+with cards that had nothing left in them. Changing an answer in a complete check-in, or in any older
+one, is reached from the item instead: any day on an item's screen opens its check-in (§3.2, §5.4). One answer marks a check-in answered and takes it off the banner, so without this a
 question skipped inside a finished check-in could not be reached again, although §3.2 keeps it
 answerable until the end of the next day. The count is a plain fact, never a warning: skips are
 shown, not scolded (§5.6). A question filled in this way is a first answer, captured against its
@@ -584,6 +593,10 @@ settles is itself worth seeing. §5.5 is unchanged and still governs the dashboa
 
 **Notes surface here**, attached to the individual data point: tapping a day outlines it and a card
 beneath the chart shows that day's answer, how it was recorded, and its note.
+
+**Every day opens its check-in** (added 2026-10-07): the day card's *Open check-in*, and any row of
+the table, for the item's whole history. This is how a day is filled in late or corrected (§3.2).
+Steps has no check-in to open.
 
 **Marks on the chart:** backfilled days carry a corner notch, deferred days a dashed outline, and days
 with a note a dot. Answers given after the grace window, and edits, are left to the table.

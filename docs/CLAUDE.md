@@ -43,8 +43,10 @@ Two rules the M4.5 defect fixes settled, both worth knowing before touching answ
   that exists with nothing in it is the real answer *"none of these"* for a select item, so blanking
   a retraction would turn it into a met goal.
 - **An edit is a change made through a different check-in** than the one that first recorded the
-  answer, **or after reopening a check-in that was already answered** (Home lists those while in
-  grace, and only when a question is still unanswered). Corrections while giving a check-in — including from its summary — are part of that
+  answer, **or after reopening a check-in that was already answered or missed** (Home lists answered
+  ones in grace with a question still unanswered; any day on an item's screen opens its check-in, at
+  any age). A missed check-in stays missed however much is filled in later -- `markCheckInAnswered`
+  refuses it (A1.2). Corrections while giving a check-in — including from its summary — are part of that
   answering, and filling in a skipped question is a first answer, never an edit. `AnswerRevision`
   in `:domain` owns this; do not set `submitted_at`, `capture` or `edited_at` from a caller — a
   caller only says whether it is revisiting (`recordAnswer(..., revisiting)`).

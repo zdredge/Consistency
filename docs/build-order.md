@@ -1940,6 +1940,42 @@ true; the stepping itself was never checked.
 
 `:app` has no tests, so this is the check.
 
+### Late answers and old days had no way in
+
+**The gap.** Spec §2 and §3.2 promise editable history, and late answers (`LATE`) after grace.
+Nothing reached either. The banner and Home's reviewable list both stop at `Grace`, so no `LATE`
+answer could ever be given, and nothing could be changed once its check-in left grace. M9 had noted
+the first part; the 2026-09-25 review had deferred the second.
+
+**The user's call:** reached from the item. Every day on an item's screen opens the check-in that
+asked about it, through the day card's *Open check-in* or any Daily Log row, over the whole history.
+`AnswerDay.checkInFor` finds the check-in: the morning for a sleep item, Sunday night for a weekly
+question, none for steps. The existing check-in screen and `AnswerRevision` do the rest.
+- A finished or missed check-in is a later sitting: it opens on its summary, and changing an answer
+  already given is an edit.
+- The summary says first what answering now will record.
+
+**Two guards, both latent until something could reach an old check-in.**
+- **A missed check-in stays missed.** `markCheckInAnswered` upserted `ANSWERED` whatever the state.
+  Its own comment had said since M4 that a late answer must not repair a missed one, and nothing
+  enforced it. Now it does (A1.2).
+- **"Not yet" only on the night itself.** `CheckInContent` takes `answeredOn` and offers a deferral
+  only when it equals the check-in's day. **Behaviour change:** backfilling yesterday's night no
+  longer offers it. A deferral made then would have been resolved in that same morning's check-in as
+  in-window (3.3), buying a backfill in-window credit.
+
+**Tests.** 2 new in `:domain` (389 total) and 2 instrumented (145). **Mutations caught: 3 of 3**:
+- the missed guard dropped (caught on the device)
+- deferral offered on any day
+- weekly questions opening a "weekly" check-in
+
+**Verified on the device**, fixture install, `captures`:
+- A missed night opened from vitamins' log. The summary said so before anything was tapped, and no
+  "Not yet" was offered. Answering vitamins gave **late · Met**, and the response rate stayed
+  **25 of 26**.
+- An older on-time day changed from Yes to No read **edited · Missed**, with its original capture
+  kept.
+
 ---
 
 ## After the plan — settings add-on

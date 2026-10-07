@@ -238,6 +238,21 @@ class CheckInContentTest {
     }
 
     @Test
+    @DisplayName("3.2 - not yet is offered only on the night itself, never while backfilling or late")
+    fun deferralIsOnlyOfferedOnTheNight() {
+        fun deferrableOn(answeredOn: LocalDate) =
+            CheckInContent.forCheckIn(tuesday, Slot.NIGHT, allItems, allVersions, answeredOn = answeredOn)
+                .filter { it.canDefer }.map { it.item.id.value }
+
+        assertEquals(listOf("meals", "vitamins"), deferrableOn(tuesday))
+        // Backfilled the next morning: a deferral would be resolved in this morning's check-in as
+        // in-window (3.3), buying a backfill in-window credit.
+        assertEquals(emptyList<String>(), deferrableOn(wednesday))
+        // A week late: nothing would ever come back to resolve it.
+        assertEquals(emptyList<String>(), deferrableOn(tuesday.plusWeeks(1)))
+    }
+
+    @Test
     @DisplayName("morning questions may not be deferred, because the night has already happened")
     fun morningQuestionsMayNotBeDeferred() {
         // The deferral exists for items still actionable at 21:00. Nothing can be done about last

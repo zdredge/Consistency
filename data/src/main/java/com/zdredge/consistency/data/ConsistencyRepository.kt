@@ -439,6 +439,8 @@ class ConsistencyRepository(
             // every time rather than remembered, because the permission can be revoked in system
             // settings without the app being told.
             measuredAvailable = stepSource.status() == StepSourceStatus.Available,
+            // "Not yet" only on the night itself: never while backfilling it, never late (spec §3.2).
+            answeredOn = dayResolver.today(),
         )
 
     /** Unresolved "not yet" answers, for carry-over into the next morning. */
@@ -589,9 +591,14 @@ class ConsistencyRepository(
      * rate dates a check-in by that timestamp (`ResponseRate`), so finishing it again the next day --
      * now possible, since an answered check-in can be reopened inside grace -- would quietly turn an
      * in-window check-in into a backfilled one.
+     *
+     * **A missed check-in stays missed.** Its answers can still be given -- they record `LATE` -- but
+     * reaching the end of it must not repair it (A1.2). The comment above said so from M4; nothing
+     * enforced it until a missed check-in could be reopened, from an item's day, after M11.
      */
     suspend fun markCheckInAnswered(day: LocalDate, slot: Slot, at: Instant) {
         val existing = db.checkInDao().onDayInSlot(day.toString(), slot.name) ?: return
+        if (existing.state == CheckInState.MISSED) return
         if (existing.state == CheckInState.ANSWERED && existing.answeredAt != null) return
         db.checkInDao().upsert(
             existing.copy(state = CheckInState.ANSWERED, answeredAt = at),

@@ -1,5 +1,7 @@
 package com.zdredge.consistency.ui.items
 
+import com.zdredge.consistency.domain.checkin.AnswerDay
+import com.zdredge.consistency.domain.checkin.CheckInKey
 import com.zdredge.consistency.domain.dashboard.Dashboard
 import com.zdredge.consistency.domain.dashboard.Trend
 import com.zdredge.consistency.domain.detail.DayCell
@@ -15,6 +17,7 @@ import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.scoring.SleepMetric
 import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.ui.checkin.asAnswer
+import com.zdredge.consistency.ui.items.chart.isSelectable
 import java.time.LocalDate
 
 /**
@@ -52,10 +55,25 @@ internal fun presentItemDetail(
         days = detail.days,
         targetNote = detail.earlierTarget?.let { targetNoteFor(it, detail.version.unitLabel) },
         figures = figuresFor(detail),
-        rows = rowsFor(detail, labels, history.sleepMetric),
+        rows = rowsFor(history, detail, labels),
         selectedDay = cell?.day,
-        dayCard = cell?.let { dayCardFor(it, labels, history.sleepMetric, detail.item.kind == ItemKind.MEASURED) },
+        dayCard = cell?.let {
+            dayCardFor(it, labels, history.sleepMetric, detail.item.kind == ItemKind.MEASURED)
+                .copy(openCheckIn = checkInFor(history, it))
+        },
     )
+}
+
+/**
+ * The check-in to reopen for a day: the one that asked the item about it, in the slot the item had
+ * that day. Late answers and corrections are reached this way (spec §3.2); the check-in screen and
+ * `AnswerRevision` decide what they record. Null for a day the item did not exist on, a day not yet
+ * here, and for steps, which no check-in asks.
+ */
+private fun checkInFor(history: ItemHistory, cell: DayCell): CheckInKey? {
+    if (!cell.isSelectable()) return null
+    val slot = history.versionOn(cell.day)?.slot ?: return null
+    return AnswerDay.checkInFor(cell.day, slot)
 }
 
 /**
@@ -178,9 +196,13 @@ private fun goalFigures(figures: GoalFigures, unit: String, units: String): List
  * and the chart needs them, because a calendar has to draw a square for every day in its grid; a
  * table does not, and thirty rows reading "not active" would bury the three that say something.
  */
-private fun rowsFor(detail: ItemDetail, labels: Map<OptionId, String>, metric: SleepMetric?): List<HistoryRow> =
+private fun rowsFor(
+    history: ItemHistory,
+    detail: ItemDetail,
+    labels: Map<OptionId, String>,
+): List<HistoryRow> =
     // The whole history, not the chart's five weeks: the table is the one place older days can be
-    // read at all (spec §5.4).
+    // read at all (spec §5.4), and so the one way back into them.
     detail.log
         .asReversed()
         .filterNot { it.state == DayState.NOT_ACTIVE || it.state == DayState.FUTURE }
@@ -188,9 +210,10 @@ private fun rowsFor(detail: ItemDetail, labels: Map<OptionId, String>, metric: S
             HistoryRow(
                 day = cell.day.format(tableDayFormat),
                 state = cell.state.label(),
-                value = cell.valueText(labels, metric),
+                value = cell.valueText(labels, history.sleepMetric),
                 marks = cell.markText(),
                 note = cell.note,
+                openCheckIn = checkInFor(history, cell),
             )
         }
 

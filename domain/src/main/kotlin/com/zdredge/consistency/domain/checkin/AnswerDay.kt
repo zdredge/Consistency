@@ -45,4 +45,21 @@ object AnswerDay {
         Slot.MORNING -> answerDay.plusDays(1)
         Slot.NIGHT, Slot.WEEKLY, Slot.NONE -> answerDay
     }
+
+    /**
+     * The check-in that asks an item in [itemSlot] about [answerDay], or null for a measured item,
+     * which no check-in asks (spec §3.3).
+     *
+     * The day is [checkInDayFor]'s; the slot is the check-in's, which is not always the item's. A
+     * weekly question rides on Sunday **night's** check-in, because there are two check-ins a day and
+     * never a third (spec §1). This is how a day on an item's screen finds the check-in to reopen.
+     */
+    fun checkInFor(answerDay: LocalDate, itemSlot: Slot): CheckInKey? = when (itemSlot) {
+        Slot.MORNING -> CheckInKey(checkInDayFor(answerDay, itemSlot), Slot.MORNING)
+        Slot.NIGHT, Slot.WEEKLY -> CheckInKey(checkInDayFor(answerDay, itemSlot), Slot.NIGHT)
+        Slot.NONE -> null
+    }
 }
+
+/** A check-in, identified as the schema identifies one: by the day it was expected and its slot. */
+data class CheckInKey(val day: LocalDate, val slot: Slot)
