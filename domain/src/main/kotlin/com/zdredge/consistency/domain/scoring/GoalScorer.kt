@@ -130,8 +130,8 @@ object GoalScorer {
  * One item's figures over a set of scored periods -- the per-item half of the dashboard.
  *
  * [hitRate] and [averageAttainment] are both nullable and both mean "there is nothing to report",
- * never "zero". An item with no scored instances must not land in the going-badly panel it never
- * earned (see scoring-cases 10.5 and 11.7).
+ * never "zero". An item with no scored instances must not read as a failure it never earned, in a
+ * ring or a trend (see scoring-cases 10.5 and 11.7).
  */
 data class ItemSummary(
     val met: Int,

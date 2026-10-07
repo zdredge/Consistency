@@ -32,7 +32,7 @@ import java.time.LocalDate
  *
  * **On granularity, and the rule M3 added to that list.** Worked out and stretched carry weekly
  * targets only: they are lower bounds on inherently non-daily behaviours, and a daily "must be yes"
- * would read as a ~50% hit rate and land in "going badly" for no real failure. Coffee looks like the
+ * would read as a ~50% hit rate, a failing goal, for no real failure. Coffee looks like the
  * same case and is not. It is an *upper* bound, and weekly granularity forgives clustering -- five
  * coffees in one day and one on each of the others sums to ten and passes a weekly cap of fourteen
  * cleanly, which is exactly the day worth seeing. So coffee carries **both** a daily and a weekly

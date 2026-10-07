@@ -342,8 +342,9 @@ build-order section.
   merged with each other or with response rate. Spec §5.1, O1.
 - **Run** — consecutive days on which every scheduled check-in was answered. Measures showing up,
   not performing. Backfill within grace preserves it.
-- **Hit rate** — how often a single item met its target over the 14-day window. Drives the
-  going-well / middling / going-badly panels at 80% and 60%.
+- **Hit rate** — how often a single item met its target over the 14-day window. Its change against
+  the fortnight before places a goal in the Slipping / Holding / Improving trend panels, at 10 points
+  either way (spec §5.1). The level panels at 80% and 60% were replaced at M10.
 - **Average attainment** — for numeric goals, how close the user came to the target on average over
   the window. Reported beside hit rate, never merged into it. Not meaningful for at-most directions.
 - **Roll-up** — a weekly figure derived from one daily item plus an aggregation.

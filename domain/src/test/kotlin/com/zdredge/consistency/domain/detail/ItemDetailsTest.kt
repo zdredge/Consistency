@@ -18,7 +18,6 @@ import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.option
 import com.zdredge.consistency.domain.rollUp
-import com.zdredge.consistency.domain.scoring.Panel
 import com.zdredge.consistency.domain.scoring.SleepMetric
 import com.zdredge.consistency.domain.scoring.SleepNights
 import com.zdredge.consistency.domain.target
@@ -75,9 +74,8 @@ class ItemDetailsTest {
         assertEquals(0, daily.summary.met)
         assertEquals(14, daily.summary.missed)
         assertEquals(0.0, daily.summary.hitRate!!)
-        assertEquals(0.75, daily.summary.averageAttainment!!)
         // The pair is the point: a fortnight of near-misses is not a fortnight of doing nothing.
-        assertEquals(Panel.GOING_BADLY, Panel.forHitRate(daily.summary.hitRate))
+        assertEquals(0.75, daily.summary.averageAttainment!!)
     }
 
     @Test
@@ -116,8 +114,7 @@ class ItemDetailsTest {
         assertEquals(0, daily.summary.met)
         assertEquals(0, daily.summary.missed, "silence is not a miss")
         assertEquals(14, daily.summary.excluded)
-        assertNull(daily.summary.hitRate, "and it is not a hit rate of zero either")
-        assertNull(Panel.forHitRate(daily.summary.hitRate), "so the item belongs in no panel")
+        assertNull(daily.summary.hitRate, "and it is not a hit rate of zero either, so it is on no trend")
     }
 
     @Test

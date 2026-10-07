@@ -691,11 +691,11 @@ permissions prompt and its declined branch (§3.3).
 | # | Question | Notes |
 |---|---|---|
 | O1 | Goal-completion formula for the inner ring. | **Resolved.** Split into a daily ring and a weekly ring, each instance-based within its granularity, never merged. See below and §5.1. |
-| O2 | Multi-select target interaction design | Mechanism accepted; the UI for "must not include *option*" is unbuilt and the user expects it to be fiddly. |
-| O3 | Health integration API surface | Health Connect is the current Android path; the older Fit APIs have been deprecating. **Verify at build time rather than trusting this document.** |
+| O2 | Multi-select target interaction design | Mechanism accepted; the UI for "must not include *option*" is unbuilt and the user expects it to be fiddly. **Open:** part of item configuration in the settings add-on (§2). |
+| O3 | Health integration API surface | **Resolved at M7.** Health Connect, framework-provided on the Pixel with no separate install, pinned to the stable 1.1.0 client and verified on the device (architecture §2, §4). |
 | O4 | Measured-day finality | **Claude's decision, not the user's:** provisional for 24h after its last read, then frozen. (A read happens when a check-in opens; see architecture §5.) Chosen because platform step-tracking behaviour is unverified, and this is the option that tolerates late syncing without permanently mis-scoring a day. Reversible in an afternoon; revisit after a week of real data. |
 | O5 | Carousel timing | **Resolved at M10.** A two-tier carousel, 6 s per goal, stopping for good on any touch — see §5.1. |
-| O6 | Chart assignment per library item | Finalise with the library. |
+| O6 | Chart assignment per library item | **Resolved at M8.** One view per item, agreed over three rounds of mockups (§5.4), derived from what the item is rather than looked up by name. |
 | O7 | Development seed-data fixture | **Now planned as build-order M9.** A debug-only fixture that populates Room directly (not a standalone script). Target volume **~6 months** of generated history including gaps, backfills, retired items and effective-from changes — enough for month-over-month trends and comparisons. This is a testing tool, not a precondition for usefulness: the app works from day one and the dashboard needs 14 days. |
 
 ### O1 in detail — resolved
@@ -723,9 +723,8 @@ behaviour), and pooling all goals into a single ratio (it drowns the weekly goal
 of every goal's hit rate was also considered and set aside — the two-ring split was preferred because
 it stays purely instance-based and needs no averaging of averages.
 
-**Still open, but visual only:** whether the two completion figures render as full concentric rings or
-as a **half-ring / arc gauge** is a presentation choice for the dashboard phase (build-order M10), not
-a change to the metric. A half-ring may be easier to read; both are worth prototyping then.
+**The visual question, settled at M10:** both full concentric rings and a half-ring / arc gauge were
+drawn, and the concentric rings were chosen (§5.1). Presentation only; the metric did not change.
 
 ### Recorded trade-offs
 

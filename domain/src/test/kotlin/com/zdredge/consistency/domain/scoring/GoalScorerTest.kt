@@ -97,8 +97,8 @@ class GoalScorerTest {
     @Test
     @DisplayName("hit rate is null, not zero, when nothing was scored")
     fun hitRateIsNullWhenNothingScored() {
-        // Distinguishes "never scored" from "scored and always failed". A zero here would put an
-        // item into the going-badly panel it never earned.
+        // Distinguishes "never scored" from "scored and always failed". A zero here would show an
+        // item as failing when it was never judged at all.
         val summary = ItemSummary.of(List(3) { GoalScorer.score(waterTarget, answer = null) })
         assertNull(summary.hitRate)
         assertNull(summary.averageAttainment)

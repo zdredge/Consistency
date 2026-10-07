@@ -1985,6 +1985,25 @@ the five areas only as a description. The same sentence said "removable", agains
 "editable" before anything could edit; it now says retirable, and points to the settings add-on.
 Docs only, plus `SeedLibrary`'s own comment, which repeated "five groups".
 
+### What M10 superseded, still standing
+
+The trend panels replaced the 80%/60% level panels at M10. Several things still described the old
+ones:
+- the `CLAUDE.md` glossary
+- scoring-cases 2.3, 10.5, 11.7 and the §11 footer
+- comments in `GoalScorer`, `SeedLibrary` and the fixture
+
+`Panel` itself was still in `:domain`, used by nothing outside its own tests. **Removed.**
+`PeriodProgress`, which shared its file and is live, moved to its own. `PanelBandTest` went with it,
+and two `ItemDetailsTest` asserts that went through `Panel` were dropped: each repeated a hit-rate
+assertion already on the line above. `:domain` goes from 389 tests to 383 (the six band cases).
+
+Also brought up to date:
+- **Spec §6:** O3 is resolved at M7, O6 at M8, and O1's "still open, visual only" note at M10. O2
+  points to the settings add-on.
+- **build-order's decision-gates table:** it still gave the carousel as 8 seconds per goal. O5
+  resolved at 6.
+
 ---
 
 ## After the plan — settings add-on
@@ -2012,7 +2031,8 @@ These are the points where the build stops and asks, per `CLAUDE.md`'s "Ask firs
 | ~~T1 / M0~~ — platform verification | ~~M6, M7~~ — **cleared** | **M7:** on-device Health Connect step counting confirmed on the Pixel 9 Pro (Android 17); one origin, synthetic on-device package; the raw-sensor escape hatch stays unbuilt. **M6:** `USE_EXACT_ALARM` install-granted with no prompt, and 0.6 s slip in confirmed deep Doze — no fallback path needed. Multi-day observation of real firings continues in M6 as an architecture §8 mitigation. |
 | **Schema changes** | M3 and anything later | Any change to `answers`, `checkins` or `targets` is a stop-and-ask, never a quiet edit. |
 | **New dependency** | any milestone | Adding one is ask-first. The stack in architecture §4 is the agreed set. |
-| **O4 / O5** — measured-day finality, carousel timing | M5, M10 | Lower-stakes assumptions (provisional-24h, 8s auto-advance); confirm when reached, both reversible. |
+| **O4** — measured-day finality | M5 | Provisional for 24h after its last read, then frozen; built in M5, fed from M7. Reversible; revisit with real data. |
+| ~~O5~~ — carousel timing | ~~M10~~ | **Resolved at M10:** 6 s per goal, stopping for good on any touch (spec §5.1). |
 
 ## What this plan deliberately does not do
 

@@ -455,7 +455,8 @@ instrumented Android test to verify.
 **As built (M2).** The rulebook lives in `domain/.../domain/scoring/`, composed of small pure units:
 `TargetResolver` and `ContainerSizeResolver` (effective-from, resolved *by date* so a later change
 cannot reach backwards), `DirectionEvaluator`, `GoalScorer`, `RunCalculator`, `RollUpCalculator`,
-`DerivedMetrics`, `ItemLifecycle`, `Panel`, `GoalCompletion`. Every rule in spec §3.4 is a green JVM
+`DerivedMetrics`, `ItemLifecycle`, `Panel` (removed after M11: the level panels it drew were replaced
+by trends at M10), `GoalCompletion`. Every rule in spec §3.4 is a green JVM
 test rather than a hope: **133 tests, no emulator, complete case coverage.** The prediction here held
 exactly — the whole rulebook was provable without a device, which is what justified the extra module.
 

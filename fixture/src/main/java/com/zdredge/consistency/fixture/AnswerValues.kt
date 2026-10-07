@@ -9,8 +9,8 @@ import kotlin.random.Random
 /**
  * Plausible values for the seeded items, falling back on the answer type for anything else.
  *
- * Mostly-kept habits with real misses, because a history of perfect answers would put every item in
- * "going well" and exercise nothing, and a random one would put everything in "going badly".
+ * Mostly-kept habits with real misses, because a history of perfect answers would put every goal at
+ * 100% and exercise nothing, and a random one would put every goal near 50%.
  */
 internal object AnswerValues {
 
