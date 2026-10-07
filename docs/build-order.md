@@ -2147,6 +2147,9 @@ fixture all build, and every suite passes unchanged.
 - **Inline fully qualified names.** About thirty, across fourteen main and test files (one of them
   added by item #2), were written out in full where an import belonged. They are now imported. The
   sweep was scripted to refuse any short name that would clash with an existing import; none did.
+- **`recentRolloverRuns` returns a plain `RolloverRun`.** It was the one repository read that handed
+  out a Room row (`RolloverRunEntity`) and its raw `outcome` string. It now maps through
+  `EntityMappers` like every other read, with `succeeded` in place of the string. Only tests call it.
 
 ---
 

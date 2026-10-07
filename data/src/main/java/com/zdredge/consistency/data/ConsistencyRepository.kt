@@ -15,6 +15,7 @@ import com.zdredge.consistency.data.mapper.originEntities
 import com.zdredge.consistency.data.mapper.selectionEntities
 import com.zdredge.consistency.data.mapper.toDomain
 import com.zdredge.consistency.data.mapper.toEntity
+import com.zdredge.consistency.data.mapper.toRun
 import com.zdredge.consistency.domain.checkin.AnswerRevision
 import com.zdredge.consistency.domain.checkin.CheckInCompleteness
 import com.zdredge.consistency.domain.checkin.CheckInContent
@@ -60,6 +61,17 @@ data class RolloverOutcome(
     val checkInsCreated: Int = 0,
     val checkInsMissed: Int = 0,
     val valuesFrozen: Int = 0,
+)
+
+/** One recorded rollover, as read back. A failed run has [error] and zero counts. */
+data class RolloverRun(
+    val ranAt: Instant,
+    val forDay: LocalDate,
+    val succeeded: Boolean,
+    val checkInsCreated: Int,
+    val checkInsMissed: Int,
+    val valuesFrozen: Int,
+    val error: String?,
 )
 
 /** Stored in `rollover_runs.outcome`. Plain strings: the set is not a domain concept. */
@@ -554,8 +566,8 @@ class ConsistencyRepository(
         db.checkInDao().earliestDay()?.let(LocalDate::parse)
 
     /** Recent runs, failures included, newest first. */
-    suspend fun recentRolloverRuns(limit: Int = 20): List<RolloverRunEntity> =
-        db.rolloverDao().recent(limit)
+    suspend fun recentRolloverRuns(limit: Int = 20): List<RolloverRun> =
+        db.rolloverDao().recent(limit).map { it.toRun() }
 
     /**
      * Marks a check-in answered **only if something was actually recorded for it**, returning whether

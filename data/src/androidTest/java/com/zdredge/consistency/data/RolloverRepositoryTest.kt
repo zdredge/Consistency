@@ -15,6 +15,7 @@ import com.zdredge.consistency.domain.time.DayResolver
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -148,7 +149,10 @@ class RolloverRepositoryTest {
         repo.runRollover(installDay.plusDays(3))
 
         assertNotNull(repo.lastSuccessfulRollover())
-        assertEquals(1, repo.recentRolloverRuns().size)
+        val run = repo.recentRolloverRuns().single()
+        assertTrue(run.succeeded)
+        assertEquals(installDay.plusDays(3), run.forDay)
+        assertNull(run.error)
     }
 
     /**
@@ -162,8 +166,9 @@ class RolloverRepositoryTest {
         repo.recordRolloverFailure(installDay.plusDays(3), "database locked")
 
         assertNull("a failure is not a success", repo.lastSuccessfulRollover())
-        assertEquals(1, repo.recentRolloverRuns().size)
-        assertEquals(ROLLOVER_FAILED, repo.recentRolloverRuns().single().outcome)
+        val run = repo.recentRolloverRuns().single()
+        assertFalse(run.succeeded)
+        assertEquals("database locked", run.error)
     }
 
     // ---- O4, end to end ------------------------------------------------------------------------
