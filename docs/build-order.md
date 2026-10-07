@@ -2132,6 +2132,16 @@ lost reschedule costs nothing lasting, because every run re-sets the whole windo
 device, which is honest rather than ideal: the fixture install never schedules prompts, and the only
 install that does is the real app.
 
+### The wizard's test, still in `:app`
+
+`:app` has no tests, deliberately (`CLAUDE.md`), yet it still had the Android Studio template's
+`ExampleInstrumentedTest`, a test runner and five test-only libraries that nothing used. One of them,
+`ui-test-manifest`, was declared for the debug build -- the real app -- where it merged an exported
+test activity into the manifest for Compose UI tests that do not exist. The test, the runner, the
+five dependencies and their four catalog entries are gone. The debug manifest now holds only
+`MainActivity`, the health-permission alias and the debug-only preview activity. Debug, release and
+fixture all build, and every suite passes unchanged.
+
 ---
 
 ## After the plan — settings add-on

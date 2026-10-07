@@ -15,8 +15,6 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -63,13 +61,11 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.work.runtime)
-    testImplementation(libs.junit)
-    androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
-    androidTestImplementation(libs.androidx.espresso.core)
-    androidTestImplementation(libs.androidx.junit)
-    debugImplementation(libs.androidx.compose.ui.test.manifest)
+
+    // No test dependencies, deliberately: `:app` has no tests (docs/CLAUDE.md, Testing). Every
+    // decision that could be wrong lives in `:domain` or `:data`; previews are this module's check.
+    // The wizard's template test and its Compose/Espresso test libraries were removed after M11 --
+    // ui-test-manifest had been adding an exported test activity to the debug build, the real app.
     debugImplementation(libs.androidx.compose.ui.tooling)
-    "fixtureImplementation"(libs.androidx.compose.ui.test.manifest)
     "fixtureImplementation"(libs.androidx.compose.ui.tooling)
 }
