@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.ui.theme.Ash
 import com.zdredge.consistency.ui.theme.Bone
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 /** Plot insets shared by bars and dots, so the two plots have one geometry rather than two. */
 internal object PlotInsets {
@@ -153,7 +154,7 @@ internal fun DrawScope.drawWeekLabels(
     dates: List<LocalDate>,
     measurer: TextMeasurer,
     style: TextStyle,
-    format: java.time.format.DateTimeFormatter,
+    format: DateTimeFormatter,
 ) {
     weekBoundaries.forEach { index ->
         val date = dates.getOrNull(index) ?: return@forEach

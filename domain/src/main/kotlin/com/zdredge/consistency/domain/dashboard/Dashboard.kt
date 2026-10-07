@@ -18,6 +18,7 @@ import com.zdredge.consistency.domain.model.Slot
 import com.zdredge.consistency.domain.scoring.FiguresWindow
 import com.zdredge.consistency.domain.scoring.GoalCompletion
 import com.zdredge.consistency.domain.scoring.GoalCompletionRings
+import com.zdredge.consistency.domain.scoring.ItemSummary
 import com.zdredge.consistency.domain.scoring.PeriodProgress
 import com.zdredge.consistency.domain.scoring.ResponseRate
 import com.zdredge.consistency.domain.scoring.RunCalculator
@@ -164,7 +165,7 @@ object Dashboard {
         )
     }
 
-    private fun completion(summaries: List<com.zdredge.consistency.domain.scoring.ItemSummary>) = GoalCompletion(
+    private fun completion(summaries: List<ItemSummary>) = GoalCompletion(
         met = summaries.sumOf { it.met },
         missed = summaries.sumOf { it.missed },
         excluded = summaries.sumOf { it.excluded },

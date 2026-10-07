@@ -36,6 +36,7 @@ import com.zdredge.consistency.domain.detail.DayCell
 import com.zdredge.consistency.domain.detail.DayShade
 import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.DayValue
+import com.zdredge.consistency.domain.detail.ShadeScale
 import com.zdredge.consistency.domain.detail.WeekFigure
 import com.zdredge.consistency.domain.model.GoalOutcome
 import com.zdredge.consistency.ui.checkin.asAnswer
@@ -181,7 +182,7 @@ internal fun DrawScope.drawSelection() {
 }
 
 /** Labels for a shade key: "0-1", "2", "3", "4+" -- read off the buckets rather than restated. */
-internal fun com.zdredge.consistency.domain.detail.ShadeScale.keyLabels(): List<String> =
+internal fun ShadeScale.keyLabels(): List<String> =
     buckets.map { bucket ->
         when {
             bucket.toInclusive == null -> "${bucket.from}+"
@@ -191,7 +192,7 @@ internal fun com.zdredge.consistency.domain.detail.ShadeScale.keyLabels(): List<
     }
 
 /** Where the target starts, so the key can mark it (spec 5.4). Null when nothing is a target. */
-internal fun com.zdredge.consistency.domain.detail.ShadeScale.targetBucket(): Int? =
+internal fun ShadeScale.targetBucket(): Int? =
     buckets.indexOfFirst { it.reachesTarget }.takeIf { it >= 0 }
 
 /** How one day's square is painted. A ring is an absence; a fill is something that happened. */
@@ -245,7 +246,7 @@ internal fun dayCalendarFill(cell: DayCell): CellFill = when (cell.state) {
  * Each day is drawn in the key's own ramp, at [DayShade.keyBucket] -- where the day stood against the
  * target of its own day. So a day that met an earlier, lower target is drawn in the key's target colour.
  */
-internal fun shadedFill(shades: Map<java.time.LocalDate, DayShade>, ramp: List<Color>): (DayCell) -> CellFill =
+internal fun shadedFill(shades: Map<LocalDate, DayShade>, ramp: List<Color>): (DayCell) -> CellFill =
     { cell ->
         val shade = shades[cell.day]
         when {

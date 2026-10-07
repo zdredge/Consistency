@@ -2,6 +2,7 @@ package com.zdredge.consistency.domain.detail
 
 import com.zdredge.consistency.domain.answer
 import com.zdredge.consistency.domain.item
+import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.Slot
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -28,7 +29,7 @@ class RecordingCountTest {
     private fun night(daysAgo: Long, capture: Capture = Capture.IN_WINDOW) =
         answer("bedtime", day = today.minusDays(daysAgo), time = LocalTime.of(23, 0), capture = capture)
 
-    private fun countOf(vararg answers: com.zdredge.consistency.domain.model.Answer) =
+    private fun countOf(vararg answers: Answer) =
         RecordingCount.of(bedtime, Slot.MORNING, answers.toList(), today = today, lastDay = lastNight)
 
     @Test

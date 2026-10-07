@@ -1,5 +1,6 @@
 package com.zdredge.consistency.data.export
 
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import java.io.File
 import java.io.OutputStream
@@ -66,6 +67,6 @@ object DatabaseSnapshot {
         )
     }
 
-    private fun androidx.sqlite.db.SupportSQLiteDatabase.count(table: String): Int =
+    private fun SupportSQLiteDatabase.count(table: String): Int =
         query("SELECT COUNT(*) FROM $table").use { if (it.moveToFirst()) it.getInt(0) else 0 }
 }

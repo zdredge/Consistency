@@ -37,6 +37,7 @@ import com.zdredge.consistency.domain.model.ItemKind
 import com.zdredge.consistency.domain.model.ItemVersion
 import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.MeasuredValue
+import com.zdredge.consistency.domain.model.OptionId
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpSpec
 import com.zdredge.consistency.domain.model.SelectOption
@@ -167,7 +168,7 @@ class ConsistencyRepository(
      */
     suspend fun noOpportunityOptionIds() =
         db.itemDao().allOptions().filter { it.isNoOpportunity }
-            .map { com.zdredge.consistency.domain.model.OptionId(it.id) }
+            .map { OptionId(it.id) }
             .toSet()
 
     // ---- Targets -----------------------------------------------------------------------------

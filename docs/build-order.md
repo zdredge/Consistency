@@ -2142,6 +2142,12 @@ five dependencies and their four catalog entries are gone. The debug manifest no
 `MainActivity`, the health-permission alias and the debug-only preview activity. Debug, release and
 fixture all build, and every suite passes unchanged.
 
+### Minor tidy-ups
+
+- **Inline fully qualified names.** About thirty, across fourteen main and test files (one of them
+  added by item #2), were written out in full where an import belonged. They are now imported. The
+  sweep was scripted to refuse any short name that would clash with an existing import; none did.
+
 ---
 
 ## After the plan — settings add-on

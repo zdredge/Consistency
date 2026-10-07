@@ -1,6 +1,7 @@
 package com.zdredge.consistency.ui
 
 import androidx.compose.runtime.mutableStateListOf
+import androidx.lifecycle.ViewModel
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.Slot
 import java.time.LocalDate
@@ -90,6 +91,6 @@ class BackStack(initial: Screen = Screen.Home) {
  * means serialising a [Screen] and everything it holds, which is the cost this file declines to pay
  * for a navigation library.
  */
-class NavigationViewModel : androidx.lifecycle.ViewModel() {
+class NavigationViewModel : ViewModel() {
     val backStack = BackStack()
 }

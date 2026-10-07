@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zdredge.consistency.data.db.ConsistencyDatabase
 import com.zdredge.consistency.data.health.FakeStepSource
 import com.zdredge.consistency.data.health.StepSourceStatus
+import com.zdredge.consistency.domain.detail.DayState
 import com.zdredge.consistency.domain.detail.ItemDetails
 import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.Capture
@@ -132,7 +133,7 @@ class ItemHistoryRepositoryTest {
         // A2.1 in full: still resolvable this morning, so the day is not yet a miss.
         val detail = ItemDetails.assemble(history, today, dayResolver)
         assertEquals(
-            com.zdredge.consistency.domain.detail.DayState.DEFERRED,
+            DayState.DEFERRED,
             detail.days.single { it.day == day }.state,
         )
     }
@@ -202,7 +203,7 @@ class ItemHistoryRepositoryTest {
             assertEquals(
                 "${item.id.value} shows a missed day with nothing ever answered",
                 0,
-                detail.days.count { it.state == com.zdredge.consistency.domain.detail.DayState.MISSED },
+                detail.days.count { it.state == DayState.MISSED },
             )
             assertEquals(14, detail.figures.windowDays.size)
         }

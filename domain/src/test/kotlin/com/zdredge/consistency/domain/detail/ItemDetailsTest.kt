@@ -5,6 +5,7 @@ import com.zdredge.consistency.domain.answer
 import com.zdredge.consistency.domain.history
 import com.zdredge.consistency.domain.item
 import com.zdredge.consistency.domain.measured
+import com.zdredge.consistency.domain.model.Answer
 import com.zdredge.consistency.domain.model.AnswerType
 import com.zdredge.consistency.domain.model.Capture
 import com.zdredge.consistency.domain.model.Classification
@@ -13,6 +14,7 @@ import com.zdredge.consistency.domain.model.Direction
 import com.zdredge.consistency.domain.model.ExclusionReason
 import com.zdredge.consistency.domain.model.ItemId
 import com.zdredge.consistency.domain.model.ItemKind
+import com.zdredge.consistency.domain.model.MeasuredState
 import com.zdredge.consistency.domain.model.Period
 import com.zdredge.consistency.domain.model.RollUpAggregation
 import com.zdredge.consistency.domain.model.Slot
@@ -24,6 +26,7 @@ import com.zdredge.consistency.domain.target
 import com.zdredge.consistency.domain.time.ClockAxis
 import com.zdredge.consistency.domain.time.DayResolver
 import com.zdredge.consistency.domain.version
+import java.time.Duration
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
@@ -224,7 +227,7 @@ class ItemDetailsTest {
         val everyNight = ItemDetails.assemble(history, today, weeks, NightFilter.EveryNight).figures.sleep!!
 
         assertEquals(SleepMetric.SLEEP_DURATION, weeknightsOnly.metric)
-        assertEquals(java.time.Duration.ofHours(7), weeknightsOnly.typical)
+        assertEquals(Duration.ofHours(7), weeknightsOnly.typical)
         assertEquals(java.time.Duration.ofHours(10), everyNight.typical, "four of the seven nights were ten hours")
     }
 
@@ -248,9 +251,9 @@ class ItemDetailsTest {
             today, weeks,
         )
 
-        assertEquals(java.time.Duration.ofMinutes(22), detail.log.single { it.day == monday }.derived)
+        assertEquals(Duration.ofMinutes(22), detail.log.single { it.day == monday }.derived)
         assertEquals(SleepMetric.LINGERING, detail.figures.sleep!!.metric)
-        assertEquals(java.time.Duration.ofMinutes(22), detail.figures.sleep!!.typical)
+        assertEquals(Duration.ofMinutes(22), detail.figures.sleep!!.typical)
     }
 
     @Test
@@ -416,7 +419,7 @@ class ItemDetailsTest {
                 measured = (0..5).map { measured(day = week.plusDays(it.toLong()), value = 10_000.0) } +
                     measured(
                         day = week.plusDays(6), value = 30_000.0,
-                        state = com.zdredge.consistency.domain.model.MeasuredState.CONFLICTED,
+                        state = MeasuredState.CONFLICTED,
                     ),
             ),
             today, weeks,
@@ -616,7 +619,7 @@ class ItemDetailsTest {
     /** Water raised from 2 bottles to 3 twelve days ago, inside the chart's five weeks. */
     private val raisedOn = today.minusDays(12)
 
-    private fun waterRaised(answers: List<com.zdredge.consistency.domain.model.Answer>) = history(
+    private fun waterRaised(answers: List<Answer>) = history(
         item = item("water", createdOn = longAgo),
         version = version("water", AnswerType.NUMBER),
         targets = listOf(

@@ -40,10 +40,10 @@ class DayCellsTest {
     /** A Wednesday. Grace reaches back through Tuesday, and one day further for a morning item. */
     private val today = LocalDate.of(2026, 9, 9)
 
-    private fun cells(history: com.zdredge.consistency.domain.detail.ItemHistory, vararg days: LocalDate) =
+    private fun cells(history: ItemHistory, vararg days: LocalDate) =
         DayCells.of(history, days.toList(), today).associateBy { it.day }
 
-    private fun cell(history: com.zdredge.consistency.domain.detail.ItemHistory, day: LocalDate) =
+    private fun cell(history: ItemHistory, day: LocalDate) =
         DayCells.of(history, listOf(day), today).single()
 
     // ---------------------------------------------------------------- the four kinds of blank
