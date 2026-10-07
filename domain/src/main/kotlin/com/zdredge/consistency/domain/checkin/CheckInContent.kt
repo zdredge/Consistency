@@ -125,12 +125,6 @@ object CheckInContent {
     }
 
     /**
-     * Which item slots this check-in covers.
-     *
-     * The weekly questions are appended to **Sunday night's** check-in rather than forming their own
-     * (spec §1), which closes the Monday–Sunday week the moment it ends.
-     */
-    /**
      * Whether a question may be answered "not yet".
      *
      * Spec §3.2 scopes the deferral precisely: **night goal questions.** Both halves matter.
@@ -144,8 +138,8 @@ object CheckInContent {
      * defers a feeling, and the answer tomorrow is a different answer, not a delayed one.
      *
      * A carried-over question is never deferrable again: the promise "not yet" makes is that the
-     * question comes back **once**, and an unresolved deferral becomes a missed goal at rollover
-     * (scoring-cases A2.1). Letting it be deferred indefinitely would turn a deferral into a way of
+     * question comes back **once**, and an unresolved deferral becomes a missed goal once its grace
+     * closes (scoring-cases A2.1). Letting it be deferred indefinitely would turn a deferral into a way of
      * never answering while never being marked as having failed to.
      *
      * *On its own night* -- the caller's condition, `answeredOn == checkInDay`. A deferral exists for
@@ -158,6 +152,12 @@ object CheckInContent {
             version.slot == Slot.NIGHT &&
             version.classification == Classification.GOAL
 
+    /**
+     * Which item slots this check-in covers.
+     *
+     * The weekly questions are appended to **Sunday night's** check-in rather than forming their own
+     * (spec §1), which closes the Monday–Sunday week the moment it ends.
+     */
     private fun slotsAskedIn(slot: Slot, checkInDay: LocalDate): Set<Slot> = when {
         slot == Slot.NIGHT && checkInDay.dayOfWeek == DayOfWeek.SUNDAY -> setOf(Slot.NIGHT, Slot.WEEKLY)
         else -> setOf(slot)

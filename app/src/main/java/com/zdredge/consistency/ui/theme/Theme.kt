@@ -13,8 +13,9 @@ import androidx.compose.runtime.Composable
  * a design that cannot be relied on cannot be designed against.
  *
  * There is no light scheme either. The app is opened at 08:00 and 21:00 by one person on one device,
- * and committing to a single ground means every surface built after this — M6's settings, M8's
- * charts, M10's rings — is judged against the same background rather than two.
+ * and committing to a single ground means every surface built after this — M8's charts, M10's
+ * rings, and the settings add-on when it comes — is judged against the same background rather than
+ * two.
  *
  * The mapping below leans on **one accent doing all the emphasis**. Selection, progress and the
  * primary action are all [Accent]; everything else separates by a step of surface lightness. In an

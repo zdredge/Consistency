@@ -75,8 +75,9 @@ private const val TAG = "ConsistencyRepository"
  * reads here are exactly the inputs the M2 calculators already take as parameters, and nothing is
  * shaped for a screen.
  *
- * There is deliberately **no dashboard-shaped aggregate loader**. M10 knows what the dashboard
- * wants; guessing now would produce an API written against nothing and tested against less.
+ * There is deliberately **no dashboard-shaped aggregate loader**. M10 settled what the dashboard
+ * reads -- [dashboardInputs] is one [itemHistory] per item and the check-ins, so every goal is
+ * judged exactly as its own screen judges it.
  *
  * **Nothing computed is stored, and nothing stored is computed here.** Sleep duration, lingering
  * minutes, weekly roll-ups, hit rates and both goal-completion ratios are the domain layer's, on
@@ -99,9 +100,9 @@ class ConsistencyRepository(
     /**
      * Populates the spec section 4 library, once, on an empty database.
      *
-     * Guarded on emptiness rather than on a "seeded" flag because the flag and the rows can disagree
-     * -- and because the library is editable and removable from the moment it lands (spec section
-     * 4). Once the user has deleted an item, re-adding it would be the app overruling them.
+     * Guarded on emptiness rather than on a "seeded" flag because the flag and the rows can disagree.
+     * Items are retired, never deleted (constraint 6), so a library that has ever been seeded is never
+     * empty again, and nothing here can bring back an item the user chose to retire.
      *
      * Everything takes effect from [on], so targets apply from the first day rather than from a date
      * baked into the source, and no period before installation is scored.
@@ -626,13 +627,6 @@ class ConsistencyRepository(
         db.answerDao().forItemOnDay(itemId.value, day.toString())?.toDomain()
 
     /**
-     * Records an answer, replacing any existing one for that item and day.
-     *
-     * Resolving a deferral is this same call with a different capture -- there is no separate
-     * method, because "not yet" then answered is one answer that changed, not two. The row keeps its
-     * identity across the edit so nothing referencing it dangles.
-     */
-    /**
      * Records an answer given in the check-in held on [checkInDay] in [slot].
      *
      * It takes the check-in by day and slot rather than by id because the domain `CheckIn`
@@ -668,6 +662,13 @@ class ConsistencyRepository(
         recordAnswer(answer, checkIn?.id, revisiting)
     }
 
+    /**
+     * Records an answer, replacing any existing one for that item and day.
+     *
+     * Resolving a deferral is this same call with a different capture -- there is no separate
+     * method, because "not yet" then answered is one answer that changed, not two. The row keeps its
+     * identity across the edit so nothing referencing it dangles.
+     */
     suspend fun recordAnswer(
         answer: Answer,
         viaCheckInId: String? = null,
@@ -743,11 +744,6 @@ class ConsistencyRepository(
         db.measuredDao().forItemOnDay(itemId.value, day.toString())?.toDomain()
 
     /**
-     * Writes a measured value with its per-origin breakdown. The origins are written even when there
-     * is only one, because the guard is the *comparison* between days: a second origin appearing is
-     * only detectable if the single-origin days recorded theirs too (architecture section 5).
-     */
-    /**
      * Reads [day]'s steps and records them, returning what was written or null if there was nothing.
      *
      * **The one path a step value is written by.** [syncRecentSteps] calls it for each day it reads,
@@ -799,6 +795,11 @@ class ConsistencyRepository(
         }
     }
 
+    /**
+     * Writes a measured value with its per-origin breakdown. The origins are written even when there
+     * is only one, because the guard is the *comparison* between days: a second origin appearing is
+     * only detectable if the single-origin days recorded theirs too (architecture section 5).
+     */
     suspend fun recordMeasuredValue(value: MeasuredValue) {
         val existing = db.measuredDao().forItemOnDay(value.itemId.value, value.day.toString())
         val id = existing?.value?.id ?: newId()

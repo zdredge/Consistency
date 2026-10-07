@@ -28,7 +28,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-/**
+/*
  * Terse builders so the scoring tests read like the tables in docs/scoring-cases.md they come from.
  * Ids are plain strings here and wrapped for you; the value classes earn their keep in production
  * code, not in every line of a 75-case suite.

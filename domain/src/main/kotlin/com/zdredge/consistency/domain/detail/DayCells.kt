@@ -33,7 +33,11 @@ import java.time.LocalTime
  * five weeks long.
  */
 enum class DayState {
-    /** Before the item was created, after it was retired, or no version in force. Not drawn at all. */
+    /**
+     * Before the item was created, after it was retired, or no version in force. Drawn as a dim dot,
+     * which holds the grid together and is plainly not a judgement; an empty square is what a missed
+     * day looks like (build-order M8, Phase 4).
+     */
     NOT_ACTIVE,
 
     /** Later than this item can have an answer for. Tonight's bedtime is answered tomorrow (§3.1). */
@@ -232,8 +236,9 @@ object DayCells {
     /**
      * A measured day.
      *
-     * It has no check-in, so "open" here means the value could still arrive: the rollover re-reads
-     * recent days, and a phone that spent the night off syncs later. Borrowing the backfill window
+     * It has no check-in, so "open" here means the value could still arrive: opening either check-in
+     * re-reads yesterday and today (`syncRecentSteps`), and a phone that spent the night off syncs
+     * later. Borrowing the backfill window
      * keeps that to one rule rather than inventing a second boundary for steps — today and yesterday
      * are still filling in, while an older day with nothing is a day no record was read, which is not
      * zero steps and must never be scored as a miss.

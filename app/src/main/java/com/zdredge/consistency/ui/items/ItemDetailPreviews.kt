@@ -34,7 +34,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 
-/**
+/*
  * M8's two screens, on invented data built to contain the awkward cases.
  *
  * **`:app` has no tests, so these are the check.** The same posture M8 Phase 1 took with the chart

@@ -22,6 +22,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.zdredge.consistency.domain.model.AnswerType
 
+/** What answering now will record, for a check-in reopened past its window (spec §3.2, A1.2). */
+private fun lateNote(state: CheckInUiState): String? = when {
+    // The heading already says it was missed; this says what answering now does about it.
+    state.missed -> "Anything filled in now is recorded as late; the check-in stays missed."
+    state.pastGrace -> "Past its window. Anything filled in now is recorded as late; changes are marked edited."
+    else -> null
+}
+
 /**
  * What you just recorded, at the end of the set.
  *
@@ -40,14 +48,6 @@ import com.zdredge.consistency.domain.model.AnswerType
  * point; a list is read down its left edge, and centring nine of them would cost the scan this screen
  * exists to provide.
  */
-/** What answering now will record, for a check-in reopened past its window (spec §3.2, A1.2). */
-private fun lateNote(state: CheckInUiState): String? = when {
-    // The heading already says it was missed; this says what answering now does about it.
-    state.missed -> "Anything filled in now is recorded as late; the check-in stays missed."
-    state.pastGrace -> "Past its window. Anything filled in now is recorded as late; changes are marked edited."
-    else -> null
-}
-
 @Composable
 fun CheckInSummary(
     state: CheckInUiState,

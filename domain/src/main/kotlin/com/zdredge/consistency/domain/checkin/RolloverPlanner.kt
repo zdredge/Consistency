@@ -33,8 +33,9 @@ data class RolloverPlan(
  * - **Generating expected check-in rows** stays in `ConsistencyRepository.ensureCheckInsExist`, which
  *   already plans through `CheckInPlanner`. A second implementation of the response-rate denominator
  *   is the last thing this app needs.
- * - **Converting unresolved deferrals to missed goals** is already done, at read time:
- *   `GoalScorer.score` returns `MISSED` for a `PENDING` answer (A2.1). Writing it here would
+ * - **Converting unresolved deferrals to missed goals** is already done, at read time: a `PENDING`
+ *   answer scores `MISSED` once its grace has closed -- the same boundary this job uses -- and
+ *   `PERIOD_OPEN` until then (A2.1; `GoalScorer.score`, `DayCells`). Writing it here would
  *   duplicate a tested rule and persist a derived value, which `CLAUDE.md` forbids. An unresolved
  *   deferral is self-limiting anyway — `CheckInContent` carries it into exactly one morning check-in.
  *
@@ -80,10 +81,10 @@ object RolloverPlanner {
      * the day. So the clock runs from the sync, not from the day being measured: a value re-synced
      * late is still young.
      *
-     * **A null `lastSyncedAt` freezes nothing.** Nothing populates that column until Health Connect
-     * arrives in M7, so today this branch is the only one taken and the rule finds no work. Guessing
-     * an anchor — the day, the row's creation — would freeze a value the app has no evidence about,
-     * and O4 exists precisely because that evidence is not in yet.
+     * **A null `lastSyncedAt` freezes nothing.** Every read since M7 sets it, so a null is a row from
+     * before then or written by hand. Guessing an anchor — the day, the row's creation — would freeze
+     * a value the app has no evidence about, and O4 exists precisely because that evidence may not be
+     * in yet.
      */
     private fun MeasuredValue.isReadyToFreeze(now: Instant): Boolean {
         if (state != MeasuredState.PROVISIONAL) return false

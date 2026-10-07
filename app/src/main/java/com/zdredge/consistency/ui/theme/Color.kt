@@ -2,7 +2,7 @@ package com.zdredge.consistency.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-/**
+/*
  * The palette. **Dark only, and deliberately so** (M4.5).
  *
  * Until now the app used the Android Studio scaffold's purple with `dynamicColor = true`, which

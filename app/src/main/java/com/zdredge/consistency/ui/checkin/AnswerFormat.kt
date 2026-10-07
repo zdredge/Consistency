@@ -2,7 +2,7 @@ package com.zdredge.consistency.ui.checkin
 
 import java.time.format.DateTimeFormatter
 
-/**
+/*
  * How an answer is written down, in the one place both the inputs and the summary read it from.
  *
  * The summary restates every answer the inputs collected, which makes it the obvious place for a

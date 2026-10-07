@@ -47,9 +47,9 @@ interface AnswerDao {
     suspend fun forItemBetween(itemId: String, from: String, to: String): List<AnswerWithSelections>
 
     /**
-     * Deferred answers awaiting resolution in the next morning's check-in. The rollover job converts
-     * any left unresolved into missed goals while leaving the check-in they were given in answered
-     * (scoring-cases A2.1, A2.2).
+     * Deferred answers awaiting resolution in the next morning's check-in, which carries them. One
+     * left unresolved scores as a missed goal once its grace closes -- at read time, never written --
+     * while the check-in it was given in stays answered (scoring-cases A2.1, A2.2).
      */
     @Transaction
     @Query("SELECT * FROM answers WHERE capture = :pending ORDER BY day_date, item_id")

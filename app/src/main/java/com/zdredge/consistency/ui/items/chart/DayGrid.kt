@@ -240,10 +240,9 @@ internal fun dayCalendarFill(cell: DayCell): CellFill = when (cell.state) {
  *
  * The shade comes from the domain's bucket, never from the value here: `ShadeScale.bucketOf` floors a
  * half, so 1.5 bottles is shaded as 1 and can never look like the target of 2 was reached.
- */
-/**
- * Each day in the key's own ramp, at [DayShade.keyBucket] -- where the day stood against the target
- * of its own day. So a day that met an earlier, lower target is drawn in the key's target colour.
+ *
+ * Each day is drawn in the key's own ramp, at [DayShade.keyBucket] -- where the day stood against the
+ * target of its own day. So a day that met an earlier, lower target is drawn in the key's target colour.
  */
 internal fun shadedFill(shades: Map<java.time.LocalDate, DayShade>, ramp: List<Color>): (DayCell) -> CellFill =
     { cell ->

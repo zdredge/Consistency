@@ -2046,6 +2046,26 @@ and not in pain.
   - "Do not begin a later milestone than the one in progress": none is in progress. What still
     matters there, that real data makes a wipe costly, stays.
 
+### Stale comments
+
+Comments only, no behaviour.
+- **What the rollover does.** Several described the rollover reading steps or converting deferrals.
+  It does neither: steps are read when a check-in opens, and an unresolved deferral scores as missed
+  at read time, once its grace closes.
+- **Finished milestones as future work.** "Until Health Connect arrives in M7", "when M8 makes check-in
+  times configurable", "M10 knows what the dashboard wants", "M6's settings".
+- **`DayState.NOT_ACTIVE`** said such days are not drawn. Since M8 Phase 4 they are a dim dot.
+- **The seeding comment** spoke of the user deleting items, which never happens.
+
+Doc comments attached to the wrong declaration were moved to their own:
+- two in `ConsistencyRepository` and one in `CheckInContent`;
+- `HomeViewModel`'s class doc, which sat on a constant;
+- one introduced by item #4 itself, where `lateNote` split `CheckInSummary` from its doc;
+- `DayGrid.shadedFill`, which carried two.
+
+Five file-level notes written as `/** */`, which silently attach to the first declaration below
+them, are now plain `/* */`, as `EntityMappers` already did.
+
 ---
 
 ## After the plan — settings add-on

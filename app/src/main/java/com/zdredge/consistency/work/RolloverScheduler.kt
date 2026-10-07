@@ -61,8 +61,8 @@ object RolloverScheduler {
      *
      * **The cost of `KEEP`, found by trying it:** changing [RunAt] in code has no effect on a device
      * that already has this work enqueued -- `KEEP` keeps the old anchor, and only a run or an
-     * explicit `UPDATE` moves it. When M8 makes check-in times configurable, changing the time must
-     * re-anchor deliberately rather than assume this function will notice.
+     * explicit `UPDATE` moves it. When the settings add-on makes check-in times configurable,
+     * changing the time must re-anchor deliberately rather than assume this function will notice.
      */
     fun schedule(context: Context) {
         val workManager = WorkManager.getInstance(context)

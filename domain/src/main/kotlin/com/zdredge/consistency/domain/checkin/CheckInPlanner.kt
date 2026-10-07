@@ -29,10 +29,10 @@ data class PlannedCheckIn(
  * that silently never counted, which would make skipping days look like improvement (architecture
  * §5). So this runs for every day since the app was last opened, not only for today.
  *
- * It is pure and returns plain data on purpose. M4 calls it on app open; **M5 wraps this same
- * function in the rollover worker** and adds the rest of that job — marking check-ins missed,
- * converting unresolved deferrals, freezing step values. Two callers, one rule, no second
- * implementation to drift.
+ * It is pure and returns plain data on purpose. Opening the app, arming the alarms and the rollover
+ * all generate through it (`ConsistencyRepository.ensureCheckInsExist`), and the rollover adds the
+ * rest of its job -- marking check-ins missed and freezing step values (`RolloverPlanner`). Many
+ * callers, one rule, no second implementation to drift.
  *
  * **Two check-ins a day, always.** The weekly questions are *appended to Sunday night's check-in*
  * rather than forming a third (spec §1), so `Slot.WEEKLY` is an item's slot and never a check-in's.

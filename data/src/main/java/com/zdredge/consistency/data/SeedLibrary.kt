@@ -216,7 +216,8 @@ object SeedLibrary {
      * identity of its own yet -- "workouts this week" is a *view* of `worked_out`, not a separate
      * question, and it was deliberately removed as an asked item to avoid two contradicting sources
      * of truth (spec section 4 change log). `sourceItemId` stays distinct in the model for when a
-     * derived figure does need its own identity; M8 is where that becomes concrete.
+     * derived figure does need its own identity. M8 drew every roll-up as a view of its source item
+     * and gave none a separate one, so that day has not come.
      */
     fun rollUpSpecs(): List<RollUpSpecEntity> = listOf(
         rollUp(WORKED_OUT, RollUpAggregation.COUNT_OF_YES),

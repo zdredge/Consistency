@@ -43,8 +43,8 @@ data class AnswerDraft(
     val note: String = "",
     /**
      * The user tapped "not yet". Stored as a value-less answer with `capture = PENDING`, which is
-     * how the rollover finds it to convert into a missed goal if it is never resolved
-     * (scoring-cases A2.1). Mutually exclusive with a value: answering clears it, deferring clears
+     * how the next morning's check-in finds it to carry, and how scoring knows to count it a missed
+     * goal once its grace closes unresolved (scoring-cases A2.1). Mutually exclusive with a value: answering clears it, deferring clears
      * the value, because "3 meals, but not yet" is not a thing the record can mean.
      */
     val deferred: Boolean = false,

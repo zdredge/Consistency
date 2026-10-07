@@ -37,11 +37,10 @@ data class ItemsUiState(
 /**
  * The list of items, in the order the check-ins ask them.
  *
- * **Deliberately without figures.** A list with a hit rate against each row is the dashboard, which
- * is M10 and has rings, panels and thresholds behind it — and `HomeScreen` already carries a note
- * saying this half of the app must not grow toward it in the meantime. This screen exists to reach
- * an item's history; the judgements live on the item's own screen, where they have room to be
- * reported honestly beside their attainment.
+ * **Deliberately without figures.** A list with a hit rate against each row would be a second, worse
+ * dashboard -- Home already has the real one (M10), with its rings, its trends and the 14-day
+ * suppression behind them. This screen exists to reach an item's history; the judgements live on the
+ * item's own screen, where they have room to be reported honestly beside their attainment.
  */
 class ItemsViewModel(
     private val repository: ConsistencyRepository,
