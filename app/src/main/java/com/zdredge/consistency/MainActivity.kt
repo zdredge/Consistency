@@ -193,7 +193,7 @@ class MainActivity : ComponentActivity() {
                             // what is on screen and what is armed derived from the same read.
                             LaunchedEffect(Unit) {
                                 homeViewModel.refresh()
-                                CheckInAlarmScheduler.reschedule(this@MainActivity)
+                                CheckInAlarmScheduler.rescheduleQuietly(this@MainActivity)
                             }
 
                             HomeScreen(
@@ -238,7 +238,7 @@ class MainActivity : ComponentActivity() {
                                     // check-in simply drops out -- no separate cancel path to get
                                     // wrong. The banner itself is dismissed here.
                                     Notifications.cancel(this@MainActivity, current.day, current.slot)
-                                    CheckInAlarmScheduler.reschedule(this@MainActivity)
+                                    CheckInAlarmScheduler.rescheduleQuietly(this@MainActivity)
                                     backStack.pop()
                                 }
                             }
@@ -331,7 +331,7 @@ class MainActivity : ComponentActivity() {
         // The user can turn notifications off in system settings at any time, and the app is told
         // nothing. Re-reading on every resume is what keeps Home honest about it.
         notificationsEnabled = NotificationManagerCompat.from(this).areNotificationsEnabled()
-        lifecycleScope.launch { CheckInAlarmScheduler.reschedule(this@MainActivity) }
+        lifecycleScope.launch { CheckInAlarmScheduler.rescheduleQuietly(this@MainActivity) }
     }
 
     /** The check-in a notification names, or null for an ordinary launch. */

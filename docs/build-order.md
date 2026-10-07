@@ -2115,6 +2115,23 @@ dashboard test checked elapsed days and never the total, which is how this got t
 **Verified on the device**, fixture install: stretched and worked out both read "with 4 days to go"
 on Wednesday 7 October.
 
+### A failed reschedule crashed the process
+
+Four alarm reschedules ran in coroutines nothing waited on, with no error handling:
+- app start;
+- `onResume`;
+- Home's refresh;
+- leaving a check-in.
+
+An exception in any of them crashed the app. App start mattered most: it also runs in the process
+WorkManager starts for the 04:00 rollover, so a failed reschedule could take the rollover down with
+it. The receivers and the worker already caught their own.
+
+All four now call `CheckInAlarmScheduler.rescheduleQuietly`, which logs a failure and returns. One
+lost reschedule costs nothing lasting, because every run re-sets the whole window. Not seen on the
+device, which is honest rather than ideal: the fixture install never schedules prompts, and the only
+install that does is the real app.
+
 ---
 
 ## After the plan — settings add-on
